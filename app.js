@@ -87,7 +87,7 @@ function labelOf(m, abs, p){ const lim = p===2 ? 2*m.half : m.half; return abs >
 function timelineHTML(m, evs, editable){
   if (!evs.length) return `<div class="empty">${editable ? 'Lance le chrono puis touche une action : la minute est notée toute seule.' : 'Aucune action pour le moment.'}</div>`;
   const list = [...evs].sort((a,b)=> b.sort - a.sort || String(b.created_at||'').localeCompare(String(a.created_at||'')));
-  const ICON = {goal:'<span class="evi goal">⚽</span>', yellow:'<span class="evi"><i class="card y"></i></span>', red:'<span class="evi"><i class="card r"></i></span>', sub:'<span class="evi sub">⇄</span>'};
+  const ICON = {goal:'<span class="evi goal">⚽</span>', yellow:'<span class="evi"><i class="kc y"></i></span>', red:'<span class="evi"><i class="kc r"></i></span>', sub:'<span class="evi sub">⇄</span>'};
   let lastP = null, html = '';
   for (const e of list){
     if (lastP !== null && e.p !== lastP) html += '<div class="period-mark">Mi-temps</div>';
