@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AS Mésanger – Feuille de match</title>
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ASM Match">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F3F1E6; --surface:#FFFFFF; --ink:#1A1A17; --muted:#65635A; --line:#D9D5C3;
+  --board:#000000; --club:#F7E01A; --accent:#1A1A17; --home:#1A1A17; --homeInk:#F7E01A; --away:#8A8880; --awayInk:#FFFFFF;
+  --yellow:#F2C200; --red:#D0262A; --shadow:0 1px 0 rgba(26,26,23,.08);
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D0D0B; --surface:#1B1B18; --ink:#F2F0E6; --muted:#A3A092; --line:#34332D;
+    --board:#000000; --accent:#F7E01A; --home:#F7E01A; --homeInk:#000000; --away:#4A4943; --awayInk:#FFFFFF; --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D0D0B; --surface:#1B1B18; --ink:#F2F0E6; --muted:#A3A092; --line:#34332D;
+  --board:#000000; --accent:#F7E01A; --home:#F7E01A; --homeInk:#000000; --away:#4A4943; --awayInk:#FFFFFF; --shadow:none;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);
+  font-family:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:16px;line-height:1.4;
+  -webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--club);outline-offset:2px}
+.wrap{max-width:560px;margin:0 auto;padding:12px 14px 40px}
+.cond{font-family:"Barlow Condensed","Arial Narrow",system-ui,sans-serif}
+
+/* Tableau d'affichage */
+.board{background:var(--board);color:#fff;border-top:6px solid var(--club);border-radius:18px;padding:14px 14px 12px;position:relative;overflow:hidden}
+.club{display:flex;align-items:center;gap:12px;margin-bottom:12px;position:relative;z-index:1}
+.club img{width:46px;height:auto;flex:none}
+.club b{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:24px;color:var(--club);line-height:1}
+.club span{display:block;font-size:13px;color:rgba(255,255,255,.7)}
+.teams{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;position:relative;z-index:1}
+.team input{width:100%;background:transparent;border:0;border-bottom:1px dashed rgba(255,255,255,.35);color:#fff;
+  font-family:"Barlow Condensed",sans-serif;font-weight:600;font-size:20px;padding:2px 0;text-align:center}
+.team input::placeholder{color:rgba(255,255,255,.6)}
+.score{color:var(--club);font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:64px;line-height:1;letter-spacing:1px;
+  display:flex;gap:10px;align-items:center;font-variant-numeric:tabular-nums}
+.score span.sep{opacity:.5;font-weight:500;font-size:40px}
+.clockrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;position:relative;z-index:1}
+.clock{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:34px;font-variant-numeric:tabular-nums}
+.period{font-size:14px;opacity:.85}
+.clockbtns{display:flex;gap:8px}
+.cbtn{background:var(--club);color:#000;font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:18px;
+  padding:10px 16px;border-radius:999px;min-height:44px}
+.cbtn.ghost{background:rgba(255,255,255,.14);color:#fff}
+
+/* Actions */
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.col{display:flex;flex-direction:column;gap:8px}
+.col h2{margin:0 0 2px;font-family:"Barlow Condensed",sans-serif;font-weight:600;font-size:15px;color:var(--muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
+.act{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  padding:12px;min-height:54px;font-weight:600;box-shadow:var(--shadow);text-align:left}
+.act:active{transform:scale(.98)}
+.act.goal{color:#fff;font-family:"Barlow Condensed",sans-serif;font-size:22px;font-weight:700;justify-content:center;min-height:64px;border:0}
+.col.home .act.goal{background:var(--home);color:var(--homeInk)}
+.col.away .act.goal{background:var(--away);color:var(--awayInk)}
+.ic{width:18px;height:24px;border-radius:3px;flex:none}
+.ic.y{background:var(--yellow)} .ic.r{background:var(--red)}
+.ic.sub{width:auto;height:auto;font-size:18px;line-height:1;color:var(--accent);font-weight:700}
+
+/* Chronologie */
+.log{margin-top:20px}
+.loghead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.loghead h2{margin:0;font-family:"Barlow Condensed",sans-serif;font-size:22px;font-weight:700}
+.loghead small{color:var(--muted)}
+.ev{cursor:pointer;display:grid;grid-template-columns:52px 1fr auto;gap:10px;align-items:center;padding:10px 4px;border-bottom:1px solid var(--line)}
+.ev .min{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:20px;font-variant-numeric:tabular-nums}
+.ev .what{display:flex;align-items:center;gap:8px;min-width:0}
+.ev .txt{min-width:0}
+.ev .txt b{font-weight:600}
+.ev .txt div{color:var(--muted);font-size:14px}
+.dot{width:10px;height:10px;border-radius:50%;flex:none}
+.del{color:var(--muted);font-size:20px;width:40px;height:40px;border-radius:10px}
+.empty{color:var(--muted);padding:18px 4px;border:1px dashed var(--line);border-radius:12px;text-align:center}
+.period-mark{font-family:"Barlow Condensed",sans-serif;font-weight:600;color:var(--muted);text-align:center;padding:8px 0;border-bottom:1px solid var(--line)}
+
+.foot{display:flex;gap:10px;margin-top:20px}
+.fbtn{flex:1;padding:14px;border-radius:12px;font-weight:600;border:1px solid var(--line);background:var(--surface);min-height:50px}
+.fbtn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.settings{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;color:var(--muted);font-size:14px}
+.settings select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+
+/* Feuille (sheet) */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;z-index:10}
+.sheet{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-radius:20px 20px 0 0;z-index:11;
+  padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));max-width:560px;margin:0 auto;
+  transform:translateY(105%);transition:transform .22s ease}
+.open .scrim{display:block}
+.open .sheet{transform:none}
+@media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+.sheet{max-height:92vh;overflow-y:auto}
+.chips{display:grid;grid-template-columns:1fr 1fr;gap:6px;max-height:36vh;overflow-y:auto;margin-bottom:10px}
+.chip{display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px;min-height:44px;text-align:left;font-size:14px;line-height:1.2}
+.chip b{font-family:"Barlow Condensed",sans-serif;font-size:20px;min-width:24px;text-align:center}
+.chip.bench{border-style:dashed}
+.pname{text-align:center;color:var(--muted);font-weight:600;min-height:20px;margin-top:4px}
+.pad .key{min-height:48px}
+.lineup textarea{min-height:190px;font-size:14px}
+.lineup label{display:block;font-weight:600;margin:10px 0 4px}
+.sheet h3{margin:0;font-family:"Barlow Condensed",sans-serif;font-size:24px;font-weight:700}
+.sheet p{margin:2px 0 10px;color:var(--muted);font-size:14px}
+.display{font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:48px;text-align:center;
+  border:2px solid var(--line);border-radius:14px;padding:4px;min-height:66px;font-variant-numeric:tabular-nums}
+.display.empty-n{color:var(--muted);font-size:22px;font-weight:500;display:flex;align-items:center;justify-content:center}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.key{background:var(--bg);border-radius:12px;min-height:56px;font-family:"Barlow Condensed",sans-serif;font-size:28px;font-weight:600}
+.key.ok{background:var(--club);color:#000;font-size:22px}
+.minrow{display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:14px;color:var(--muted)}
+.minrow input{width:80px;font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px;text-align:center}
+.cancel{width:100%;margin-top:8px;padding:12px;color:var(--muted);font-weight:600}
+textarea{width:100%;min-height:220px;font:inherit;font-size:15px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px;resize:vertical}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);
+  background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s;z-index:20}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <section class="board" aria-label="Tableau d'affichage">
+    <div class="club"><img src="icons/logo.webp" alt="Logo AS Mésanger"><div><b>AS Mésanger</b><span>Feuille du délégué de terrain</span></div></div>
+    <div class="teams">
+      <div class="team"><input id="nameH" placeholder="Domicile" aria-label="Nom équipe domicile"></div>
+      <div class="score" aria-live="polite"><span id="scH">0</span><span class="sep">–</span><span id="scA">0</span></div>
+      <div class="team"><input id="nameA" placeholder="Extérieur" aria-label="Nom équipe extérieure"></div>
+    </div>
+    <div class="clockrow">
+      <div><button class="clock" id="clock" aria-label="Régler le chrono" style="color:#fff;padding:0">00:00</button><div class="period" id="period">Avant match</div></div>
+      <div class="clockbtns">
+        <button class="cbtn ghost" id="btnPeriod">2e mi-temps</button>
+        <button class="cbtn" id="btnClock">Lancer</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="actions">
+    <div class="col home">
+      <h2 id="labH">Domicile</h2>
+      <button class="act goal" data-t="H" data-k="goal">But</button>
+      <button class="act" data-t="H" data-k="sub"><span class="ic sub">⇄</span>Remplacement</button>
+      <button class="act" data-t="H" data-k="yellow"><span class="ic y"></span>Carton jaune</button>
+      <button class="act" data-t="H" data-k="red"><span class="ic r"></span>Carton rouge</button>
+    </div>
+    <div class="col away">
+      <h2 id="labA">Extérieur</h2>
+      <button class="act goal" data-t="A" data-k="goal">But</button>
+      <button class="act" data-t="A" data-k="sub"><span class="ic sub">⇄</span>Remplacement</button>
+      <button class="act" data-t="A" data-k="yellow"><span class="ic y"></span>Carton jaune</button>
+      <button class="act" data-t="A" data-k="red"><span class="ic r"></span>Carton rouge</button>
+    </div>
+  </section>
+
+  <button class="fbtn" id="btnLineup" style="width:100%;margin-top:12px">Compositions des équipes</button>
+  <div class="settings">
+    <label for="half">Durée d'une mi-temps</label>
+    <select id="half">
+      <option value="25">25 min</option><option value="30">30 min</option><option value="35">35 min</option>
+      <option value="40">40 min</option><option value="45" selected>45 min</option>
+    </select>
+  </div>
+
+  <section class="log">
+    <div class="loghead"><h2>Chronologie</h2><button id="btnShift" style="color:var(--muted);font-size:14px;text-decoration:underline;padding:6px 0">Décaler les minutes</button></div><p style="margin:0 0 6px;color:var(--muted);font-size:13px">Touche une action pour corriger sa minute. <span id="count"></span></p>
+    <div id="events"></div>
+  </section>
+
+  <div class="foot">
+    <button class="fbtn primary" id="btnRecap">Récapitulatif</button>
+    <button class="fbtn" id="btnReset">Nouveau match</button>
+  </div>
+</div>
+
+<div id="sheetRoot">
+  <div class="scrim" id="scrim"></div>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="shTitle">
+    <div id="shBody"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  const KEY = 'feuille-match-v1';
+  const blank = () => ({nameH:'AS Mésanger',nameA:'',half:45,period:0,running:false,startedAt:0,acc:0,events:[],rosters:{H:[],A:[]},rosterSeeded:true});
+  let S = blank();
+  try{ const raw = localStorage.getItem(KEY); if(raw){ S = Object.assign(blank(), {rosterSeeded:false}, JSON.parse(raw)); } else { S.rosterSeeded=false; } }catch(e){}
+  const save = () => { try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} };
+  const $ = id => document.getElementById(id);
+
+  const LABEL = {goal:'But', sub:'Remplacement', yellow:'Carton jaune', red:'Carton rouge'};
+  const teamName = t => (t==='H' ? (S.nameH||'Domicile') : (S.nameA||'Extérieur'));
+  const nameOf = (t,n) => { const p = (S.rosters[t]||[]).find(p=>p.n===String(n)); return p ? p.name : ''; };
+  const who = (t,n,none) => n ? `n°${n}${nameOf(t,n) ? ' ' + nameOf(t,n) : ''}` : none;
+  function onPitch(t){
+    const set = new Set((S.rosters[t]||[]).filter(p=>!p.sub).map(p=>p.n));
+    [...S.events].filter(e=>e.t===t).sort((a,b)=>a.sort-b.sort||a.id-b.id).forEach(e=>{
+      if (e.k==='sub'){ if(e.out) set.delete(String(e.out)); if(e.in) set.add(String(e.in)); }
+      if (e.k==='red' && e.n) set.delete(String(e.n));
+    });
+    return set;
+  }
+  const sentOff = t => new Set(S.events.filter(e=>e.t===t&&e.k==='red'&&e.n).map(e=>String(e.n)));
+  const rosterSorted = t => [...(S.rosters[t]||[])].sort((a,b)=>(+a.n)-(+b.n));
+
+  function elapsedMs(){ return S.acc + (S.running ? Date.now() - S.startedAt : 0); }
+  function currentMinute(){
+    const m = Math.floor(elapsedMs()/60000) + 1;
+    const offset = S.period === 2 ? S.half : 0;
+    if (S.period === 0) return {label:"0'", sort:0};
+    if (m > S.half) return {label:`${offset+S.half}+${m-S.half}'`, sort:offset+m};
+    return {label:`${offset+m}'`, sort:offset+m};
+  }
+
+  function renderClock(){
+    const ms = elapsedMs();
+    const tot = Math.floor(ms/1000) + (S.period===2 ? S.half*60 : 0);
+    const mm = String(Math.floor(tot/60)).padStart(2,'0'), ss = String(tot%60).padStart(2,'0');
+    $('clock').textContent = `${mm}:${ss}`;
+    $('period').textContent = (S.period===0 ? 'Avant match' : (S.period===1 ? '1re mi-temps' : '2e mi-temps') + (S.running ? '' : ' · en pause')) + ' · toucher le chrono pour régler';
+    $('btnClock').textContent = S.running ? 'Pause' : (S.period===0 ? 'Lancer' : 'Reprendre');
+    $('btnPeriod').style.display = (S.period===1) ? '' : 'none';
+  }
+
+  function render(){
+    $('nameH').value = S.nameH; $('nameA').value = S.nameA;
+    $('labH').textContent = teamName('H'); $('labA').textContent = teamName('A');
+    $('half').value = String(S.half);
+    const g = t => S.events.filter(e=>e.k==='goal' && e.t===t).length;
+    $('scH').textContent = g('H'); $('scA').textContent = g('A');
+    $('count').textContent = S.events.length ? `${S.events.length} action${S.events.length>1?'s':''}` : '';
+    const box = $('events'); box.innerHTML = '';
+    if (!S.events.length){
+      box.innerHTML = '<div class="empty">Lance le chrono puis touche une action : la minute est notée toute seule.</div>';
+    } else {
+      const list = [...S.events].sort((a,b)=> b.sort - a.sort || b.id - a.id);
+      let lastP = null;
+      list.forEach(e => {
+        if (lastP !== null && e.p !== lastP) {
+          const d=document.createElement('div'); d.className='period-mark'; d.textContent='Mi-temps'; box.appendChild(d);
+        }
+        lastP = e.p;
+        const row = document.createElement('div'); row.className='ev';
+        const color = e.t==='H' ? 'var(--home)' : 'var(--away)';
+        let icon = `<span class="dot" style="background:${color}"></span>`;
+        let detail = '';
+        if (e.k==='goal') detail = who(e.t,e.n,'Buteur non précisé');
+        if (e.k==='sub') detail = `Sort ${who(e.t,e.out,'?')} · Entre ${who(e.t,e.in,'?')}`;
+        if (e.k==='yellow'||e.k==='red') detail = who(e.t,e.n,'Joueur non précisé');
+        const kIcon = e.k==='yellow' ? '<span class="ic y" style="width:12px;height:16px"></span>' :
+                      e.k==='red' ? '<span class="ic r" style="width:12px;height:16px"></span>' : '';
+        row.innerHTML = `<div class="min">${e.min}</div>
+          <div class="what">${icon}<div class="txt"><b>${LABEL[e.k]}</b> ${kIcon}<div>${esc(teamName(e.t))} · ${detail}</div></div></div>
+          <button class="del" aria-label="Supprimer">×</button>`;
+        row.onclick = ev => { if (ev.target.closest('.del')) return; editEvent(e); };
+        row.querySelector('.del').onclick = () => {
+          askConfirm('Supprimer cette action ?', `${LABEL[e.k]} · ${teamName(e.t)} · ${e.min}`, 'Supprimer', () => {
+            S.events = S.events.filter(x=>x.id!==e.id); save(); render();
+          });
+        };
+        box.appendChild(row);
+      });
+    }
+    renderClock();
+  }
+  function esc(s){ return String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  // Chrono
+  $('btnClock').onclick = () => {
+    if (S.period===0) S.period = 1;
+    if (S.running){ S.acc += Date.now()-S.startedAt; S.running=false; }
+    else { S.startedAt = Date.now(); S.running=true; }
+    save(); renderClock();
+  };
+  $('btnPeriod').onclick = () => {
+    askConfirm('2e mi-temps', 'Le chrono repartira de ' + S.half + ':00. Touche Reprendre au coup d\'envoi.', 'Passer en 2e mi-temps', () => {
+      S.period = 2; S.acc = 0; S.running = false; save(); render();
+    });
+  };
+  setInterval(renderClock, 500);
+  function shift(min){
+    if (S.period===0) S.period = 1;
+    S.acc = Math.max(0, S.acc + min*60000 - (S.running ? 0 : 0));
+    if (S.running && elapsedMs() < 0) S.acc -= elapsedMs();
+    save(); renderClock();
+  }
+  $('clock').onclick = () => {
+    openSheet(`<h3 id="shTitle">Régler le chrono</h3><p>Pour rattraper un oubli ou un décalage. Le chrono continue de tourner.</p>
+      <div class="display" id="adjDisp"></div>
+      <div class="pad">
+        <button class="key" data-m="-5">−5</button><button class="key" data-m="-1">−1</button><button class="key" data-m="1">+1</button>
+        <button class="key" data-m="5">+5</button><button class="key" data-m="8">+8</button><button class="key" data-m="10">+10</button>
+      </div>
+      <button class="fbtn primary" id="adjOk" style="width:100%;margin-top:12px">Terminé</button>`);
+    const upd = () => { $('adjDisp').textContent = $('clock').textContent; };
+    upd();
+    $('shBody').querySelectorAll('[data-m]').forEach(b => b.onclick = () => { shift(+b.dataset.m); upd(); });
+    $('adjOk').onclick = closeSheet;
+  };
+
+  $('nameH').oninput = e => { S.nameH = e.target.value; save(); $('labH').textContent = teamName('H'); };
+  $('nameA').oninput = e => { S.nameA = e.target.value; save(); $('labA').textContent = teamName('A'); };
+  $('nameH').onchange = $('nameA').onchange = () => render();
+  $('half').onchange = e => { S.half = +e.target.value; save(); render(); };
+
+  // Feuille de saisie
+  const root = $('sheetRoot');
+  function openSheet(html){ $('shBody').innerHTML = html; document.body.classList.add('open'); }
+  function closeSheet(){ document.body.classList.remove('open'); }
+  $('scrim').onclick = closeSheet;
+
+  function askConfirm(title, text, okLabel, cb){
+    openSheet(`<h3 id="shTitle">${esc(title)}</h3><p>${esc(text)}</p>
+      <div class="foot" style="margin-top:14px"><button class="fbtn primary" id="cfOk">${esc(okLabel)}</button><button class="fbtn" id="cfNo">Annuler</button></div>`);
+    $('cfOk').onclick = () => { closeSheet(); cb(); };
+    $('cfNo').onclick = closeSheet;
+  }
+
+  function askNumber(title, sub, minLabel, cb, t, choices){
+    let val = '';
+    const chips = (choices||[]).map(p=>`<button class="chip${p.bench?' bench':''}" data-c="${esc(p.n)}"><b>${esc(p.n)}</b><span>${esc(p.name)}</span></button>`).join('');
+    openSheet(`
+      <h3 id="shTitle">${esc(title)}</h3><p>${esc(sub)}${chips ? ' · touche un joueur ou tape son numéro' : ''}</p>
+      ${chips ? `<div class="chips">${chips}</div>` : ''}
+      <div class="display empty-n" id="disp">Numéro du joueur</div>
+      <div class="pname" id="pname"></div>
+      <div class="pad">
+        ${[1,2,3,4,5,6,7,8,9].map(n=>`<button class="key" data-n="${n}">${n}</button>`).join('')}
+        <button class="key" data-n="back" aria-label="Effacer">⌫</button>
+        <button class="key" data-n="0">0</button>
+        <button class="key ok" data-n="ok">Valider</button>
+      </div>
+      <div class="minrow"><label for="minEdit">Minute</label><input id="minEdit" value="${esc(minLabel)}"></div>
+      <button class="cancel" id="cancel">Annuler</button>`);
+    const disp = $('disp');
+    const done = v => { const m = $('minEdit').value.trim() || minLabel; closeSheet(); cb(v, m); };
+    const upd = () => { disp.textContent = val || 'Numéro du joueur'; disp.classList.toggle('empty-n', !val); $('pname').textContent = val ? nameOf(t,val) : ''; };
+    $('shBody').querySelectorAll('.chip').forEach(c => c.onclick = () => done(c.dataset.c));
+    $('shBody').querySelectorAll('.key').forEach(k => k.onclick = () => {
+      const n = k.dataset.n;
+      if (n==='back') val = val.slice(0,-1);
+      else if (n==='ok') { done(val); return; }
+      else if (val.length < 3) val += n;
+      upd();
+    });
+    $('cancel').onclick = closeSheet;
+  }
+
+  function absOf(label){ const m = String(label).match(/^(\d+)(?:\+(\d+))?/); return m ? (+m[1]) + (m[2]?+m[2]:0) : 0; }
+  function labelOf(abs, p){ const lim = p===2 ? 2*S.half : S.half; return abs > lim ? `${lim}+${abs-lim}'` : `${Math.max(abs,0)}'`; }
+  function setMin(e, label){ e.min = label; e.sort = sortFromLabel(label, e.sort); }
+  function editEvent(e){
+    let abs = absOf(e.min);
+    openSheet(`<h3 id="shTitle">${esc(LABEL[e.k])} · ${esc(teamName(e.t))}</h3><p>Corrige la minute de cette action.</p>
+      <div class="display" id="edDisp"></div>
+      <div class="pad">
+        <button class="key" data-d="-5">−5</button><button class="key" data-d="-1">−1</button><button class="key" data-d="1">+1</button>
+        <button class="key" data-d="5">+5</button><button class="key" data-d="8">+8</button><button class="key" data-d="10">+10</button>
+      </div>
+      <div class="foot" style="margin-top:10px"><button class="fbtn primary" id="edOk">Enregistrer</button><button class="fbtn" id="edNo">Annuler</button></div>`);
+    const upd = () => { $('edDisp').textContent = labelOf(abs, e.p); };
+    upd();
+    $('shBody').querySelectorAll('[data-d]').forEach(b => b.onclick = () => { abs = Math.max(1, abs + (+b.dataset.d)); upd(); });
+    $('edOk').onclick = () => { setMin(e, labelOf(abs, e.p)); save(); closeSheet(); render(); toast('Minute corrigée'); };
+    $('edNo').onclick = closeSheet;
+  }
+  function shiftAll(){
+    let d = 0;
+    openSheet(`<h3 id="shTitle">Décaler toutes les actions</h3><p>Ajoute ou retire des minutes à toutes les actions déjà notées.</p>
+      <div class="display" id="shDisp"></div>
+      <div class="pad">
+        <button class="key" data-d="-5">−5</button><button class="key" data-d="-1">−1</button><button class="key" data-d="1">+1</button>
+        <button class="key" data-d="5">+5</button><button class="key" data-d="8">+8</button><button class="key" data-d="10">+10</button>
+      </div>
+      <div class="foot" style="margin-top:10px"><button class="fbtn primary" id="shOk">Appliquer</button><button class="fbtn" id="shNo">Annuler</button></div>`);
+    const upd = () => { $('shDisp').textContent = (d>0?'+':'') + d + ' min'; };
+    upd();
+    $('shBody').querySelectorAll('[data-d]').forEach(b => b.onclick = () => { d += +b.dataset.d; upd(); });
+    $('shOk').onclick = () => { S.events.forEach(e => setMin(e, labelOf(Math.max(1, absOf(e.min)+d), e.p))); save(); closeSheet(); render(); toast('Minutes décalées'); };
+    $('shNo').onclick = closeSheet;
+  }
+  $('btnShift').onclick = () => shiftAll();
+
+  function sortFromLabel(label, fallback){
+    const m = label.match(/^(\d+)(?:\+(\d+))?/);
+    return m ? (+m[1]) + (m[2] ? (+m[2])/100 : 0) : fallback;
+  }
+
+  function add(e){
+    e.id = Date.now() + Math.random(); e.p = S.period || 1;
+    e.sort = sortFromLabel(e.min, e.sort);
+    S.events.push(e); save(); render();
+    toast(`${LABEL[e.k]} noté · ${e.min}`);
+  }
+
+  document.querySelectorAll('.act').forEach(b => b.onclick = () => {
+    const t = b.dataset.t, k = b.dataset.k, cm = currentMinute(), tn = teamName(t);
+    if (k === 'sub'){
+      const pitch = onPitch(t), off = sentOff(t);
+      const onField = rosterSorted(t).filter(p=>pitch.has(p.n));
+      const bench = rosterSorted(t).filter(p=>!pitch.has(p.n) && !off.has(p.n)).map(p=>({...p, bench:true}));
+      askNumber('Joueur qui sort', tn, cm.label, (out, min) => {
+        askNumber('Joueur qui entre', `${tn} · remplace ${who(t,out,'?')}`, min, (inn, min2) => {
+          add({t, k, out, in:inn, min:min2, sort:cm.sort});
+        }, t, bench);
+      }, t, onField);
+    } else {
+      const pitch = onPitch(t);
+      const list = rosterSorted(t).map(p => pitch.has(p.n) ? p : {...p, bench:true});
+      askNumber(LABEL[k], tn, cm.label, (n, min) => add({t, k, n, min, sort:cm.sort}), t, k==='goal' ? list.filter(p=>!p.bench) : list);
+    }
+  });
+
+  // Récap
+  function recapText(){
+    const g = t => S.events.filter(e=>e.k==='goal'&&e.t===t).length;
+    const ev = [...S.events].sort((a,b)=>a.sort-b.sort || a.id-b.id);
+    const ICON = {goal:'⚽', sub:'🔄', yellow:'🟨', red:'🟥'};
+    const TITLE = {goal:'Buts', sub:'Remplacements', yellow:'Cartons jaunes', red:'Cartons rouges'};
+    const num = e => who(e.t, e.n, 'joueur non précisé');
+    const sec = (k, fmt) => {
+      const l = ev.filter(e=>e.k===k); if(!l.length) return '';
+      return `\n*${ICON[k]} ${TITLE[k]}*\n` + l.map(e=>`${e.min} ${teamName(e.t)} – ${fmt(e)}`).join('\n') + '\n';
+    };
+    const d = new Date().toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'});
+    return `🐦 *AS Mésanger – Feuille de match*\n${d}\n\n*${teamName('H')} ${g('H')} – ${g('A')} ${teamName('A')}*\n`
+      + sec('goal', num)
+      + sec('sub', e=>`sort ${who(e.t,e.out,'?')}, entre ${who(e.t,e.in,'?')}`)
+      + sec('yellow', num)
+      + sec('red', num);
+  }
+  $('btnRecap').onclick = () => {
+    openSheet(`<h3 id="shTitle">Récapitulatif</h3><p>Envoie-le dans le groupe WhatsApp du club, ou copie-le pour la feuille officielle.</p>
+      <textarea id="recap" readonly>${esc(recapText())}</textarea>
+      <div class="foot" style="margin-top:10px"><button class="fbtn primary" id="share">Envoyer</button><button class="fbtn" id="copy">Copier</button><button class="fbtn" id="close">Fermer</button></div>`);
+    $('share').onclick = async () => {
+      const text = $('recap').value;
+      if (navigator.share) { try { await navigator.share({text}); return; } catch(e){ if (e && e.name==='AbortError') return; } }
+      $('copy').click();
+    };
+    $('close').onclick = closeSheet;
+    $('copy').onclick = async () => {
+      const ta = $('recap');
+      try { await navigator.clipboard.writeText(ta.value); toast('Copié'); }
+      catch(e){ ta.focus(); ta.select(); try{ document.execCommand('copy'); toast('Copié'); }catch(_){ toast('Sélectionne le texte pour le copier'); } }
+    };
+  };
+
+  const toText = t => rosterSorted(t).map(p=>`${p.n} ${p.name}${p.sub?' R':''}`).join('\n');
+  function parse(txt){
+    return txt.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{
+      const m = l.match(/^(\d{1,3})\s+(.*?)(\s+R)?$/i); if(!m) return null;
+      return {n:String(+m[1]), name:m[2].trim(), sub:!!m[3]};
+    }).filter(Boolean);
+  }
+  $('btnLineup').onclick = () => {
+    openSheet(`<h3 id="shTitle">Compositions</h3>
+      <p>Une ligne par joueur : numéro puis nom. Ajoute « R » à la fin pour un remplaçant.</p>
+      <div class="lineup">
+        <label for="rosH">${esc(teamName('H'))}</label><textarea id="rosH">${esc(toText('H'))}</textarea>
+        <label for="rosA">${esc(teamName('A'))}</label><textarea id="rosA">${esc(toText('A'))}</textarea>
+      </div>
+      <div class="foot" style="margin-top:10px"><button class="fbtn primary" id="rosSave">Enregistrer</button><button class="fbtn" id="rosCancel">Annuler</button></div>`);
+    $('rosSave').onclick = () => { S.rosters = {H:parse($('rosH').value), A:parse($('rosA').value)}; save(); closeSheet(); render(); toast('Compositions enregistrées'); };
+    $('rosCancel').onclick = closeSheet;
+  };
+
+  $('btnReset').onclick = () => {
+    askConfirm('Nouveau match', 'Le score, le chrono, la chronologie et les compositions de ce match seront effacés.', 'Effacer et recommencer', () => {
+      S = blank(); save(); render(); toast('Nouveau match prêt');
+    });
+  };
+
+  let tt;
+  function toast(msg){ const el=$('toast'); el.textContent=msg; el.classList.add('show'); clearTimeout(tt); tt=setTimeout(()=>el.classList.remove('show'),1600); }
+
+  render();
+
+  // PWA : fonctionnement hors ligne
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').then(reg => {
+        reg.addEventListener('updatefound', () => {
+          const nw = reg.installing;
+          nw && nw.addEventListener('statechange', () => {
+            if (nw.state === 'installed' && navigator.serviceWorker.controller) toast('Mise à jour prête : relance l\'appli');
+          });
+        });
+      }).catch(()=>{});
+    });
+  }
+})();
+</script>
+</body>
+</html>
