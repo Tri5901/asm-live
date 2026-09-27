@@ -628,33 +628,119 @@ async function consoleView(id, openCompo){
     render(); toast('Minutes décalées');
   });
 
-  // Compositions + lecture de la photo de la feuille
-  const toText = t => rosterSorted(S,t).map(p=>`${p.n} ${p.name}${p.sub?' R':''}`).join('\n');
+  // Compositions : éditeur ligne par ligne (+ photo de la feuille, + liste collée)
   function parse(txt){
     return txt.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{
-      const m = l.match(/^(\d{1,3})\s+(.*?)(\s+R)?$/i); if(!m) return null;
+      const m = l.match(/^(\d{1,3})[\s.\-)]+(.*?)(\s+R)?$/i); if(!m) return null;
       return {n:String(+m[1]), name:m[2].trim(), sub:!!m[3]};
     }).filter(Boolean);
   }
-  $('btnLineup').onclick = () => {
-    openSheet(`<h3 id="shTitle">Compositions</h3>
-      <p>Une ligne par joueur : numéro puis nom. « R » à la fin pour un remplaçant. Tu peux aussi prendre en photo la liste d'une équipe sur la feuille de match.</p>
-      <div class="lineup">
-        ${['H','A'].map(t => `<div class="lhead"><label for="ros${t}">${esc(teamName(S,t))}</label>
-          <button type="button" class="photo" data-t="${t}">📷 Photo</button></div>
-          <input type="file" accept="image/*" capture="environment" id="file${t}" hidden>
-          <textarea id="ros${t}" placeholder="10 DUPONT Lucas&#10;7 MARTIN Hugo&#10;14 BERNARD Léo R">${esc(toText(t))}</textarea>
-          <div class="ocrstat" id="ocr${t}"></div>`).join('')}
-      </div>
-      <div class="foot" style="margin-top:10px"><button class="fbtn primary" id="rosSave">Enregistrer</button><button class="fbtn" id="rosCancel">Annuler</button></div>`);
-    $('shBody').querySelectorAll('.photo').forEach(b => b.onclick = () => $('file'+b.dataset.t).click());
-    ['H','A'].forEach(t => $('file'+t).onchange = async ev => {
-      const file = ev.target.files[0]; ev.target.value = '';
-      if (file) await readSheetPhoto(file, $('ros'+t), $('ocr'+t));
+  // Joueurs des compos précédentes de cette équipe : ajout en un toucher + saisie semi-automatique
+  let pastPlayers = null;
+  async function loadPastPlayers(){
+    if (pastPlayers) return pastPlayers;
+    pastPlayers = [];
+    try{
+      const { data } = await sb.from('matches').select('rosters,club_side,kickoff').eq('equipe', S.equipe || 1).neq('id', id).order('kickoff', {ascending:false}).limit(40);
+      const map = new Map();
+      (data||[]).forEach(r => (((r.rosters||{})[r.club_side])||[]).forEach(p => {
+        const k = playerKey(p.name || ''); if (!k) return;
+        const e = map.get(k) || {name:p.name, n:p.n, count:0}; e.count++; map.set(k, e);
+      }));
+      pastPlayers = [...map.values()].sort((a,b) => b.count - a.count || a.name.localeCompare(b.name, 'fr'));
+    }catch(e){ /* hors ligne : pas de suggestions */ }
+    return pastPlayers;
+  }
+  function openLineupEditor(){
+    const order = [clubSide(S), oppSide(S)];
+    const grouped = t => { const l = rosterSorted(S,t).map(p=>({...p})); return [...l.filter(p=>!p.sub), ...l.filter(p=>p.sub)]; };
+    const ed = {H: grouped('H'), A: grouped('A')};
+    let cur = order[0], paste = false, errs = new Set(), msg = '';
+    const counts = t => { const tit = ed[t].filter(p=>!p.sub).length; return {tit, rem: ed[t].length - tit}; };
+    const nextNum = t => { const used = new Set(ed[t].map(p=>+p.n).filter(Boolean)); let n = 1; while (used.has(n)) n++; return String(n); };
+    const addPlayer = (t, p) => ed[t].push({
+      n: p.n && !ed[t].some(x => x.n === String(p.n)) ? String(p.n) : nextNum(t),
+      name: p.name || '',
+      sub: p.sub !== undefined ? p.sub : counts(t).tit >= 11
     });
-    $('rosSave').onclick = () => { patch({rosters:{H:parse($('rosH').value), A:parse($('rosA').value)}}); closeSheet(); render(); toast('Compositions enregistrées'); };
-    $('rosCancel').onclick = closeSheet;
-  };
+    const plural = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
+
+    function draw(focusLast){
+      const c = counts(cur);
+      const inList = new Set(ed[cur].map(p => playerKey(p.name)));
+      const sugg = cur === clubSide(S) ? (pastPlayers || []).filter(p => !inList.has(playerKey(p.name))) : [];
+      openSheet(`<h3 id="shTitle">Compositions</h3>
+        <div class="seg luteams">${order.map(t => `<button type="button" data-t="${t}" class="${t===cur?'on':''}">${esc(teamName(S,t))} · ${ed[t].length}</button>`).join('')}</div>
+        <div class="lubar"><span><b>${plural(c.tit, 'titulaire')}</b> · ${plural(c.rem, 'remplaçant')}</span>
+          <span class="lutools"><button type="button" class="photo" id="luPhoto">📷 Photo</button><button type="button" class="photo" id="luPaste">${paste ? 'Fermer' : 'Coller'}</button></span></div>
+        <input type="file" accept="image/*" capture="environment" id="luFile" hidden>
+        <div class="ocrstat" id="luStat"></div>
+        ${paste ? `<textarea id="luText" placeholder="10 DUPONT Lucas&#10;7 MARTIN Hugo&#10;14 BERNARD Léo R"></textarea>
+          <button type="button" class="fbtn" id="luParse" style="width:100%;margin:6px 0 10px">Ajouter ces joueurs</button>` : ''}
+        <div class="lurows">${ed[cur].map((p, i) => `<div class="lrow${p.sub ? ' sub' : ''}${errs.has(cur + i) ? ' err' : ''}" data-i="${i}">
+            <input class="ln" inputmode="numeric" pattern="[0-9]*" maxlength="3" value="${esc(p.n)}" aria-label="Numéro">
+            <input class="lname" value="${esc(p.name)}" placeholder="Nom Prénom" autocomplete="off" enterkeyhint="next" list="luNames" aria-label="Nom du joueur">
+            <button type="button" class="ltog" aria-label="Titulaire ou remplaçant">${p.sub ? 'Remp.' : 'Titul.'}</button>
+            <button type="button" class="ldel" aria-label="Retirer ce joueur">×</button></div>`).join('')
+          || '<div class="empty">Aucun joueur. Ajoute-les un par un, ou utilise la photo de la feuille.</div>'}</div>
+        <button type="button" class="fbtn" id="luAdd" style="width:100%">+ Ajouter un joueur</button>
+        ${sugg.length ? `<div class="lusug-t">Joueurs déjà venus · touche pour ajouter</div>
+          <div class="lusug">${sugg.slice(0, 30).map((p, j) => `<button type="button" data-j="${j}"><b>${esc(p.n)}</b> ${esc(p.name)}</button>`).join('')}</div>` : ''}
+        <datalist id="luNames">${(cur === clubSide(S) ? pastPlayers || [] : []).map(p => `<option value="${esc(p.name)}">`).join('')}</datalist>
+        ${msg ? `<div class="msg err" style="margin-top:10px">${esc(msg)}</div>` : ''}
+        <div class="foot" style="margin-top:12px"><button class="fbtn primary" id="luSave">Enregistrer</button><button class="fbtn" id="luCancel">Annuler</button></div>`);
+      const body = $('shBody');
+      body.querySelectorAll('.luteams button').forEach(b => b.onclick = () => { cur = b.dataset.t; paste = false; draw(); });
+      body.querySelectorAll('.lrow').forEach(row => {
+        const i = +row.dataset.i, p = ed[cur][i];
+        const num = row.querySelector('.ln'), nm = row.querySelector('.lname');
+        num.oninput = () => { num.value = num.value.replace(/\D/g, ''); p.n = num.value ? String(+num.value) : ''; };
+        nm.oninput = () => {
+          p.name = nm.value;
+          // nom choisi dans la liste : reprend son numéro habituel si la case est vide ou libre
+          const known = (pastPlayers || []).find(x => x.name === nm.value);
+          if (known && !ed[cur].some((x, k) => k !== i && x.n === known.n)) { p.n = known.n; num.value = known.n; }
+        };
+        nm.onkeydown = e => { if (e.key === 'Enter'){ e.preventDefault(); addPlayer(cur, {}); draw(true); } };
+        row.querySelector('.ltog').onclick = () => { p.sub = !p.sub; draw(); };
+        row.querySelector('.ldel').onclick = () => { ed[cur].splice(i, 1); errs.clear(); draw(); };
+      });
+      $('luAdd').onclick = () => { addPlayer(cur, {}); draw(true); };
+      body.querySelectorAll('.lusug button').forEach(b => b.onclick = () => { addPlayer(cur, sugg[+b.dataset.j]); draw(); });
+      $('luPaste').onclick = () => { paste = !paste; draw(); if (paste) $('luText').focus(); };
+      if (paste) $('luParse').onclick = () => { parse($('luText').value).forEach(p => addPlayer(cur, p)); paste = false; draw(); };
+      $('luPhoto').onclick = () => $('luFile').click();
+      $('luFile').onchange = async ev => {
+        const file = ev.target.files[0]; ev.target.value = '';
+        if (file) await readSheetPhoto(file, $('luStat'), found => { const t = cur; found.forEach(p => addPlayer(t, p)); draw(); $('luStat').textContent = `${plural(found.length, 'joueur')} ajouté${found.length > 1 ? 's' : ''} depuis la photo. Vérifie les noms et les remplaçants.`; });
+      };
+      $('luSave').onclick = save;
+      $('luCancel').onclick = closeSheet;
+      if (focusLast){ const l = body.querySelectorAll('.lname'); if (l.length) l[l.length - 1].focus(); }
+    }
+
+    function save(){
+      errs = new Set(); msg = '';
+      const out = {};
+      for (const t of order){
+        ed[t] = ed[t].filter(p => (p.name || '').trim() || p.n);
+        const seen = {};
+        ed[t].forEach((p, i) => {
+          p.name = (p.name || '').trim();
+          if (!p.n || !p.name){ errs.add(t + i); msg = msg || `${teamName(S,t)} : il manque un numéro ou un nom.`; }
+          else if (seen[p.n] !== undefined){ errs.add(t + i); errs.add(t + seen[p.n]); msg = msg || `${teamName(S,t)} : le n°${p.n} est utilisé deux fois.`; }
+          else seen[p.n] = i;
+        });
+        out[t] = [...ed[t].filter(p=>!p.sub), ...ed[t].filter(p=>p.sub)].map(p => ({n:p.n, name:p.name, sub:!!p.sub}));
+      }
+      if (errs.size){ cur = [...errs][0][0]; draw(); return; }
+      patch({rosters: out}); closeSheet(); render(); toast('Compositions enregistrées');
+    }
+
+    draw();
+    if (!pastPlayers) loadPastPlayers().then(() => { if (document.body.classList.contains('open') && $('luAdd')) draw(); });
+  }
+  $('btnLineup').onclick = openLineupEditor;
 
   // Récapitulatif (WhatsApp, feuille officielle)
   function recapText(){
@@ -754,7 +840,7 @@ function parseSheet(text){
   }
   return out;
 }
-async function readSheetPhoto(file, ta, stat){
+async function readSheetPhoto(file, stat, onFound){
   if (!navigator.onLine && !window.Tesseract){ stat.textContent = 'La lecture de photo a besoin du réseau la première fois.'; return; }
   try{
     stat.textContent = 'Préparation de la photo…';
@@ -765,9 +851,7 @@ async function readSheetPhoto(file, ta, stat){
     });
     const found = parseSheet(data.text || '');
     if (!found.length){ stat.textContent = 'Aucun joueur reconnu. Reprends la photo bien à plat, en cadrant seulement la liste de l\'équipe.'; return; }
-    const lines = found.map((p, i) => `${p.n} ${p.name}${i >= 11 ? ' R' : ''}`).join('\n');
-    ta.value = ta.value.trim() ? ta.value.trim() + '\n' + lines : lines;
-    stat.textContent = `${found.length} joueur${found.length>1?'s':''} trouvé${found.length>1?'s':''}. Vérifie les noms et les « R » avant d'enregistrer.`;
+    onFound(found);
   }catch(e){
     console.error(e);
     stat.textContent = 'La lecture a échoué. Tu peux taper les joueurs à la main.';
