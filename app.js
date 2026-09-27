@@ -4,6 +4,9 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 
 const CLUB = 'AS Mésanger';
+const TEAMS = [1, 2, 3, 4, 5]; // équipes seniors
+const teamLabel = n => 'Seniors ' + (n || 1);
+const clubTeamName = n => (n > 1 ? `${CLUB} ${n}` : CLUB);
 const sb = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
 const $ = id => document.getElementById(id);
@@ -199,7 +202,7 @@ async function homeView(){
   if (cache) drawHome(cache.matches, cache.goals); else view.innerHTML = '<div class="loading">Chargement…</div>';
   const load = async () => {
     const [{ data: matches, error }, { data: g }] = await Promise.all([
-      sb.from('matches').select('id,kickoff,competition,club_side,home_name,away_name,half,period,running,started_at,acc,status').order('kickoff', {ascending:false}).limit(200),
+      sb.from('matches').select('id,kickoff,competition,equipe,club_side,home_name,away_name,half,period,running,started_at,acc,status').order('kickoff', {ascending:false}).limit(1000),
       sb.from('events').select('match_id,t').eq('k','goal')
     ]);
     if (error) { if (!cache) throw error; return; }
@@ -216,6 +219,7 @@ async function homeView(){
   document.addEventListener('visibilitychange', vis);
   cleanup = () => { off(); clearInterval(tick); document.removeEventListener('visibilitychange', vis); };
 }
+let homeTeam = lsGet('asm-team', 0), showAllNext = false;
 function drawHome(matches, goalRows){
   const byMatch = {};
   goalRows.forEach(g => { (byMatch[g.match_id] ||= []).push({k:'goal', t:g.t}); });
@@ -228,19 +232,25 @@ function drawHome(matches, goalRows){
     else badge = `<span class="badge">${esc(new Date(m.kickoff).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}))}</span>`;
     const sc = m.status==='prevu' ? 'vs' : `${goals(evs,'H')} – ${goals(evs,'A')}`;
     return `<a class="mcard" href="#/match/${esc(m.id)}">
-      <div class="meta"><span>${esc(fmtDate(m.kickoff, false))}${m.competition ? ' · ' + esc(m.competition) : ''}</span>${badge}</div>
+      <div class="meta"><span><b>${esc(teamLabel(m.equipe))}</b> · ${esc(fmtDate(m.kickoff, false))}${m.competition ? ' · ' + esc(m.competition) : ''}</span>${badge}</div>
       <div class="row"><span class="tn${c==='H'?' club':''}">${esc(teamName(m,'H'))}</span><span class="sc">${sc}</span><span class="tn r${c==='A'?' club':''}">${esc(teamName(m,'A'))}</span></div></a>`;
   };
+  const all = matches;
+  matches = homeTeam ? matches.filter(m => (m.equipe||1) === homeTeam) : matches;
   const live = matches.filter(m=>m.status==='direct');
   const next = matches.filter(m=>m.status==='prevu').sort((a,b)=>a.kickoff.localeCompare(b.kickoff));
   const done = matches.filter(m=>m.status==='termine');
-  let html = '';
+  let html = `<div class="chipbar" role="group" aria-label="Équipe">${[0, ...TEAMS].map(n => `<button data-team="${n}" class="${homeTeam===n?'on':''}" aria-pressed="${homeTeam===n}">${n ? 'Seniors ' + n : 'Toutes'}</button>`).join('')}</div>`;
   if (isStaff()) html += `<a class="fbtn club" href="#/nouveau" style="width:100%;margin-bottom:4px">+ Nouveau match</a>`;
   if (live.length) html += `<div class="sec">En direct</div>` + live.map(card).join('');
-  if (next.length) html += `<div class="sec">À venir</div>` + next.map(card).join('');
+  const NEXT_MAX = 6;
+  if (next.length) html += `<div class="sec">À venir</div>` + (showAllNext ? next : next.slice(0, NEXT_MAX)).map(card).join('')
+    + (next.length > NEXT_MAX && !showAllNext ? `<button class="fbtn" id="moreNext" style="width:100%">Voir les ${next.length} matchs à venir</button>` : '');
   if (done.length) html += `<div class="sec">Résultats</div>` + done.map(card).join('');
   if (!matches.length) html += `<div class="empty" style="margin-top:12px">Aucun match pour l'instant.${isStaff() ? '' : ' Reviens le jour du match pour le suivre en direct.'}</div>`;
   view.innerHTML = html;
+  view.querySelectorAll('[data-team]').forEach(b => b.onclick = () => { homeTeam = +b.dataset.team; lsSet('asm-team', homeTeam); showAllNext = false; drawHome(all, goalRows); });
+  const more = $('moreNext'); if (more) more.onclick = () => { showAllNext = true; drawHome(all, goalRows); };
 }
 
 // ---------- Match : vue publique en direct ----------
@@ -255,7 +265,7 @@ async function fetchMatch(id){
 function boardHTML(m, evs, staff){
   const c = clubSide(m);
   return `<section class="board" aria-label="Tableau d'affichage">
-    <div class="bmeta"><span>${esc(fmtDate(m.kickoff))}${m.competition ? ' · ' + esc(m.competition) : ''}</span>${m.status==='direct' ? '<span class="badge live">Direct</span>' : ''}</div>
+    <div class="bmeta"><span>${esc(teamLabel(m.equipe))} · ${esc(fmtDate(m.kickoff))}${m.competition ? ' · ' + esc(m.competition) : ''}</span>${m.status==='direct' ? '<span class="badge live">Direct</span>' : ''}</div>
     <div class="teams">
       <div class="team"><span class="tname${c==='H'?' club':''}">${esc(teamName(m,'H'))}</span></div>
       <div class="score" aria-live="polite"><span id="scH">${goals(evs,'H')}</span><span class="sep">–</span><span id="scA">${goals(evs,'A')}</span></div>
@@ -318,10 +328,11 @@ function newMatchView(){
   if (!isStaff()){ location.hash = session ? '#/compte' : '#/connexion'; return; }
   const d = new Date(); d.setMinutes(Math.ceil(d.getMinutes()/15)*15, 0, 0);
   const local = new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,16);
-  let side = 'H';
+  let side = 'H', equipe = homeTeam || 1;
   view.innerHTML = `<form class="card" id="nf">
     <h1>Nouveau match</h1><p class="sub">Deux mi-temps de 45 min.</p>
     <label class="field"><span>Adversaire</span><input id="nfOpp" required autocomplete="off" placeholder="Nom de l'équipe adverse"></label>
+    <div class="field"><span>Équipe</span><div class="seg" id="nfTeam">${TEAMS.map(n=>`<button type="button" data-e="${n}" class="${n===equipe?'on':''}">S${n}</button>`).join('')}</div></div>
     <div class="field"><span>Lieu</span><div class="seg" id="nfSide"><button type="button" data-s="H" class="on">Domicile</button><button type="button" data-s="A">Extérieur</button></div></div>
     <label class="field"><span>Date et heure du coup d'envoi</span><input id="nfDate" type="datetime-local" value="${local}" required></label>
     <label class="field"><span>Compétition</span><input id="nfComp" autocomplete="off" placeholder="Championnat, Coupe…" list="compList"><datalist id="compList"></datalist></label>
@@ -332,6 +343,9 @@ function newMatchView(){
     const set = [...new Set((data||[]).map(r=>r.competition))];
     $('compList') && ($('compList').innerHTML = set.map(c=>`<option value="${esc(c)}">`).join(''));
   });
+  $('nfTeam').querySelectorAll('button').forEach(b => b.onclick = () => {
+    equipe = +b.dataset.e; $('nfTeam').querySelectorAll('button').forEach(x=>x.classList.toggle('on', x===b));
+  });
   $('nfSide').querySelectorAll('button').forEach(b => b.onclick = () => {
     side = b.dataset.s; $('nfSide').querySelectorAll('button').forEach(x=>x.classList.toggle('on', x===b));
   });
@@ -341,7 +355,7 @@ function newMatchView(){
     $('nfGo').disabled = true;
     const row = {
       id: uuid(), kickoff: new Date($('nfDate').value).toISOString(), competition: $('nfComp').value.trim(),
-      club_side: side, home_name: side==='H' ? CLUB : opp, away_name: side==='H' ? opp : CLUB, half: HALF
+      equipe, club_side: side, home_name: side==='H' ? clubTeamName(equipe) : opp, away_name: side==='H' ? opp : clubTeamName(equipe), half: HALF
     };
     const { error } = await sb.from('matches').insert(row);
     if (error){ $('nfGo').disabled = false; $('nfMsg').innerHTML = `<div class="msg err">${esc(isNetErr(error) ? 'Pas de réseau : il faut être connecté pour créer le match.' : error.message)}</div>`; return; }
@@ -707,21 +721,21 @@ async function readSheetPhoto(file, ta, stat){
 }
 
 // ---------- Stats joueurs ----------
-let statSort = {key:'goals', dir:-1}, statSeason = null;
+let statSort = {key:'goals', dir:-1}, statSeason = null, statTeam = 0;
 function playerKey(name){
   return name.normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[^A-Z ]/g,' ').split(/\s+/).filter(Boolean).sort().join(' ');
 }
 async function statsView(){
   view.innerHTML = '<div class="loading">Chargement…</div>';
   const [{ data: ms, error }, { data: evs, error: e2 }] = await Promise.all([
-    sb.from('matches').select('id,kickoff,club_side,rosters,status').neq('status','prevu'),
+    sb.from('matches').select('id,kickoff,equipe,club_side,rosters,status').neq('status','prevu'),
     sb.from('events').select('match_id,t,k,n,in_n')
   ]);
   if (error || e2) throw (error || e2);
   const seasons = [...new Set(ms.map(m=>seasonOf(m.kickoff)))].sort().reverse();
   if (!statSeason || !seasons.includes(statSeason)) statSeason = seasons[0] || null;
   const draw = () => {
-    const list = ms.filter(m => seasonOf(m.kickoff)===statSeason);
+    const list = ms.filter(m => seasonOf(m.kickoff)===statSeason && (!statTeam || (m.equipe||1)===statTeam));
     const ids = new Set(list.map(m=>m.id));
     const byMatch = {}; evs.forEach(e => { if (ids.has(e.match_id)) (byMatch[e.match_id] ||= []).push(e); });
     const P = {}; let unknownGoals = 0;
@@ -751,7 +765,7 @@ async function statsView(){
     const COLS = [['name','Joueur'],['mj','Matchs'],['tit','Titul.'],['goals','Buts'],['y','🟨'],['r','🟥']];
     const cell = (v) => `<td class="${v?'':'zero'}">${v}</td>`;
     view.innerHTML = `
-      ${seasons.length > 1 ? `<div class="seasons"><label>Saison <select id="season">${seasons.map(s=>`<option${s===statSeason?' selected':''}>${s}</option>`).join('')}</select></label></div>` : (statSeason ? `<div class="sec" style="margin-top:0">Saison ${statSeason}</div>` : '')}
+      <div class="seasons">${seasons.length > 1 ? `<label>Saison <select id="season">${seasons.map(s=>`<option${s===statSeason?' selected':''}>${s}</option>`).join('')}</select></label> ` : (statSeason ? `<b>Saison ${statSeason}</b> ` : '')}<label>Équipe <select id="steam"><option value="0">Toutes</option>${TEAMS.map(n=>`<option value="${n}"${statTeam===n?' selected':''}>Seniors ${n}</option>`).join('')}</select></label></div>
       <div class="kpis">
         <div class="kpi"><b>${list.length}</b><span>Matchs</span></div>
         <div class="kpi"><b>${W}-${D}-${L}</b><span>V-N-D</span></div>
@@ -766,6 +780,7 @@ async function statsView(){
       const k = b.dataset.k; statSort = statSort.key===k ? {key:k, dir:-statSort.dir} : {key:k, dir: k==='name' ? 1 : -1}; draw();
     });
     const s = $('season'); if (s) s.onchange = () => { statSeason = s.value; draw(); };
+    $('steam').onchange = e => { statTeam = +e.target.value; draw(); };
   };
   draw();
 }
