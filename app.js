@@ -4,9 +4,13 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 
 const CLUB = 'AS Mésanger';
-const TEAMS = [1, 2, 3, 4, 5]; // équipes seniors
-const teamLabel = n => 'Seniors ' + (n || 1);
-const clubTeamName = n => (n > 1 ? `${CLUB} ${n}` : CLUB);
+const TEAMS = [1, 2, 3, 4, 5]; // équipes seniors A à E
+const teamLetter = n => 'ABCDE'[(n || 1) - 1];
+const teamLabel = n => 'Seniors ' + teamLetter(n);
+const clubTeamName = n => (n > 1 ? `${CLUB} ${teamLetter(n)}` : CLUB);
+// Logo de chaque équipe : celui du club, ou celui de l'adversaire s'il est connu
+const logoOf = (m, t) => t === (m.club_side || 'H') ? 'icons/logo.webp' : (m.opp_logo || '');
+const logoImg = (m, t, cls) => { const src = logoOf(m, t); return src ? `<img class="${cls}" src="${esc(src)}" alt="" loading="lazy" onerror="this.remove()">` : ''; };
 const sb = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
 const $ = id => document.getElementById(id);
@@ -202,7 +206,7 @@ async function homeView(){
   if (cache) drawHome(cache.matches, cache.goals); else view.innerHTML = '<div class="loading">Chargement…</div>';
   const load = async () => {
     const [{ data: matches, error }, { data: g }] = await Promise.all([
-      sb.from('matches').select('id,kickoff,competition,equipe,club_side,home_name,away_name,half,period,running,started_at,acc,status').order('kickoff', {ascending:false}).limit(1000),
+      sb.from('matches').select('id,kickoff,competition,equipe,opp_logo,club_side,home_name,away_name,half,period,running,started_at,acc,status').order('kickoff', {ascending:false}).limit(1000),
       sb.from('events').select('match_id,t').eq('k','goal')
     ]);
     if (error) { if (!cache) throw error; return; }
@@ -233,14 +237,14 @@ function drawHome(matches, goalRows){
     const sc = m.status==='prevu' ? 'vs' : `${goals(evs,'H')} – ${goals(evs,'A')}`;
     return `<a class="mcard" href="#/match/${esc(m.id)}">
       <div class="meta"><span><b>${esc(teamLabel(m.equipe))}</b> · ${esc(fmtDate(m.kickoff, false))}${m.competition ? ' · ' + esc(m.competition) : ''}</span>${badge}</div>
-      <div class="row"><span class="tn${c==='H'?' club':''}">${esc(teamName(m,'H'))}</span><span class="sc">${sc}</span><span class="tn r${c==='A'?' club':''}">${esc(teamName(m,'A'))}</span></div></a>`;
+      <div class="row"><span class="tn${c==='H'?' club':''}">${logoImg(m,'H','lg')}${esc(teamName(m,'H'))}</span><span class="sc">${sc}</span><span class="tn r${c==='A'?' club':''}">${esc(teamName(m,'A'))}${logoImg(m,'A','lg')}</span></div></a>`;
   };
   const all = matches;
   matches = homeTeam ? matches.filter(m => (m.equipe||1) === homeTeam) : matches;
   const live = matches.filter(m=>m.status==='direct');
   const next = matches.filter(m=>m.status==='prevu').sort((a,b)=>a.kickoff.localeCompare(b.kickoff));
   const done = matches.filter(m=>m.status==='termine');
-  let html = `<div class="chipbar" role="group" aria-label="Équipe">${[0, ...TEAMS].map(n => `<button data-team="${n}" class="${homeTeam===n?'on':''}" aria-pressed="${homeTeam===n}">${n ? 'Seniors ' + n : 'Toutes'}</button>`).join('')}</div>`;
+  let html = `<div class="chipbar" role="group" aria-label="Équipe">${[0, ...TEAMS].map(n => `<button data-team="${n}" class="${homeTeam===n?'on':''}" aria-pressed="${homeTeam===n}">${n ? 'Seniors ' + teamLetter(n) : 'Toutes'}</button>`).join('')}</div>`;
   if (isStaff()) html += `<a class="fbtn club" href="#/nouveau" style="width:100%;margin-bottom:4px">+ Nouveau match</a>`;
   if (live.length) html += `<div class="sec">En direct</div>` + live.map(card).join('');
   const NEXT_MAX = 6;
@@ -267,9 +271,9 @@ function boardHTML(m, evs, staff){
   return `<section class="board" aria-label="Tableau d'affichage">
     <div class="bmeta"><span>${esc(teamLabel(m.equipe))} · ${esc(fmtDate(m.kickoff))}${m.competition ? ' · ' + esc(m.competition) : ''}</span>${m.status==='direct' ? '<span class="badge live">Direct</span>' : ''}</div>
     <div class="teams">
-      <div class="team"><span class="tname${c==='H'?' club':''}">${esc(teamName(m,'H'))}</span></div>
+      <div class="team">${logoImg(m,'H','blg')}<span class="tname${c==='H'?' club':''}">${esc(teamName(m,'H'))}</span></div>
       <div class="score" aria-live="polite"><span id="scH">${goals(evs,'H')}</span><span class="sep">–</span><span id="scA">${goals(evs,'A')}</span></div>
-      <div class="team"><span class="tname${c==='A'?' club':''}">${esc(teamName(m,'A'))}</span></div>
+      <div class="team">${logoImg(m,'A','blg')}<span class="tname${c==='A'?' club':''}">${esc(teamName(m,'A'))}</span></div>
     </div>
     <div class="clockrow">
       <div>${staff ? `<button class="clock" id="clock" aria-label="Régler le chrono">${clockText(m)}</button>` : `<div class="clock" id="clock">${m.status==='prevu' ? '--:--' : clockText(m)}</div>`}<div class="period" id="period">${esc(periodText(m))}</div></div>
@@ -332,7 +336,7 @@ function newMatchView(){
   view.innerHTML = `<form class="card" id="nf">
     <h1>Nouveau match</h1><p class="sub">Deux mi-temps de 45 min.</p>
     <label class="field"><span>Adversaire</span><input id="nfOpp" required autocomplete="off" placeholder="Nom de l'équipe adverse"></label>
-    <div class="field"><span>Équipe</span><div class="seg" id="nfTeam">${TEAMS.map(n=>`<button type="button" data-e="${n}" class="${n===equipe?'on':''}">S${n}</button>`).join('')}</div></div>
+    <div class="field"><span>Équipe</span><div class="seg" id="nfTeam">${TEAMS.map(n=>`<button type="button" data-e="${n}" class="${n===equipe?'on':''}">${teamLetter(n)}</button>`).join('')}</div></div>
     <div class="field"><span>Lieu</span><div class="seg" id="nfSide"><button type="button" data-s="H" class="on">Domicile</button><button type="button" data-s="A">Extérieur</button></div></div>
     <label class="field"><span>Date et heure du coup d'envoi</span><input id="nfDate" type="datetime-local" value="${local}" required></label>
     <label class="field"><span>Compétition</span><input id="nfComp" autocomplete="off" placeholder="Championnat, Coupe…" list="compList"><datalist id="compList"></datalist></label>
@@ -765,7 +769,7 @@ async function statsView(){
     const COLS = [['name','Joueur'],['mj','Matchs'],['tit','Titul.'],['goals','Buts'],['y','🟨'],['r','🟥']];
     const cell = (v) => `<td class="${v?'':'zero'}">${v}</td>`;
     view.innerHTML = `
-      <div class="seasons">${seasons.length > 1 ? `<label>Saison <select id="season">${seasons.map(s=>`<option${s===statSeason?' selected':''}>${s}</option>`).join('')}</select></label> ` : (statSeason ? `<b>Saison ${statSeason}</b> ` : '')}<label>Équipe <select id="steam"><option value="0">Toutes</option>${TEAMS.map(n=>`<option value="${n}"${statTeam===n?' selected':''}>Seniors ${n}</option>`).join('')}</select></label></div>
+      <div class="seasons">${seasons.length > 1 ? `<label>Saison <select id="season">${seasons.map(s=>`<option${s===statSeason?' selected':''}>${s}</option>`).join('')}</select></label> ` : (statSeason ? `<b>Saison ${statSeason}</b> ` : '')}<label>Équipe <select id="steam"><option value="0">Toutes</option>${TEAMS.map(n=>`<option value="${n}"${statTeam===n?' selected':''}>Seniors ${teamLetter(n)}</option>`).join('')}</select></label></div>
       <div class="kpis">
         <div class="kpi"><b>${list.length}</b><span>Matchs</span></div>
         <div class="kpi"><b>${W}-${D}-${L}</b><span>V-N-D</span></div>

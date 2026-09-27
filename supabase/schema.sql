@@ -107,3 +107,4 @@ exception when duplicate_object then null; end $$;
 -- Équipes seniors (1 à 5) et lien avec le calendrier FFF (évite les doublons à l'import)
 alter table public.matches add column if not exists equipe int not null default 1 check (equipe between 1 and 5);
 alter table public.matches add column if not exists fff_id bigint unique;
+alter table public.matches add column if not exists opp_logo text;
