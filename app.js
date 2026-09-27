@@ -1035,18 +1035,47 @@ function openBell(preselect){
   openSheet(`<h3 id="shTitle">Notifications de buts</h3>
     <p>Reçois une notification à chaque but des équipes choisies, même appli fermée.</p>
     ${denied ? '<div class="msg err">Les notifications sont bloquées pour ce site. Autorise-les dans les réglages du téléphone (ou du navigateur), puis reviens ici.</div>' : ''}
+    <div class="msg" id="bState">Vérification de ce téléphone…</div>
     <div class="follow">${TEAMS.map(n => `<label class="fl"><input type="checkbox" value="${n}"${cur.has(n)?' checked':''}><span>${teamLabel(n)}</span></label>`).join('')}</div>
-    <div class="foot" style="margin-top:12px"><button class="fbtn primary" id="bSave">Enregistrer</button><button class="fbtn" id="bNo">Annuler</button></div>`);
+    <div class="foot" style="margin-top:12px"><button class="fbtn primary" id="bSave">Enregistrer</button><button class="fbtn" id="bNo">Annuler</button></div>
+    <button class="link" id="bTest" hidden style="width:100%">Envoyer une notification d’essai</button>`);
   $('bNo').onclick = closeSheet;
+  // État réel, lu dans la base (et non dans la mémoire du téléphone)
+  pushState().then(st => {
+    const el = $('bState'); if (!el) return;
+    el.textContent = st.teams && st.teams.length ? 'Ce téléphone reçoit les buts de : ' + st.teams.map(teamLabel).join(', ') + '.' : 'Ce téléphone n’est pas encore abonné.';
+    lsSet('asm-follow', st.teams || []); renderBell();
+    if (st.sub && st.teams && st.teams.length) $('bTest').hidden = false;
+  }).catch(() => { const el = $('bState'); if (el) el.textContent = navigator.onLine ? 'État inconnu.' : 'Pas de réseau.'; });
+  $('bTest').onclick = async () => { const st = await pushState(); toast(await sendTestPush(st.sub) ? 'Notification d’essai envoyée' : 'L’envoi d’essai a échoué'); };
   $('bSave').onclick = async () => {
     const teams = [...$('shBody').querySelectorAll('input:checked')].map(i => +i.value);
     $('bSave').disabled = true;
     try{
       const ok = await saveFollow(teams);
+      if (!ok){ closeSheet(); renderBell(); toast('Notifications refusées'); return; }
+      const st = await pushState();
       closeSheet(); renderBell();
-      toast(!ok ? 'Notifications refusées' : teams.length ? 'Notifications activées' : 'Notifications désactivées');
-    }catch(e){ console.error(e); $('bSave').disabled = false; toast(navigator.onLine ? 'Impossible d’activer les notifications' : 'Pas de réseau'); }
+      if (!teams.length){ toast('Notifications désactivées'); return; }
+      if (!st.teams || !st.teams.length){ toast('Échec : l’abonnement n’a pas été enregistré'); return; }
+      toast(await sendTestPush(st.sub) ? 'Activé : tu vas recevoir une notification d’essai' : 'Abonné, mais l’essai n’est pas arrivé');
+    }catch(e){ console.error(e); $('bSave').disabled = false; toast(navigator.onLine ? 'Impossible d’activer : ' + (e && e.message || e) : 'Pas de réseau'); }
   };
+}
+async function pushState(){
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (!sub) return { sub: null, teams: [] };
+  const { data, error } = await sb.rpc('push_status', { p_endpoint: sub.endpoint });
+  if (error) throw error;
+  return { sub, teams: data || [] };
+}
+async function sendTestPush(sub){
+  if (!sub) return false;
+  try{
+    const r = await fetch('api/test-push', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ subscription: sub.toJSON() }) });
+    return r.ok;
+  }catch(e){ return false; }
 }
 function renderBell(){ const b = $('bell'); if (b) b.classList.toggle('on', lsGet('asm-follow', []).length > 0); }
 $('bell').onclick = () => openBell(homeTeam || 0);
