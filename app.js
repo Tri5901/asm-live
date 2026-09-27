@@ -199,7 +199,7 @@ async function route(){
   try{
     if (page==='' ) return await homeView();
     if (page==='match') return await matchView(arg);
-    if (page==='gerer') return await consoleView(arg);
+    if (page==='gerer') return await consoleView(arg, parts[2]==='compo');
     if (page==='nouveau') return await newMatchView();
     if (page==='stats') return await statsView();
     if (page==='connexion') return loginView();
@@ -305,14 +305,21 @@ function boardHTML(m, evs, staff){
   </section>`;
 }
 function lineupsHTML(m){
+  const li = p => `<li><b>${esc(p.n)}</b><span>${esc(p.name)}</span></li>`;
   const side = t => {
     const list = rosterSorted(m,t);
-    if (!list.length) return '';
-    return `<div><h3>${esc(teamName(m,t))}</h3><ol>${list.map(p=>`<li class="${p.sub?'bench':''}"><b>${esc(p.n)}</b><span>${esc(p.name)}${p.sub?' (R)':''}</span></li>`).join('')}</ol></div>`;
+    if (!list.length) return `<div><h3>${esc(teamName(m,t))}</h3><p class="nolu">Pas encore saisie</p></div>`;
+    const tit = list.filter(p=>!p.sub), rem = list.filter(p=>p.sub);
+    return `<div><h3>${esc(teamName(m,t))}</h3>`
+      + (tit.length ? `<div class="lusub">Titulaires</div><ol>${tit.map(li).join('')}</ol>` : '')
+      + (rem.length ? `<div class="lusub">Remplaçants</div><ol class="bench">${rem.map(li).join('')}</ol>` : '')
+      + '</div>';
   };
-  const h = side('H'), a = side('A');
-  if (!h && !a) return '';
-  return `<section class="log"><div class="loghead"><h2>Compositions</h2></div><div class="lineups">${h||'<div></div>'}${a||'<div></div>'}</div></section>`;
+  const has = rosterOf(m,'H').length || rosterOf(m,'A').length;
+  if (!has && !canManage(m)) return '';
+  return `<section class="log"><div class="loghead"><h2>Compositions</h2>${canManage(m) ? `<a class="link" href="#/gerer/${esc(m.id)}/compo">${has ? 'Modifier' : '📋 Saisir la compo'}</a>` : ''}</div>`
+    + (has ? `<div class="lineups">${side('H')}${side('A')}</div>` : '<div class="empty">Compo pas encore saisie.</div>')
+    + '</section>';
 }
 async function matchView(id){
   view.innerHTML = '<div class="loading">Chargement…</div>';
@@ -323,8 +330,9 @@ async function matchView(id){
     view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false)
       + `<div class="foot" style="margin-top:12px"><button class="fbtn" id="btnBell">🔔 Buts des ${esc(teamLabel(m.equipe))}</button><button class="fbtn" id="btnShareLive">Partager le lien</button>${canManage(m) ? `<a class="fbtn primary" href="#/gerer/${esc(m.id)}">Gérer ce match</a>` : ''}</div>`
       + (isStaff() ? `<label class="field deleg"><span>Délégué du match</span><select id="delSel"${canManage(m) ? '' : ' disabled'}>${delegueOptions(m.delegue_id, m.delegue_nom)}</select>${!canManage(m) ? '<small>Seul le délégué désigné ou un admin peut modifier ce match.</small>' : ''}</label>` : '')
+      + (m.status==='prevu' ? lineupsHTML(m) : '')
       + `<section class="log"><div class="loghead"><h2>Chronologie</h2></div><div id="events">${timelineHTML(m, evs, false)}</div></section>`
-      + lineupsHTML(m);
+      + (m.status!=='prevu' ? lineupsHTML(m) : '');
     $('btnShareLive').onclick = () => shareLink(m);
     $('btnBell').onclick = () => openBell(m.equipe || 1);
     const ds = $('delSel');
@@ -403,7 +411,7 @@ async function newMatchView(){
 }
 
 // ---------- Console du délégué ----------
-async function consoleView(id){
+async function consoleView(id, openCompo){
   if (!isStaff()){ location.hash = session ? '#/compte' : '#/connexion'; return; }
   view.innerHTML = '<div class="loading">Chargement…</div>';
   const CK = 'asm-console-' + id;
@@ -711,6 +719,7 @@ async function consoleView(id){
   });
 
   render(); renderSync();
+  if (openCompo) $('btnLineup').click();
 }
 
 // ---------- Lecture de la photo de la feuille de match (dans le téléphone, gratuit) ----------
