@@ -1,7 +1,7 @@
 {
-  "name": "AS Mésanger – Feuille de match",
-  "short_name": "ASM Match",
-  "description": "Feuille du délégué de terrain de l'AS Mésanger : buts, remplacements, cartons.",
+  "name": "AS Mésanger – Matchs en direct",
+  "short_name": "ASM Live",
+  "description": "Matchs de l'AS Mésanger en direct, feuille du délégué et stats des joueurs.",
   "lang": "fr",
   "start_url": "./",
   "scope": "./",
@@ -10,8 +10,23 @@
   "background_color": "#000000",
   "theme_color": "#000000",
   "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }

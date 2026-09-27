@@ -1,9 +1,11 @@
 // Service worker AS Mésanger – Feuille de match
 // Incrémente VERSION à chaque mise en ligne pour que les téléphones récupèrent la nouvelle version.
-const VERSION = 'asm-v1';
+const VERSION = 'asm-v2';
 const APP_SHELL = [
   './',
   './index.html',
+  './app.js',
+  './config.js',
   './manifest.webmanifest',
   './icons/logo.webp',
   './icons/icon-192.png',
@@ -41,9 +43,11 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Polices Google et fichiers de l'appli : cache d'abord, mis à jour en arrière-plan
+  // Base de données (Supabase) : jamais en cache, toujours en direct
+  // Polices Google, bibliothèque Supabase et fichiers de l'appli : cache d'abord, mis à jour en arrière-plan
   const sameOrigin = url.origin === self.location.origin;
-  const fonts = url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
+  const fonts = url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com'
+    || (url.hostname === 'cdn.jsdelivr.net' && url.pathname.includes('@supabase'));
   if (sameOrigin || fonts) {
     event.respondWith(
       caches.open(VERSION).then(cache =>
