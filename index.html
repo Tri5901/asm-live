@@ -256,15 +256,67 @@ textarea{width:100%;min-height:220px;font:inherit;font-size:15px;color:var(--ink
   background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s;z-index:20;max-width:90vw;text-align:center}
 .toast.show{opacity:1}
 .loading{color:var(--muted);text-align:center;padding:40px 0}
+
+/* ===== Design v2 ===== */
+:root{padding-top:0}
+.appbar{position:sticky;top:0;z-index:5;background:#000;border-bottom:3px solid var(--club);padding-top:env(safe-area-inset-top,0px)}
+.appbar-in{max-width:560px;margin:0 auto;display:flex;align-items:center;gap:10px;padding:10px 14px}
+.appbar .brand{display:flex;align-items:center;gap:10px;text-decoration:none;flex:1;min-width:0;color:#fff}
+.appbar .crest{width:42px;height:42px;flex:none}
+.appbar b{display:block;font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:22px;line-height:1;color:var(--club);letter-spacing:.5px}
+.appbar small{display:block;color:rgba(255,255,255,.65);font-size:12px;margin-top:3px}
+.iconbtn{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:#fff;background:rgba(255,255,255,.12);flex:none;border:0}
+.iconbtn svg{width:20px;height:20px}
+.bell{filter:none;opacity:1}
+.bell.on{background:var(--club);color:#000;border:0}
+.acct{background:rgba(255,255,255,.12);color:#fff;border:0}
+.acct.in{padding:0;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:none}
+.avatar{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--club);color:#000;font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:19px}
+.wrap{padding-top:14px;padding-bottom:96px}
+.day{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:17px;margin:14px 2px 6px}
+.day::first-letter{text-transform:uppercase}
+.sec{margin-top:22px;margin-bottom:0}
+.mcard{padding:10px 12px 12px;border-radius:16px}
+.mcard.live{border-color:var(--live);box-shadow:inset 0 0 0 1px var(--live)}
+.mtop{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-bottom:10px}
+.mcomp{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tchip{flex:none;width:22px;height:22px;border-radius:6px;background:var(--ink);color:var(--bg);display:grid;place-items:center;font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:14px}
+.mrow{display:grid;grid-template-columns:minmax(0,1fr) 78px minmax(0,1fr);align-items:start;gap:6px}
+.mside{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;font-family:"Barlow Condensed",sans-serif;font-weight:600;font-size:16px;line-height:1.1;min-width:0;overflow-wrap:anywhere}
+.mside.club{font-weight:800}
+.mlg{width:42px;height:42px;object-fit:contain;border-radius:10px;background:#fff;padding:3px;display:block}
+.mlg.ph{background:var(--line)}
+.mmid{align-self:center;text-align:center;padding-bottom:18px}
+.mtime{font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:24px;font-variant-numeric:tabular-nums}
+.msc{font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:32px;font-variant-numeric:tabular-nums;display:inline-flex;gap:6px}
+.msc i{font-style:normal;opacity:.35}
+.mdel{margin-top:8px;padding-top:8px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted);text-align:center}
+.fab{position:fixed;right:16px;bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:6;background:var(--club);color:#000;font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:18px;padding:14px 20px;border-radius:999px;text-decoration:none;box-shadow:0 8px 20px rgba(0,0,0,.3)}
+.team .blg{width:58px;height:58px;padding:4px;border-radius:12px}
+.mactions{display:flex;gap:8px;margin-top:12px}
+.pill{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-weight:600;font-size:14px;min-height:44px;text-align:center}
+.fbtn.big{width:100%;margin-top:10px}
+.audit{font-size:13px;color:var(--muted);background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:10px 12px;margin-top:10px}
+.ev{grid-template-columns:40px 32px minmax(0,1fr) auto;padding:10px 2px}
+.ev.ro{grid-template-columns:40px 32px minmax(0,1fr)}
+.ev .min{font-size:18px;color:var(--muted)}
+.evi{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:var(--surface);border:1px solid var(--line);font-size:16px;line-height:1}
+.ev.club .evi.goal{background:var(--club);border-color:var(--club)}
+.evi .card{width:11px;height:15px;border-radius:2px;display:block}
+.card.y{background:var(--yellow)} .card.r{background:var(--red)}
+.evi.sub{color:var(--accent);font-weight:800}
+.evteam{color:var(--muted);font-weight:500;font-size:14px}
+.evby{font-size:12px;color:var(--muted);margin-top:3px;font-style:italic}
+.own{background:none!important;padding:0!important;border-radius:50%!important}
 </style>
 </head>
 <body>
+<header class="appbar"><div class="appbar-in">
+  <a class="brand" href="#/"><img class="crest" src="icons/notif-192.png" alt=""><div><b>AS MÉSANGER</b><small>Matchs en direct</small></div></a>
+  <button class="iconbtn bell" id="bell" aria-label="Notifications de buts" title="Notifications de buts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button>
+  <a class="acct" id="acct" href="#/connexion">Connexion</a>
+</div></header>
 <div class="wrap">
-  <header class="top">
-    <a class="brand" href="#/"><img src="icons/logo.webp" alt=""><div><b>AS Mésanger</b><small>Matchs en direct</small></div></a>
-    <button class="bell" id="bell" aria-label="Notifications de buts" title="Notifications de buts">🔔</button>
-    <a class="acct" id="acct" href="#/connexion">Connexion</a>
-  </header>
   <nav class="tabs" id="tabs" aria-label="Sections">
     <a href="#/" data-tab="matchs">Matchs</a>
     <a href="#/stats" data-tab="stats">Stats joueurs</a>
@@ -278,6 +330,7 @@ textarea{width:100%;min-height:220px;font:inherit;font-size:15px;color:var(--ink
     <div id="shBody"></div>
   </div>
 </div>
+<a class="fab" id="fab" href="#/nouveau" hidden>+ Nouveau match</a>
 <div class="toast" id="toast" role="status"></div>
 
 <script type="module" src="app.js"></script>

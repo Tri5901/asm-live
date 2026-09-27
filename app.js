@@ -9,8 +9,8 @@ const teamLetter = n => 'ABCDE'[(n || 1) - 1];
 const teamLabel = n => 'Seniors ' + teamLetter(n);
 const clubTeamName = n => (n > 1 ? `${CLUB} ${teamLetter(n)}` : CLUB);
 // Logo de chaque équipe : celui du club, ou celui de l'adversaire s'il est connu
-const logoOf = (m, t) => t === (m.club_side || 'H') ? 'icons/logo.webp' : (m.opp_logo || '');
-const logoImg = (m, t, cls) => { const src = logoOf(m, t); return src ? `<img class="${cls}" src="${esc(src)}" alt="" loading="lazy" onerror="this.remove()">` : ''; };
+const logoOf = (m, t) => t === (m.club_side || 'H') ? 'icons/notif-192.png' : (m.opp_logo || '');
+const logoImg = (m, t, cls) => { const src = logoOf(m, t); return src ? `<img class="${cls}${t === (m.club_side || 'H') ? ' own' : ''}" src="${esc(src)}" alt="" loading="lazy" onerror="this.remove()">` : ''; };
 const sb = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
 const $ = id => document.getElementById(id);
@@ -87,19 +87,18 @@ function labelOf(m, abs, p){ const lim = p===2 ? 2*m.half : m.half; return abs >
 function timelineHTML(m, evs, editable){
   if (!evs.length) return `<div class="empty">${editable ? 'Lance le chrono puis touche une action : la minute est notée toute seule.' : 'Aucune action pour le moment.'}</div>`;
   const list = [...evs].sort((a,b)=> b.sort - a.sort || String(b.created_at||'').localeCompare(String(a.created_at||'')));
+  const ICON = {goal:'<span class="evi goal">⚽</span>', yellow:'<span class="evi"><i class="card y"></i></span>', red:'<span class="evi"><i class="card r"></i></span>', sub:'<span class="evi sub">⇄</span>'};
   let lastP = null, html = '';
   for (const e of list){
     if (lastP !== null && e.p !== lastP) html += '<div class="period-mark">Mi-temps</div>';
     lastP = e.p;
-    const color = e.t===clubSide(m) ? 'var(--home)' : 'var(--away)';
     let detail = '';
     if (e.k==='goal') detail = who(m,e.t,e.n,'Buteur non précisé');
     if (e.k==='sub') detail = `Sort ${who(m,e.t,e.out_n,'?')} · Entre ${who(m,e.t,e.in_n,'?')}`;
     if (e.k==='yellow'||e.k==='red') detail = who(m,e.t,e.n,'Joueur non précisé');
-    const kIcon = e.k==='yellow' ? '<span class="ic y" style="width:12px;height:16px"></span>' :
-                  e.k==='red' ? '<span class="ic r" style="width:12px;height:16px"></span>' : e.k==='goal' ? '⚽' : '';
-    html += `<div class="ev ${editable ? 'edit' : 'ro'}" data-id="${esc(e.id)}"><div class="min">${esc(e.min)}</div>
-      <div class="what"><span class="dot" style="background:${color}"></span><div class="txt"><b>${LABEL[e.k]}</b> ${kIcon}<div>${esc(teamName(m,e.t))} · ${esc(detail)}</div></div></div>
+    const by = isAdmin() && people ? `<div class="evby">Saisi par ${esc(personName(e.created_by))}${e.created_at ? ' à ' + hhmm(e.created_at) : ''}</div>` : '';
+    html += `<div class="ev ${editable ? 'edit' : 'ro'}${e.t===clubSide(m) ? ' club' : ''}" data-id="${esc(e.id)}"><div class="min">${esc(e.min)}</div>${ICON[e.k]}
+      <div class="txt"><b>${LABEL[e.k]}</b> <span class="evteam">${esc(teamName(m,e.t))}</span><div>${esc(detail)}</div>${by}</div>
       ${editable ? '<button class="del" aria-label="Supprimer">×</button>' : ''}</div>`;
   }
   return html;
@@ -122,6 +121,14 @@ function delegueOptions(cur, curNom){
   if (cur && !opts.some(o => o[0] === cur)) opts.push([cur, curNom || 'Autre délégué']);
   return opts.map(([v, l]) => `<option value="${esc(v)}"${v === (cur||'') ? ' selected' : ''}>${esc(l)}</option>`).join('');
 }
+let people = null;
+async function loadPeople(){
+  if (!isAdmin()) return {};
+  if (!people){ const { data } = await sb.from('profiles').select('id,nom,email'); people = {}; (data||[]).forEach(p => { people[p.id] = p.nom || p.email; }); }
+  return people;
+}
+const personName = id => id ? ((people||{})[id] || 'compte supprimé') : 'import du calendrier';
+const hhmm = iso => iso ? new Date(iso).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'}) : '';
 const delegueNom = id => !id ? null : id === myId() ? (profile && profile.nom) || 'Moi' : ((delegues||[]).find(d => d.id === id) || {}).nom || null;
 
 async function loadProfile(){
@@ -135,9 +142,14 @@ async function loadProfile(){
 }
 function renderAcct(){
   const a = $('acct');
-  if (session && profile){ a.textContent = profile.nom ? profile.nom.split(' ')[0] : 'Mon compte'; a.href = '#/compte'; }
-  else if (session){ a.textContent = 'Mon compte'; a.href = '#/compte'; }
-  else { a.textContent = 'Connexion'; a.href = '#/connexion'; }
+  if (session){
+    const nom = (profile && profile.nom || '').trim();
+    a.innerHTML = `<span class="avatar">${esc((nom || '?').charAt(0).toUpperCase())}</span>`;
+    a.setAttribute('aria-label', 'Mon compte' + (nom ? ' (' + nom + ')' : ''));
+    a.href = '#/compte'; a.classList.add('in');
+  } else {
+    a.textContent = 'Connexion'; a.removeAttribute('aria-label'); a.href = '#/connexion'; a.classList.remove('in');
+  }
 }
 
 // ---------- File d'envoi (hors ligne) ----------
@@ -197,6 +209,7 @@ async function route(){
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on',
     (a.dataset.tab==='stats' && page==='stats') || (a.dataset.tab==='matchs' && (page==='' || page==='match'))));
   $('tabs').hidden = page==='gerer' || page==='match';
+  $('fab').hidden = !(isStaff() && page==='');
   window.scrollTo(0,0);
   if (!sb){ view.innerHTML = `<div class="card"><h1>Configuration à terminer</h1><p class="sub">Le site n'est pas encore relié à sa base de données (fichier config.js).</p></div>`; return; }
   try{
@@ -254,29 +267,31 @@ function drawHome(matches, goalRows){
   const card = m => {
     const evs = byMatch[m.id] || [];
     const c = clubSide(m);
-    let badge = '';
+    let badge = '', mid;
+    if (m.status==='prevu') mid = `<span class="mtime">${esc(hhmm(m.kickoff))}</span>`;
+    else mid = `<span class="msc">${goals(evs,'H')}<i>–</i>${goals(evs,'A')}</span>`;
     if (m.status==='direct') badge = `<span class="badge live" data-live='${esc(JSON.stringify({status:m.status,period:m.period,half:m.half,running:m.running,started_at:m.started_at,acc:m.acc}))}'>Direct${m.period ? ' · ' + esc(currentMinute(m).label) : ''}</span>`;
     else if (m.status==='termine'){ const r = resultOf(m, evs); badge = `<span class="badge ${r==='V'?'w':r==='D'?'l':''}">${r==='V'?'Victoire':r==='D'?'Défaite':'Nul'}</span>`; }
-    else badge = `<span class="badge">${esc(new Date(m.kickoff).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}))}</span>`;
-    const sc = m.status==='prevu' ? 'vs' : `${goals(evs,'H')} – ${goals(evs,'A')}`;
-    return `<a class="mcard" href="#/match/${esc(m.id)}">
-      <div class="meta"><span><b>${esc(teamLabel(m.equipe))}</b> · ${esc(fmtDate(m.kickoff, false))}${m.competition ? ' · ' + esc(m.competition) : ''}${isStaff() && m.delegue_nom ? ' · 👤 ' + esc(m.delegue_nom) : ''}</span>${badge}</div>
-      <div class="row"><span class="tn${c==='H'?' club':''}">${logoImg(m,'H','lg')}${esc(teamName(m,'H'))}</span><span class="sc">${sc}</span><span class="tn r${c==='A'?' club':''}">${esc(teamName(m,'A'))}${logoImg(m,'A','lg')}</span></div></a>`;
+    const side = t => `<div class="mside${c===t?' club':''}">${logoOf(m,t) ? logoImg(m,t,'mlg') : '<span class="mlg ph"></span>'}<span>${esc(teamName(m,t))}</span></div>`;
+    return `<a class="mcard${m.status==='direct' ? ' live' : ''}" href="#/match/${esc(m.id)}">
+      <div class="mtop"><span class="tchip" title="${esc(teamLabel(m.equipe))}">${teamLetter(m.equipe)}</span><span class="mcomp">${esc(m.competition || teamLabel(m.equipe))}</span>${badge}</div>
+      <div class="mrow">${side('H')}<div class="mmid">${mid}</div>${side('A')}</div>
+      ${isStaff() && m.delegue_nom ? `<div class="mdel">Délégué : ${esc(m.delegue_nom)}</div>` : ''}</a>`;
   };
+  const byDay = list => { let h = '', last = ''; list.forEach(m => { const d = new Date(m.kickoff).toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'}); if (d !== last){ h += `<div class="day">${esc(d)}</div>`; last = d; } h += card(m); }); return h; };
   const all = matches;
   matches = homeTeam ? matches.filter(m => (m.equipe||1) === homeTeam) : matches;
   const live = matches.filter(m=>m.status==='direct');
   const next = matches.filter(m=>m.status==='prevu').sort((a,b)=>a.kickoff.localeCompare(b.kickoff));
   const done = matches.filter(m=>m.status==='termine');
   let html = `<div class="chipbar" role="group" aria-label="Équipe">${[0, ...TEAMS].map(n => `<button data-team="${n}" class="${homeTeam===n?'on':''}" aria-pressed="${homeTeam===n}">${n ? 'Seniors ' + teamLetter(n) : 'Toutes'}</button>`).join('')}</div>`;
-  if (isStaff()) html += `<a class="fbtn club" href="#/nouveau" style="width:100%;margin-bottom:4px">+ Nouveau match</a>`;
   const mine = myId() ? all.filter(m => m.delegue_id === myId() && m.status !== 'termine').sort((a,b)=>a.kickoff.localeCompare(b.kickoff)) : [];
-  if (mine.length) html += `<div class="sec">Mes matchs (délégué)</div>` + mine.map(card).join('');
+  if (mine.length) html += `<div class="sec">Mes matchs (délégué)</div>` + byDay(mine);
   if (live.length) html += `<div class="sec">En direct</div>` + live.map(card).join('');
   const NEXT_MAX = 6;
-  if (next.length) html += `<div class="sec">À venir</div>` + (showAllNext ? next : next.slice(0, NEXT_MAX)).map(card).join('')
+  if (next.length) html += `<div class="sec">À venir</div>` + byDay(showAllNext ? next : next.slice(0, NEXT_MAX))
     + (next.length > NEXT_MAX && !showAllNext ? `<button class="fbtn" id="moreNext" style="width:100%">Voir les ${next.length} matchs à venir</button>` : '');
-  if (done.length) html += `<div class="sec">Résultats</div>` + done.map(card).join('');
+  if (done.length) html += `<div class="sec">Résultats</div>` + byDay(done);
   if (!matches.length) html += `<div class="empty" style="margin-top:12px">Aucun match pour l'instant.${isStaff() ? '' : ' Reviens le jour du match pour le suivre en direct.'}</div>`;
   view.innerHTML = html;
   view.querySelectorAll('[data-team]').forEach(b => b.onclick = () => { homeTeam = +b.dataset.team; lsSet('asm-team', homeTeam); showAllNext = false; drawHome(all, goalRows); });
@@ -327,12 +342,15 @@ function lineupsHTML(m){
 async function matchView(id){
   view.innerHTML = '<div class="loading">Chargement…</div>';
   if (isStaff()) await loadDelegues().catch(()=>{});
+  if (isAdmin()) await loadPeople().catch(()=>{});
   let { m, evs } = await fetchMatch(id);
   if (!m){ view.innerHTML = '<div class="empty">Ce match n\'existe plus.</div>'; return; }
   const draw = () => {
     view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false)
-      + `<div class="foot" style="margin-top:12px"><button class="fbtn" id="btnBell">🔔 Buts des ${esc(teamLabel(m.equipe))}</button><button class="fbtn" id="btnShareLive">Partager le lien</button>${canManage(m) ? `<a class="fbtn primary" href="#/gerer/${esc(m.id)}">Gérer ce match</a>` : ''}</div>`
+      + `<div class="mactions"><button class="pill" id="btnBell">🔔 Buts des ${esc(teamLabel(m.equipe))}</button><button class="pill" id="btnShareLive">↗ Partager</button></div>`
+      + (canManage(m) ? `<a class="fbtn primary big" href="#/gerer/${esc(m.id)}">Gérer ce match</a>` : '')
       + (isStaff() ? `<label class="field deleg"><span>Délégué du match</span><select id="delSel"${canManage(m) ? '' : ' disabled'}>${delegueOptions(m.delegue_id, m.delegue_nom)}</select>${!canManage(m) ? '<small>Seul le délégué désigné ou un admin peut modifier ce match.</small>' : ''}</label>` : '')
+      + (isAdmin() && people ? `<div class="audit">Match créé par ${esc(personName(m.created_by))}${m.rosters_at ? ` · Compo saisie par ${esc(personName(m.rosters_by))} le ${esc(fmtDate(m.rosters_at))}` : ''}</div>` : '')
       + (m.status==='prevu' ? lineupsHTML(m) : '')
       + `<section class="log"><div class="loghead"><h2>Chronologie</h2></div><div id="events">${timelineHTML(m, evs, false)}</div></section>`
       + (m.status!=='prevu' ? lineupsHTML(m) : '');
@@ -415,6 +433,7 @@ async function newMatchView(){
 
 // ---------- Console du délégué ----------
 async function consoleView(id, openCompo){
+  if (isAdmin()) await loadPeople().catch(()=>{});
   if (!isStaff()){ location.hash = session ? '#/compte' : '#/connexion'; return; }
   view.innerHTML = '<div class="loading">Chargement…</div>';
   const CK = 'asm-console-' + id;
@@ -580,7 +599,7 @@ async function consoleView(id, openCompo){
   }
   const sentOff = t => new Set(S.events.filter(e=>e.t===t&&e.k==='red'&&e.n).map(e=>String(e.n)));
   function add(e){
-    e.id = uuid(); e.p = S.period || 1; e.created_at = new Date().toISOString();
+    e.id = uuid(); e.p = S.period || 1; e.created_at = new Date().toISOString(); e.created_by = myId();
     e.sort = sortFromLabel(e.min, e.sort);
     if (S.status==='prevu') patch({status:'direct', period: S.period || 1});
     S.events.push(e); pushEv(e);
