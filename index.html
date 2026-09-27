@@ -53,6 +53,11 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{ou
 .top b{font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:24px;line-height:1}
 .top small{display:block;color:var(--muted);font-size:13px}
 .acct{font-weight:600;font-size:14px;padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);white-space:nowrap;text-decoration:none}
+.bell{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--surface);font-size:18px;flex:none;filter:grayscale(1);opacity:.7}
+.bell.on{filter:none;opacity:1;border-color:var(--club)}
+.follow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.fl{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);font-weight:600;min-height:48px}
+.fl input{width:20px;height:20px;accent-color:var(--club)}
 .tabs{display:flex;gap:6px;margin:0 0 14px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px}
 .tabs a{flex:1;text-align:center;padding:9px 6px;border-radius:9px;font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:18px;text-decoration:none;color:var(--muted)}
 .tabs a.on{background:var(--ink);color:var(--bg)}
@@ -163,6 +168,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{ou
 .field small{display:block;color:var(--muted);font-size:13px;margin-top:4px}
 .field input,.field select{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 12px;min-height:46px}
 .seg{display:flex;gap:6px}
+.field.deleg{margin-top:14px}
 .seg button{flex:1;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);font-weight:600;min-height:46px}
 .seg button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .msg{padding:10px 12px;border-radius:10px;background:var(--bg);border:1px solid var(--line);font-size:14px;margin-bottom:12px}
@@ -236,6 +242,7 @@ textarea{width:100%;min-height:220px;font:inherit;font-size:15px;color:var(--ink
 <div class="wrap">
   <header class="top">
     <a class="brand" href="#/"><img src="icons/logo.webp" alt=""><div><b>AS Mésanger</b><small>Matchs en direct</small></div></a>
+    <button class="bell" id="bell" aria-label="Notifications de buts" title="Notifications de buts">🔔</button>
     <a class="acct" id="acct" href="#/connexion">Connexion</a>
   </header>
   <nav class="tabs" id="tabs" aria-label="Sections">

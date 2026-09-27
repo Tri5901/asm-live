@@ -1,7 +1,7 @@
 // AS Mésanger – Matchs en direct
 // Vue publique (liste, direct, stats) + espace délégué (saisie du match, compositions, photo de la feuille).
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm';
-import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
+import { SUPABASE_URL, SUPABASE_KEY, VAPID_PUBLIC } from './config.js';
 
 const CLUB = 'AS Mésanger';
 const TEAMS = [1, 2, 3, 4, 5]; // équipes seniors A à E
@@ -110,6 +110,19 @@ let session = null;
 let profile = lsGet('asm-profile', null);
 const isStaff = () => !!profile && (profile.role==='delegue' || profile.role==='admin');
 const isAdmin = () => !!profile && profile.role==='admin';
+const myId = () => session && session.user ? session.user.id : null;
+// Un match avec un délégué désigné ne peut être saisi que par lui (ou un admin)
+const canManage = m => isAdmin() || (isStaff() && (!m.delegue_id || m.delegue_id === myId()));
+let delegues = null;
+async function loadDelegues(){ if (!delegues){ const { data } = await sb.rpc('list_delegues'); delegues = data || []; } return delegues; }
+function delegueOptions(cur, curNom){
+  const opts = [['', 'Personne (tous les délégués)']];
+  if (isAdmin()) (delegues||[]).forEach(d => opts.push([d.id, d.nom]));
+  else if (myId()) opts.push([myId(), 'Moi']);
+  if (cur && !opts.some(o => o[0] === cur)) opts.push([cur, curNom || 'Autre délégué']);
+  return opts.map(([v, l]) => `<option value="${esc(v)}"${v === (cur||'') ? ' selected' : ''}>${esc(l)}</option>`).join('');
+}
+const delegueNom = id => !id ? null : id === myId() ? (profile && profile.nom) || 'Moi' : ((delegues||[]).find(d => d.id === id) || {}).nom || null;
 
 async function loadProfile(){
   if (!sb) return;
@@ -150,6 +163,14 @@ async function flush(){
       if (op.kind==='match') res = await sb.from('matches').update({...op.fields, updated_at:new Date().toISOString()}).eq('id', op.match);
       else if (op.kind==='ev') res = await sb.from('events').upsert(op.row);
       else if (op.kind==='evdel') res = await sb.from('events').delete().eq('id', op.id);
+      else if (op.kind==='notify'){
+        const { data } = await sb.auth.getSession();
+        if (data.session){
+          try{
+            await fetch('api/notify', {method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer ' + data.session.access_token}, body: JSON.stringify({event_id: op.id})});
+          }catch(e){ break; } // réseau : on réessaiera
+        }
+      }
       if (res && res.error){
         if (isNetErr(res.error)) break;
         toast('Envoi refusé : ' + (res.error.message || 'erreur'));
@@ -179,7 +200,7 @@ async function route(){
     if (page==='' ) return await homeView();
     if (page==='match') return await matchView(arg);
     if (page==='gerer') return await consoleView(arg);
-    if (page==='nouveau') return newMatchView();
+    if (page==='nouveau') return await newMatchView();
     if (page==='stats') return await statsView();
     if (page==='connexion') return loginView();
     if (page==='compte') return accountView();
@@ -206,7 +227,7 @@ async function homeView(){
   if (cache) drawHome(cache.matches, cache.goals); else view.innerHTML = '<div class="loading">Chargement…</div>';
   const load = async () => {
     const [{ data: matches, error }, { data: g }] = await Promise.all([
-      sb.from('matches').select('id,kickoff,competition,equipe,opp_logo,club_side,home_name,away_name,half,period,running,started_at,acc,status').order('kickoff', {ascending:false}).limit(1000),
+      sb.from('matches').select('id,kickoff,competition,equipe,opp_logo,delegue_id,delegue_nom,club_side,home_name,away_name,half,period,running,started_at,acc,status').order('kickoff', {ascending:false}).limit(1000),
       sb.from('events').select('match_id,t').eq('k','goal')
     ]);
     if (error) { if (!cache) throw error; return; }
@@ -236,7 +257,7 @@ function drawHome(matches, goalRows){
     else badge = `<span class="badge">${esc(new Date(m.kickoff).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}))}</span>`;
     const sc = m.status==='prevu' ? 'vs' : `${goals(evs,'H')} – ${goals(evs,'A')}`;
     return `<a class="mcard" href="#/match/${esc(m.id)}">
-      <div class="meta"><span><b>${esc(teamLabel(m.equipe))}</b> · ${esc(fmtDate(m.kickoff, false))}${m.competition ? ' · ' + esc(m.competition) : ''}</span>${badge}</div>
+      <div class="meta"><span><b>${esc(teamLabel(m.equipe))}</b> · ${esc(fmtDate(m.kickoff, false))}${m.competition ? ' · ' + esc(m.competition) : ''}${isStaff() && m.delegue_nom ? ' · 👤 ' + esc(m.delegue_nom) : ''}</span>${badge}</div>
       <div class="row"><span class="tn${c==='H'?' club':''}">${logoImg(m,'H','lg')}${esc(teamName(m,'H'))}</span><span class="sc">${sc}</span><span class="tn r${c==='A'?' club':''}">${esc(teamName(m,'A'))}${logoImg(m,'A','lg')}</span></div></a>`;
   };
   const all = matches;
@@ -246,6 +267,8 @@ function drawHome(matches, goalRows){
   const done = matches.filter(m=>m.status==='termine');
   let html = `<div class="chipbar" role="group" aria-label="Équipe">${[0, ...TEAMS].map(n => `<button data-team="${n}" class="${homeTeam===n?'on':''}" aria-pressed="${homeTeam===n}">${n ? 'Seniors ' + teamLetter(n) : 'Toutes'}</button>`).join('')}</div>`;
   if (isStaff()) html += `<a class="fbtn club" href="#/nouveau" style="width:100%;margin-bottom:4px">+ Nouveau match</a>`;
+  const mine = myId() ? all.filter(m => m.delegue_id === myId() && m.status !== 'termine').sort((a,b)=>a.kickoff.localeCompare(b.kickoff)) : [];
+  if (mine.length) html += `<div class="sec">Mes matchs (délégué)</div>` + mine.map(card).join('');
   if (live.length) html += `<div class="sec">En direct</div>` + live.map(card).join('');
   const NEXT_MAX = 6;
   if (next.length) html += `<div class="sec">À venir</div>` + (showAllNext ? next : next.slice(0, NEXT_MAX)).map(card).join('')
@@ -293,14 +316,24 @@ function lineupsHTML(m){
 }
 async function matchView(id){
   view.innerHTML = '<div class="loading">Chargement…</div>';
+  if (isStaff()) await loadDelegues().catch(()=>{});
   let { m, evs } = await fetchMatch(id);
   if (!m){ view.innerHTML = '<div class="empty">Ce match n\'existe plus.</div>'; return; }
   const draw = () => {
     view.innerHTML = boardHTML(m, evs, false)
-      + `<div class="foot" style="margin-top:12px"><button class="fbtn" id="btnShareLive">Partager le lien</button>${isStaff() ? `<a class="fbtn primary" href="#/gerer/${esc(m.id)}">Gérer ce match</a>` : ''}</div>`
+      + `<div class="foot" style="margin-top:12px"><button class="fbtn" id="btnBell">🔔 Buts des ${esc(teamLabel(m.equipe))}</button><button class="fbtn" id="btnShareLive">Partager le lien</button>${canManage(m) ? `<a class="fbtn primary" href="#/gerer/${esc(m.id)}">Gérer ce match</a>` : ''}</div>`
+      + (isStaff() ? `<label class="field deleg"><span>Délégué du match</span><select id="delSel"${canManage(m) ? '' : ' disabled'}>${delegueOptions(m.delegue_id, m.delegue_nom)}</select>${!canManage(m) ? '<small>Seul le délégué désigné ou un admin peut modifier ce match.</small>' : ''}</label>` : '')
       + `<section class="log"><div class="loghead"><h2>Chronologie</h2></div><div id="events">${timelineHTML(m, evs, false)}</div></section>`
       + lineupsHTML(m);
     $('btnShareLive').onclick = () => shareLink(m);
+    $('btnBell').onclick = () => openBell(m.equipe || 1);
+    const ds = $('delSel');
+    if (ds) ds.onchange = async () => {
+      const id = ds.value || null;
+      const { error } = await sb.from('matches').update({delegue_id: id, delegue_nom: delegueNom(id)}).eq('id', m.id);
+      if (error){ toast(isNetErr(error) ? 'Pas de réseau' : 'Modification refusée'); ds.value = m.delegue_id || ''; return; }
+      m.delegue_id = id; m.delegue_nom = delegueNom(id); toast(id ? 'Délégué : ' + m.delegue_nom : 'Aucun délégué désigné'); draw();
+    };
     document.title = `${teamName(m,'H')} ${goals(evs,'H')}–${goals(evs,'A')} ${teamName(m,'A')} · AS Mésanger`;
   };
   draw();
@@ -328,8 +361,9 @@ async function shareLink(m){
 }
 
 // ---------- Nouveau match ----------
-function newMatchView(){
+async function newMatchView(){
   if (!isStaff()){ location.hash = session ? '#/compte' : '#/connexion'; return; }
+  if (isAdmin()) await loadDelegues().catch(()=>{});
   const d = new Date(); d.setMinutes(Math.ceil(d.getMinutes()/15)*15, 0, 0);
   const local = new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,16);
   let side = 'H', equipe = homeTeam || 1;
@@ -340,6 +374,7 @@ function newMatchView(){
     <div class="field"><span>Lieu</span><div class="seg" id="nfSide"><button type="button" data-s="H" class="on">Domicile</button><button type="button" data-s="A">Extérieur</button></div></div>
     <label class="field"><span>Date et heure du coup d'envoi</span><input id="nfDate" type="datetime-local" value="${local}" required></label>
     <label class="field"><span>Compétition</span><input id="nfComp" autocomplete="off" placeholder="Championnat, Coupe…" list="compList"><datalist id="compList"></datalist></label>
+    <label class="field"><span>Délégué du match</span><select id="nfDel">${delegueOptions(isAdmin() ? '' : myId())}</select><small>Si un délégué est choisi, lui seul (et les admins) pourra saisir le match.</small></label>
     <div id="nfMsg"></div>
     <div class="foot" style="margin-top:4px"><button class="fbtn primary" id="nfGo">Créer le match</button><a class="fbtn" href="#/">Annuler</a></div>
   </form>`;
@@ -359,7 +394,7 @@ function newMatchView(){
     $('nfGo').disabled = true;
     const row = {
       id: uuid(), kickoff: new Date($('nfDate').value).toISOString(), competition: $('nfComp').value.trim(),
-      equipe, club_side: side, home_name: side==='H' ? clubTeamName(equipe) : opp, away_name: side==='H' ? opp : clubTeamName(equipe), half: HALF
+      equipe, delegue_id: $('nfDel').value || null, delegue_nom: delegueNom($('nfDel').value || null), club_side: side, home_name: side==='H' ? clubTeamName(equipe) : opp, away_name: side==='H' ? opp : clubTeamName(equipe), half: HALF
     };
     const { error } = await sb.from('matches').insert(row);
     if (error){ $('nfGo').disabled = false; $('nfMsg').innerHTML = `<div class="msg err">${esc(isNetErr(error) ? 'Pas de réseau : il faut être connecté pour créer le match.' : error.message)}</div>`; return; }
@@ -380,6 +415,10 @@ async function consoleView(id){
     catch(e){ if (cached) S = cached; else throw e; }
   }
   if (!S){ view.innerHTML = '<div class="empty">Ce match n\'existe plus.</div>'; return; }
+  if (!canManage(S)){
+    view.innerHTML = `<div class="card"><h1>Match confié à un autre délégué</h1><p class="sub">${esc(S.delegue_nom || 'Un délégué')} s'occupe de ce match. Seul lui ou un admin peut le saisir.</p><a class="fbtn" href="#/match/${esc(id)}" style="width:100%">Voir le direct</a></div>`;
+    return;
+  }
   S.rosters = S.rosters || {H:[],A:[]};
   const saveLocal = () => lsSet(CK, S);
   const patch = fields => { Object.assign(S, fields); saveLocal(); queue({kind:'match', match:id, fields}); };
@@ -533,7 +572,9 @@ async function consoleView(id){
     e.id = uuid(); e.p = S.period || 1; e.created_at = new Date().toISOString();
     e.sort = sortFromLabel(e.min, e.sort);
     if (S.status==='prevu') patch({status:'direct', period: S.period || 1});
-    S.events.push(e); pushEv(e); render();
+    S.events.push(e); pushEv(e);
+    if (e.k==='goal') queue({kind:'notify', match:id, id:e.id});
+    render();
     toast(`${LABEL[e.k]} noté · ${e.min}`);
   }
   view.querySelectorAll('.act').forEach(b => b.onclick = () => {
@@ -862,6 +903,58 @@ async function adminView(){
     toast(error ? 'Erreur : ' + error.message : 'Accès mis à jour');
   });
 }
+
+// ---------- Notifications de buts ----------
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+function b64ToBytes(b64){ const p = '='.repeat((4 - b64.length % 4) % 4); const s = atob((b64 + p).replace(/-/g,'+').replace(/_/g,'/')); return Uint8Array.from(s, c => c.charCodeAt(0)); }
+async function saveFollow(teams){
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!teams.length){
+    if (sub){ const j = sub.toJSON(); await sb.rpc('push_subscribe', {p_endpoint:j.endpoint, p_p256dh:j.keys.p256dh, p_auth:j.keys.auth, p_equipes:[]}); await sub.unsubscribe(); }
+    lsSet('asm-follow', []); return true;
+  }
+  if (Notification.permission !== 'granted'){
+    const p = await Notification.requestPermission();
+    if (p !== 'granted') return false;
+  }
+  if (!sub) sub = await reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey: b64ToBytes(VAPID_PUBLIC)});
+  const j = sub.toJSON();
+  const { error } = await sb.rpc('push_subscribe', {p_endpoint:j.endpoint, p_p256dh:j.keys.p256dh, p_auth:j.keys.auth, p_equipes:teams});
+  if (error) throw error;
+  lsSet('asm-follow', teams); return true;
+}
+function openBell(preselect){
+  if (!pushSupported() || (isIOS && !isStandalone())){
+    openSheet(`<h3 id="shTitle">Notifications de buts</h3>
+      <p>${isIOS ? 'Sur iPhone, les notifications marchent seulement depuis l'appli installée : touche <b>Partager</b> puis <b>Sur l'écran d'accueil</b>, ouvre l'appli depuis l'icône, puis reviens sur cette cloche.' : 'Ce navigateur ne permet pas les notifications. Essaie avec Chrome, ou installe l'appli sur l'écran d'accueil.'}</p>
+      <button class="fbtn primary" id="bOk" style="width:100%">Compris</button>`);
+    $('bOk').onclick = closeSheet; return;
+  }
+  const cur = new Set(lsGet('asm-follow', []));
+  if (preselect && !cur.size) cur.add(preselect);
+  const denied = Notification.permission === 'denied';
+  openSheet(`<h3 id="shTitle">Notifications de buts</h3>
+    <p>Reçois une notification à chaque but des équipes choisies, même appli fermée.</p>
+    ${denied ? '<div class="msg err">Les notifications sont bloquées pour ce site. Autorise-les dans les réglages du téléphone (ou du navigateur), puis reviens ici.</div>' : ''}
+    <div class="follow">${TEAMS.map(n => `<label class="fl"><input type="checkbox" value="${n}"${cur.has(n)?' checked':''}><span>${teamLabel(n)}</span></label>`).join('')}</div>
+    <div class="foot" style="margin-top:12px"><button class="fbtn primary" id="bSave">Enregistrer</button><button class="fbtn" id="bNo">Annuler</button></div>`);
+  $('bNo').onclick = closeSheet;
+  $('bSave').onclick = async () => {
+    const teams = [...$('shBody').querySelectorAll('input:checked')].map(i => +i.value);
+    $('bSave').disabled = true;
+    try{
+      const ok = await saveFollow(teams);
+      closeSheet(); renderBell();
+      toast(!ok ? 'Notifications refusées' : teams.length ? 'Notifications activées' : 'Notifications désactivées');
+    }catch(e){ console.error(e); $('bSave').disabled = false; toast(navigator.onLine ? 'Impossible d'activer les notifications' : 'Pas de réseau'); }
+  };
+}
+function renderBell(){ const b = $('bell'); if (b) b.classList.toggle('on', lsGet('asm-follow', []).length > 0); }
+$('bell').onclick = () => openBell(homeTeam || 0);
+renderBell();
 
 // ---------- Démarrage ----------
 renderAcct();

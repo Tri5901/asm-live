@@ -1,0 +1,8 @@
+{
+  "name": "asm-live",
+  "private": true,
+  "description": "AS Mésanger – matchs en direct",
+  "dependencies": {
+    "web-push": "^3.6.7"
+  }
+}
