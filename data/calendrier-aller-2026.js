@@ -1,4 +1,5 @@
 // Calendriers phase aller 2026-2027 (source : Instagram @asmesanger, publication du 18/09/2026)
+// Le 25/01 des affiches B à E est un lundi : corrigé en dimanche 24/01 (comme la A).
 // [date, heure, 'D'omicile/'E'xtérieur, journée, adversaire]
 module.exports = {
   1: { comp: 'Régional 3', matches: [
@@ -50,11 +51,11 @@ module.exports = {
     ['2027-01-31','12:00','D',11,'FC Les Touches'],
   ]},
   5: { comp: 'District 5', matches: [
-    ['2026-10-04','12:30','E',3,'Riaillé UFCE Donneau'],
+    ['2026-10-04','12:30','E',3,'Riaillé UFCE Donneau 2'],
     ['2026-10-18','12:30','E',4,'Mouzeil Teillé Ligné 4'],
     ['2026-11-01','12:30','D',5,'FC Les Touches 2'],
     ['2026-11-08','12:30','E',6,'Réveil St Géréon 3'],
-    ['2026-11-15','12:30','D',7,'Les Coteaux de la Roche'],
+    ['2026-11-15','12:30','D',7,'Les Coteaux de la Roche 2'],
     ['2026-11-29','12:30','E',8,'FC Vair Herblanetz 3'],
     ['2026-12-06','12:00','D',9,'ES Joué-sur-Erdre 2'],
     ['2026-12-13','12:30','E',10,'FC Vallons Le Pin 3'],
