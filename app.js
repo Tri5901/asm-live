@@ -9,7 +9,7 @@ const sb = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KE
 const $ = id => document.getElementById(id);
 const view = $('view');
 const LABEL = {goal:'But', sub:'Remplacement', yellow:'Carton jaune', red:'Carton rouge'};
-const HALVES = [25, 30, 35, 40, 45];
+const HALF = 45; // durée d'une mi-temps : toujours 45 min, non modifiable
 
 function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 const lsGet = (k, d) => { try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } };
@@ -320,12 +320,11 @@ function newMatchView(){
   const local = new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,16);
   let side = 'H';
   view.innerHTML = `<form class="card" id="nf">
-    <h1>Nouveau match</h1><p class="sub">La durée des mi-temps est fixée ici et ne pourra plus être modifiée pendant le match.</p>
+    <h1>Nouveau match</h1><p class="sub">Deux mi-temps de 45 min.</p>
     <label class="field"><span>Adversaire</span><input id="nfOpp" required autocomplete="off" placeholder="Nom de l'équipe adverse"></label>
     <div class="field"><span>Lieu</span><div class="seg" id="nfSide"><button type="button" data-s="H" class="on">Domicile</button><button type="button" data-s="A">Extérieur</button></div></div>
     <label class="field"><span>Date et heure du coup d'envoi</span><input id="nfDate" type="datetime-local" value="${local}" required></label>
     <label class="field"><span>Compétition</span><input id="nfComp" autocomplete="off" placeholder="Championnat, Coupe…" list="compList"><datalist id="compList"></datalist></label>
-    <label class="field"><span>Durée d'une mi-temps</span><select id="nfHalf">${HALVES.map(h=>`<option value="${h}"${h===45?' selected':''}>${h} min</option>`).join('')}</select></label>
     <div id="nfMsg"></div>
     <div class="foot" style="margin-top:4px"><button class="fbtn primary" id="nfGo">Créer le match</button><a class="fbtn" href="#/">Annuler</a></div>
   </form>`;
@@ -342,7 +341,7 @@ function newMatchView(){
     $('nfGo').disabled = true;
     const row = {
       id: uuid(), kickoff: new Date($('nfDate').value).toISOString(), competition: $('nfComp').value.trim(),
-      club_side: side, home_name: side==='H' ? CLUB : opp, away_name: side==='H' ? opp : CLUB, half: +$('nfHalf').value
+      club_side: side, home_name: side==='H' ? CLUB : opp, away_name: side==='H' ? opp : CLUB, half: HALF
     };
     const { error } = await sb.from('matches').insert(row);
     if (error){ $('nfGo').disabled = false; $('nfMsg').innerHTML = `<div class="msg err">${esc(isNetErr(error) ? 'Pas de réseau : il faut être connecté pour créer le match.' : error.message)}</div>`; return; }
@@ -383,7 +382,6 @@ async function consoleView(id){
       </div>`).join('')}
     </section>
     <button class="fbtn" id="btnLineup" style="width:100%;margin-top:12px">Compositions des équipes</button>
-    <div class="settings"><span>Durée d'une mi-temps</span><b>${S.half} min</b></div>
     <section class="log">
       <div class="loghead"><h2>Chronologie</h2><button id="btnShift" style="color:var(--muted);font-size:14px;text-decoration:underline;padding:6px 0">Décaler les minutes</button></div>
       <p style="margin:0 0 6px;color:var(--muted);font-size:13px">Touche une action pour corriger sa minute. <span id="count"></span></p>
@@ -631,7 +629,7 @@ async function consoleView(id){
   $('btnInfo').onclick = () => {
     const c = clubSide(S), opp = teamName(S, oppSide(S));
     const k = new Date(S.kickoff); const local = new Date(k.getTime() - k.getTimezoneOffset()*60000).toISOString().slice(0,16);
-    openSheet(`<h3 id="shTitle">Infos du match</h3><p>La durée des mi-temps (${S.half} min) ne se modifie pas.</p>
+    openSheet(`<h3 id="shTitle">Infos du match</h3><p>Adversaire, date et compétition.</p>
       <label class="field"><span>Adversaire</span><input id="inOpp" value="${esc(opp)}"></label>
       <label class="field"><span>Date et heure</span><input id="inDate" type="datetime-local" value="${local}"></label>
       <label class="field"><span>Compétition</span><input id="inComp" value="${esc(S.competition||'')}"></label>

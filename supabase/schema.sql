@@ -42,7 +42,7 @@ create table if not exists public.matches (
   club_side text not null default 'H' check (club_side in ('H','A')),
   home_name text not null default '',
   away_name text not null default '',
-  half int not null default 45,
+  half int not null default 45 check (half = 45),
   period int not null default 0,
   running boolean not null default false,
   started_at bigint not null default 0,
