@@ -929,7 +929,7 @@ async function saveFollow(teams){
 function openBell(preselect){
   if (!pushSupported() || (isIOS && !isStandalone())){
     openSheet(`<h3 id="shTitle">Notifications de buts</h3>
-      <p>${isIOS ? 'Sur iPhone, les notifications marchent seulement depuis l'appli installée : touche <b>Partager</b> puis <b>Sur l'écran d'accueil</b>, ouvre l'appli depuis l'icône, puis reviens sur cette cloche.' : 'Ce navigateur ne permet pas les notifications. Essaie avec Chrome, ou installe l'appli sur l'écran d'accueil.'}</p>
+      <p>${isIOS ? 'Sur iPhone, les notifications marchent seulement depuis l’appli installée : touche <b>Partager</b> puis <b>Sur l’écran d’accueil</b>, ouvre l’appli depuis l’icône, puis reviens sur cette cloche.' : 'Ce navigateur ne permet pas les notifications. Essaie avec Chrome, ou installe l’appli sur l’écran d’accueil.'}</p>
       <button class="fbtn primary" id="bOk" style="width:100%">Compris</button>`);
     $('bOk').onclick = closeSheet; return;
   }
@@ -949,7 +949,7 @@ function openBell(preselect){
       const ok = await saveFollow(teams);
       closeSheet(); renderBell();
       toast(!ok ? 'Notifications refusées' : teams.length ? 'Notifications activées' : 'Notifications désactivées');
-    }catch(e){ console.error(e); $('bSave').disabled = false; toast(navigator.onLine ? 'Impossible d'activer les notifications' : 'Pas de réseau'); }
+    }catch(e){ console.error(e); $('bSave').disabled = false; toast(navigator.onLine ? 'Impossible d’activer les notifications' : 'Pas de réseau'); }
   };
 }
 function renderBell(){ const b = $('bell'); if (b) b.classList.toggle('on', lsGet('asm-follow', []).length > 0); }
