@@ -1,6 +1,6 @@
 // Service worker AS Mésanger – Feuille de match
 // Incrémente VERSION à chaque mise en ligne pour que les téléphones récupèrent la nouvelle version.
-const VERSION = 'asm-v12';
+const VERSION = 'asm-v13';
 const APP_SHELL = [
   './',
   './index.html',
@@ -43,12 +43,25 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Base de données (Supabase) : jamais en cache, toujours en direct
-  // Polices Google, bibliothèque Supabase et fichiers de l'appli : cache d'abord, mis à jour en arrière-plan
+  // Base de données (Supabase) et fonction d'envoi : jamais en cache, toujours en direct
   const sameOrigin = url.origin === self.location.origin;
-  const fonts = url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com'
+  if (sameOrigin && url.pathname.startsWith('/api/')) return;
+
+  // Fichiers de l'appli : réseau d'abord (toujours la dernière version),
+  // copie locale si pas de réseau ou réseau trop lent (bord du terrain)
+  if (sameOrigin) {
+    event.respondWith(caches.open(VERSION).then(cache => {
+      const net = fetch(req).then(res => { if (res && res.ok) cache.put(req, res.clone()); return res; });
+      const slow = new Promise(r => setTimeout(r, 4000)).then(() => cache.match(req).then(hit => hit || net));
+      return Promise.race([net, slow]).catch(() => cache.match(req).then(hit => hit || Response.error()));
+    }));
+    return;
+  }
+
+  // Polices Google et bibliothèque Supabase : cache d'abord, mis à jour en arrière-plan
+  const libs = url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com'
     || (url.hostname === 'cdn.jsdelivr.net' && url.pathname.includes('@supabase'));
-  if (sameOrigin || fonts) {
+  if (libs) {
     event.respondWith(
       caches.open(VERSION).then(cache =>
         cache.match(req).then(hit => {
