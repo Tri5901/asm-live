@@ -160,7 +160,7 @@ async function flush(){
     while (outbox.length){
       const op = outbox[0];
       let res;
-      if (op.kind==='match') res = await sb.from('matches').update({...op.fields, updated_at:new Date().toISOString()}).eq('id', op.match);
+      if (op.kind==='match') res = await sb.from('matches').update({...op.fields, updated_at:new Date().toISOString()}).eq('id', op.match).select('id');
       else if (op.kind==='ev') res = await sb.from('events').upsert(op.row);
       else if (op.kind==='evdel') res = await sb.from('events').delete().eq('id', op.id);
       else if (op.kind==='notify'){
@@ -173,7 +173,10 @@ async function flush(){
       }
       if (res && res.error){
         if (isNetErr(res.error)) break;
-        toast('Envoi refusé : ' + (res.error.message || 'erreur'));
+        toast(/row-level security|42501/i.test(res.error.message + res.error.code) ? 'Refusé : seuls les délégués et admins peuvent modifier ce match' : 'Envoi refusé : ' + (res.error.message || 'erreur'));
+      } else if (op.kind==='match' && res && Array.isArray(res.data) && !res.data.length){
+        // la base a ignoré la modification : pas les droits sur ce match (ou match supprimé)
+        toast('Refusé : seuls les délégués et admins peuvent modifier ce match');
       }
       outbox.shift(); saveOutbox();
     }
@@ -338,8 +341,8 @@ async function matchView(id){
     const ds = $('delSel');
     if (ds) ds.onchange = async () => {
       const id = ds.value || null;
-      const { error } = await sb.from('matches').update({delegue_id: id, delegue_nom: delegueNom(id)}).eq('id', m.id);
-      if (error){ toast(isNetErr(error) ? 'Pas de réseau' : 'Modification refusée'); ds.value = m.delegue_id || ''; return; }
+      const { data: upd, error } = await sb.from('matches').update({delegue_id: id, delegue_nom: delegueNom(id)}).eq('id', m.id).select('id');
+      if (error || !upd || !upd.length){ toast(isNetErr(error) ? 'Pas de réseau' : 'Modification refusée'); ds.value = m.delegue_id || ''; return; }
       m.delegue_id = id; m.delegue_nom = delegueNom(id); toast(id ? 'Délégué : ' + m.delegue_nom : 'Aucun délégué désigné'); draw();
     };
     document.title = `${teamName(m,'H')} ${goals(evs,'H')}–${goals(evs,'A')} ${teamName(m,'A')} · AS Mésanger`;
