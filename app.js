@@ -193,7 +193,7 @@ async function route(){
   const [page, arg] = parts;
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on',
     (a.dataset.tab==='stats' && page==='stats') || (a.dataset.tab==='matchs' && (page==='' || page==='match'))));
-  $('tabs').hidden = page==='gerer';
+  $('tabs').hidden = page==='gerer' || page==='match';
   window.scrollTo(0,0);
   if (!sb){ view.innerHTML = `<div class="card"><h1>Configuration à terminer</h1><p class="sub">Le site n'est pas encore relié à sa base de données (fichier config.js).</p></div>`; return; }
   try{
@@ -320,7 +320,7 @@ async function matchView(id){
   let { m, evs } = await fetchMatch(id);
   if (!m){ view.innerHTML = '<div class="empty">Ce match n\'existe plus.</div>'; return; }
   const draw = () => {
-    view.innerHTML = boardHTML(m, evs, false)
+    view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false)
       + `<div class="foot" style="margin-top:12px"><button class="fbtn" id="btnBell">🔔 Buts des ${esc(teamLabel(m.equipe))}</button><button class="fbtn" id="btnShareLive">Partager le lien</button>${canManage(m) ? `<a class="fbtn primary" href="#/gerer/${esc(m.id)}">Gérer ce match</a>` : ''}</div>`
       + (isStaff() ? `<label class="field deleg"><span>Délégué du match</span><select id="delSel"${canManage(m) ? '' : ' disabled'}>${delegueOptions(m.delegue_id, m.delegue_nom)}</select>${!canManage(m) ? '<small>Seul le délégué désigné ou un admin peut modifier ce match.</small>' : ''}</label>` : '')
       + `<section class="log"><div class="loghead"><h2>Chronologie</h2></div><div id="events">${timelineHTML(m, evs, false)}</div></section>`
