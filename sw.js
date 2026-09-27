@@ -1,6 +1,6 @@
 // Service worker AS Mésanger – Feuille de match
 // Incrémente VERSION à chaque mise en ligne pour que les téléphones récupèrent la nouvelle version.
-const VERSION = 'asm-v14';
+const VERSION = 'asm-v15';
 const APP_SHELL = [
   './',
   './index.html',
@@ -11,7 +11,9 @@ const APP_SHELL = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/maskable-512.png',
-  './icons/apple-touch-icon.png'
+  './icons/apple-touch-icon.png',
+  './icons/notif-192.png',
+  './icons/badge-96.png'
 ];
 
 self.addEventListener('install', event => {
@@ -81,7 +83,7 @@ self.addEventListener('push', event => {
   let d = {};
   try { d = event.data ? event.data.json() : {}; } catch (e) { d = { body: event.data && event.data.text() }; }
   event.waitUntil(self.registration.showNotification(d.title || 'AS Mésanger', {
-    body: d.body || '', icon: 'icons/icon-192.png', badge: 'icons/icon-192.png',
+    body: d.body || '', icon: 'icons/notif-192.png', badge: 'icons/badge-96.png',
     tag: d.tag, data: { url: d.url || './' }, vibrate: [200, 100, 200]
   }));
 });
