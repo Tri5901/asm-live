@@ -1,5 +1,5 @@
 // Mise à jour des classements, utilisé par la tâche programmée « Classements ASM ».
-//   node scripts/maj-classements.js check          → affiche A_FAIRE (demande en attente, ou lundi/mardi pas encore fait cette heure-ci) ou RIEN
+//   node scripts/maj-classements.js check          → affiche A_FAIRE (demande en attente, ou lundi pas encore fait cette heure-ci) ou RIEN
 //   node scripts/maj-classements.js envoyer <json>  → enregistre les classements relevés (fichier JSON)
 // Format du JSON : { "1": { "lignes": [[rang, nom, pts, J, G, N, P, bp, bc, diff, codeClub], ...] }, "2": {...}, ... }
 // La clé secrète est lue dans C:\Users\Utilisateur\.asm-live\classements.key (jamais dans le dépôt).
@@ -17,11 +17,11 @@ async function check() {
   const fait = m.fait_at ? new Date(m.fait_at) : new Date(0);
   const demande = m.demande_at ? new Date(m.demande_at) : null;
   const now = new Date();
-  // Lundi et mardi : un relevé par heure (les résultats du week-end arrivent au fil de l'eau).
+  // Lundi : un relevé par heure (les résultats du week-end arrivent au fil de l'eau). Sinon, seulement sur demande.
   const debutHeure = new Date(now); debutHeure.setMinutes(0, 0, 0);
-  const lunMar = (now.getDay() === 1 || now.getDay() === 2) && fait < debutHeure;
+  const lundi = now.getDay() === 1 && fait < debutHeure;
   if (demande && demande > fait) console.log('A_FAIRE demande de ' + (m.demande_par || '?') + ' le ' + demande.toLocaleString('fr-FR'));
-  else if (lunMar) console.log('A_FAIRE mise à jour horaire du lundi/mardi');
+  else if (lundi) console.log('A_FAIRE mise à jour horaire du lundi');
   else console.log('RIEN dernière mise à jour ' + fait.toLocaleString('fr-FR'));
 }
 
