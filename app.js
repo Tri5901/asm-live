@@ -918,8 +918,8 @@ async function classementsView(){
     if (!isAdmin()) return '';
     const enAttente = maj && maj.demande_at && (!maj.fait_at || new Date(maj.demande_at) > new Date(maj.fait_at));
     return `<div class="majbox">${enAttente
-      ? `<b>Mise à jour demandée</b> par ${esc(maj.demande_par || '?')} à ${esc(hhmm(maj.demande_at))}. Elle se fait dans l’heure qui suit, si le PC du club est allumé (Claude ouvert).`
-      : 'Les classements se mettent à jour tout seuls chaque lundi matin.'}
+      ? `<b>Mise à jour demandée</b> par ${esc(maj.demande_par || '?')} à ${esc(hhmm(maj.demande_at))}. Elle se fait dans l’heure qui suit, dès que l’ordinateur de Tristan est allumé avec Claude ouvert.`
+      : 'Les classements se mettent à jour tout seuls toutes les heures le lundi et le mardi (quand l’ordinateur de Tristan est allumé avec Claude ouvert).'}
       <button class="fbtn" id="majBtn" style="width:100%;margin-top:10px"${enAttente ? ' disabled' : ''}>${enAttente ? 'Mise à jour en attente…' : '↻ Mettre à jour les classements'}</button></div>`;
   };
   const bind = () => {
