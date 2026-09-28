@@ -886,12 +886,13 @@ async function readSheetPhoto(file, stat, onFound){
 const CLUB_FFF = '516995';
 let clsTeam = 0;
 async function classementsView(){
-  let rows = lsGet('asm-cls', null);
+  let rows = lsGet('asm-cls', null), maj = null;
   if (!rows) view.innerHTML = '<div class="loading">Chargement…</div>';
   try{
     const { data, error } = await sb.from('classements').select('*').order('equipe');
     if (error) throw error;
     rows = data; lsSet('asm-cls', data);
+    if (isAdmin()){ const r2 = await sb.from('classements_maj').select('*').maybeSingle(); maj = r2.data; }
   }catch(e){ if (!rows) throw e; }
   const byTeam = {}; (rows || []).forEach(r => { byTeam[r.equipe] = r; });
   const rankOf = n => { const r = byTeam[n]; const l = r && r.lignes.find(x => x[10] === CLUB_FFF); return l ? l[0] : null; };
@@ -909,10 +910,29 @@ async function classementsView(){
           <td class="tm"><div class="tmi">${l[10] ? `<img src="https://cdn-transverse.azureedge.net/phlogos/BC${esc(l[10])}.jpg" alt="" loading="lazy" onerror="this.remove()">` : ''}<span>${esc(l[1])}</span></div></td>
           <td class="pts">${l[2]}</td><td>${l[3]}</td><td>${l[4]}</td><td>${l[5]}</td><td>${l[6]}</td><td>${l[9] > 0 ? '+' + l[9] : l[9]}</td></tr>`).join('')}</tbody>
       </table></div>
-      <p class="note">Mis à jour le ${esc(d)}, d’après le site de la FFF (classement sous réserve de procédures en cours). ${r.source ? `<a href="${esc(r.source)}" target="_blank" rel="noopener">Voir le classement officiel ↗</a>` : ''}</p>`;
+      <p class="note">Mis à jour le ${esc(d)}, d’après le site de la FFF (classement sous réserve de procédures en cours). ${r.source ? `<a href="${esc(r.source)}" target="_blank" rel="noopener">Voir le classement officiel ↗</a>` : ''}</p>` + majHTML();
     bind();
   };
-  const bind = () => view.querySelectorAll('[data-cls]').forEach(b => b.onclick = () => { clsTeam = +b.dataset.cls; draw(); });
+  // Bouton admin : la mise à jour est faite par la tâche programmée du PC du club (la FFF bloque les accès automatiques)
+  const majHTML = () => {
+    if (!isAdmin()) return '';
+    const enAttente = maj && maj.demande_at && (!maj.fait_at || new Date(maj.demande_at) > new Date(maj.fait_at));
+    return `<div class="majbox">${enAttente
+      ? `<b>Mise à jour demandée</b> par ${esc(maj.demande_par || '?')} à ${esc(hhmm(maj.demande_at))}. Elle se fait dans l’heure qui suit, si le PC du club est allumé (Claude ouvert).`
+      : 'Les classements se mettent à jour tout seuls chaque lundi matin.'}
+      <button class="fbtn" id="majBtn" style="width:100%;margin-top:10px"${enAttente ? ' disabled' : ''}>${enAttente ? 'Mise à jour en attente…' : '↻ Mettre à jour les classements'}</button></div>`;
+  };
+  const bind = () => {
+    view.querySelectorAll('[data-cls]').forEach(b => b.onclick = () => { clsTeam = +b.dataset.cls; draw(); });
+    const mb = $('majBtn');
+    if (mb) mb.onclick = async () => {
+      mb.disabled = true;
+      const { error } = await sb.rpc('demander_maj_classements');
+      if (error){ mb.disabled = false; toast(isNetErr(error) ? 'Pas de réseau' : 'Demande refusée'); return; }
+      const r2 = await sb.from('classements_maj').select('*').maybeSingle(); maj = r2.data;
+      toast('Demande envoyée'); draw();
+    };
+  };
   draw();
 }
 
