@@ -207,7 +207,7 @@ async function route(){
   const parts = (location.hash.replace(/^#\/?/, '') || '').split('/');
   const [page, arg] = parts;
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on',
-    (a.dataset.tab==='stats' && page==='stats') || (a.dataset.tab==='matchs' && (page==='' || page==='match'))));
+    a.dataset.tab === (page === '' || page === 'match' ? 'matchs' : page)));
   $('tabs').hidden = page==='gerer' || page==='match';
   $('fab').hidden = !(isStaff() && page==='');
   window.scrollTo(0,0);
@@ -218,6 +218,7 @@ async function route(){
     if (page==='gerer') return await consoleView(arg, parts[2]==='compo');
     if (page==='nouveau') return await newMatchView();
     if (page==='stats') return await statsView();
+    if (page==='classements') return await classementsView();
     if (page==='connexion') return loginView();
     if (page==='compte') return accountView();
     if (page==='admin') return await adminView();
@@ -878,6 +879,41 @@ async function readSheetPhoto(file, stat, onFound){
     console.error(e);
     stat.textContent = 'La lecture a échoué. Tu peux taper les joueurs à la main.';
   }
+}
+
+// ---------- Classements (recopiés depuis la FFF) ----------
+// Ligne : [rang, équipe, pts, joués, gagnés, nuls, perdus, buts pour, buts contre, diff, code club FFF]
+const CLUB_FFF = '516995';
+let clsTeam = 0;
+async function classementsView(){
+  let rows = lsGet('asm-cls', null);
+  if (!rows) view.innerHTML = '<div class="loading">Chargement…</div>';
+  try{
+    const { data, error } = await sb.from('classements').select('*').order('equipe');
+    if (error) throw error;
+    rows = data; lsSet('asm-cls', data);
+  }catch(e){ if (!rows) throw e; }
+  const byTeam = {}; (rows || []).forEach(r => { byTeam[r.equipe] = r; });
+  const rankOf = n => { const r = byTeam[n]; const l = r && r.lignes.find(x => x[10] === CLUB_FFF); return l ? l[0] : null; };
+  const draw = () => {
+    const cur = clsTeam || homeTeam || 1, r = byTeam[cur];
+    const chips = `<div class="chipbar" role="group" aria-label="Équipe">${TEAMS.map(n => { const k = rankOf(n); return `<button data-cls="${n}" class="${n===cur?'on':''}" aria-pressed="${n===cur}">Seniors ${teamLetter(n)}${k ? ` · ${k}${k===1?'er':'e'}` : ''}</button>`; }).join('')}</div>`;
+    if (!r){ view.innerHTML = chips + '<div class="empty">Classement pas encore disponible pour cette équipe.</div>'; bind(); return; }
+    const d = new Date(r.updated_at).toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'});
+    view.innerHTML = chips + `
+      <div class="clshead"><h2>${esc(teamLabel(cur))}</h2><span>${esc(r.competition)}</span></div>
+      <div class="tblwrap"><table class="cls">
+        <thead><tr><th>#</th><th>Équipe</th><th>Pts</th><th>J</th><th>G</th><th>N</th><th>P</th><th>Diff</th></tr></thead>
+        <tbody>${r.lignes.map(l => `<tr class="${l[10]===CLUB_FFF ? 'me' : ''}">
+          <td class="rk">${l[0]}</td>
+          <td class="tm"><div class="tmi">${l[10] ? `<img src="https://cdn-transverse.azureedge.net/phlogos/BC${esc(l[10])}.jpg" alt="" loading="lazy" onerror="this.remove()">` : ''}<span>${esc(l[1])}</span></div></td>
+          <td class="pts">${l[2]}</td><td>${l[3]}</td><td>${l[4]}</td><td>${l[5]}</td><td>${l[6]}</td><td>${l[9] > 0 ? '+' + l[9] : l[9]}</td></tr>`).join('')}</tbody>
+      </table></div>
+      <p class="note">Mis à jour le ${esc(d)}, d’après le site de la FFF (classement sous réserve de procédures en cours). ${r.source ? `<a href="${esc(r.source)}" target="_blank" rel="noopener">Voir le classement officiel ↗</a>` : ''}</p>`;
+    bind();
+  };
+  const bind = () => view.querySelectorAll('[data-cls]').forEach(b => b.onclick = () => { clsTeam = +b.dataset.cls; draw(); });
+  draw();
 }
 
 // ---------- Stats joueurs ----------

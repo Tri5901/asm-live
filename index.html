@@ -308,6 +308,22 @@ textarea{width:100%;min-height:220px;font:inherit;font-size:15px;color:var(--ink
 .evteam{color:var(--muted);font-weight:500;font-size:14px}
 .evby{font-size:12px;color:var(--muted);margin-top:3px;font-style:italic}
 .own{background:none!important;padding:0!important;border-radius:50%!important}
+.clshead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:4px 2px 8px}
+.clshead h2{margin:0;font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:24px}
+.clshead span{color:var(--muted);font-size:14px;text-align:right}
+table.cls{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+table.cls th{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:13px;color:var(--muted);padding:9px 4px;text-align:center;border-bottom:1px solid var(--line)}
+table.cls td{padding:8px 4px;text-align:center;border-bottom:1px solid var(--line)}
+table.cls tr:last-child td{border-bottom:0}
+table.cls th:nth-child(2),table.cls td.tm{text-align:left}
+table.cls td.rk{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:16px;width:28px;color:var(--muted)}
+table.cls td.tm .tmi{display:flex;align-items:center;gap:8px;min-width:0}
+table.cls td.tm{font-family:"Barlow Condensed",sans-serif;font-weight:600;font-size:14px;line-height:1.1}
+table.cls td.tm .tmi img{width:24px;height:24px;object-fit:contain;border-radius:5px;background:#fff;padding:1px;flex:none}
+table.cls td.pts{font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:17px}
+table.cls tr.me td{background:color-mix(in srgb, var(--club) 22%, transparent)}
+table.cls tr.me td.rk,table.cls tr.me td.tm{color:var(--ink);font-weight:800}
+.note a{color:inherit}
 </style>
 </head>
 <body>
@@ -319,7 +335,8 @@ textarea{width:100%;min-height:220px;font:inherit;font-size:15px;color:var(--ink
 <div class="wrap">
   <nav class="tabs" id="tabs" aria-label="Sections">
     <a href="#/" data-tab="matchs">Matchs</a>
-    <a href="#/stats" data-tab="stats">Stats joueurs</a>
+    <a href="#/classements" data-tab="classements">Classements</a>
+    <a href="#/stats" data-tab="stats">Stats</a>
   </nav>
   <main id="view"><div class="loading">Chargement…</div></main>
 </div>
