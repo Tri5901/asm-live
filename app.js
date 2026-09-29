@@ -131,7 +131,7 @@ function delegueOptions(cur, curNom){
 let people = null;
 async function loadPeople(){
   if (!isAdmin()) return {};
-  if (!people){ const { data } = await sb.from('profiles').select('id,nom,email'); people = {}; (data||[]).forEach(p => { people[p.id] = p.nom || p.email; }); }
+  if (!people){ const { data } = await sb.from('profiles').select('id,nom,email,role'); people = {}; (data||[]).forEach(p => { people[p.id] = (p.nom || p.email || 'Sans nom') + (p.role === 'supprime' ? ' (compte supprimé)' : ''); }); }
   return people;
 }
 const personName = id => id ? ((people||{})[id] || 'compte supprimé') : 'import du calendrier';
@@ -1065,8 +1065,17 @@ function accountView(){
       ${canCreate() ? '<a class="fbtn club" href="#/nouveau">+ Nouveau match</a>' : ''}
       ${isAdmin() ? '<a class="fbtn" href="#/admin">Gérer les accès</a>' : ''}
     </div>
-    <div class="foot" style="margin-top:10px"><button class="fbtn danger" id="logout">Se déconnecter</button></div>
+    <div class="foot" style="margin-top:10px"><button class="fbtn" id="logout">Se déconnecter</button></div>
+    <button class="link danger-link" id="delMe" style="width:100%;margin-top:14px">Supprimer mon compte</button>
   </div>`;
+  $('delMe').onclick = () => askConfirm('Supprimer ton compte ?',
+    'Tu ne pourras plus te connecter. Les matchs et actions que tu as saisis restent dans l’historique, avec ton nom. Cette suppression est définitive.',
+    'Supprimer mon compte', async () => {
+      const { error } = await sb.rpc('supprimer_compte', { p_id: myId() });
+      if (error){ toast(/dernier admin/.test(error.message) ? 'Impossible : tu es le dernier admin du club' : isNetErr(error) ? 'Pas de réseau' : 'Suppression refusée'); return; }
+      try{ await sb.auth.signOut(); }catch(e){}
+      session = null; profile = null; lsSet('asm-profile', null); renderAcct(); location.hash = '#/'; toast('Compte supprimé');
+    });
   $('logout').onclick = async () => {
     if (outbox.length && !confirm('Des actions ne sont pas encore envoyées. Se déconnecter quand même ?')) return;
     await sb.auth.signOut(); session = null; profile = null; lsSet('asm-profile', null); renderAcct(); location.hash = '#/';
@@ -1075,8 +1084,10 @@ function accountView(){
 async function adminView(){
   if (!isAdmin()){ location.hash = '#/compte'; return; }
   view.innerHTML = '<div class="loading">Chargement…</div>';
-  const { data, error } = await sb.from('profiles').select('*').order('created_at');
+  let { data, error } = await sb.from('profiles').select('*').order('created_at');
   if (error) throw error;
+  const supprimes = data.filter(p => p.role === 'supprime').length;
+  data = data.filter(p => p.role !== 'supprime');
   const pending = data.filter(p=>p.role==='pending').length;
   const row = p => {
     const me = p.id === session.user.id, eqs = p.equipes || [];
@@ -1087,7 +1098,7 @@ async function adminView(){
         <option value="joueur"${p.role==='joueur'?' selected':''}>Joueur</option>
         <option value="delegue"${p.role==='delegue'?' selected':''}>Responsable</option>
         <option value="admin"${p.role==='admin'?' selected':''}>Admin</option>
-      </select></div>
+      </select>${me ? '' : `<button class="udel" type="button" aria-label="Supprimer le compte de ${esc(p.nom||p.email)}" title="Supprimer ce compte">🗑</button>`}</div>
       ${p.role==='admin'
         ? '<div class="uteams"><span class="uhint">Admin : toutes les équipes</span></div>'
         : p.role==='joueur'
@@ -1098,6 +1109,7 @@ async function adminView(){
   view.innerHTML = `<div class="card"><h1>Accès</h1>
     <p class="sub">Chaque personne crée son compte depuis « Connexion », puis tu lui donnes l'accès ici. Un <b>responsable</b> gère uniquement les matchs des équipes cochées (A à E). Un <b>admin</b> gère tout.${pending ? ` <b>${pending} en attente.</b>` : ''}</p>
     ${data.map(row).join('')}
+    ${supprimes ? `<p class="note">${supprimes} compte${supprimes>1?'s':''} supprimé${supprimes>1?'s':''} : ${supprimes>1?'leurs noms restent':'son nom reste'} dans l’historique des matchs.</p>` : ''}
     <div class="foot"><a class="fbtn" href="#/compte">Retour</a></div></div>`;
   const save = async (id, fields) => {
     const { data: upd, error } = await sb.from('profiles').update(fields).eq('id', id).select('id');
@@ -1108,6 +1120,14 @@ async function adminView(){
     const id = r.dataset.id, p = data.find(x => x.id === id);
     const sel = r.querySelector('.urole');
     sel.onchange = async () => { if (await save(id, {role: sel.value})){ adminView(); } };
+    const del = r.querySelector('.udel');
+    if (del) del.onclick = () => askConfirm('Supprimer le compte de ' + (p.nom || p.email) + ' ?',
+      'Cette personne ne pourra plus se connecter. Les matchs et actions qu’elle a saisis restent dans l’historique, avec son nom. Cette suppression est définitive.',
+      'Supprimer le compte', async () => {
+        const { error } = await sb.rpc('supprimer_compte', { p_id: id });
+        if (error){ toast(/dernier admin/.test(error.message) ? 'Impossible : c’est le dernier admin' : 'Suppression refusée'); return; }
+        people = null; toast('Compte supprimé'); adminView();
+      });
     r.querySelectorAll('.uteams button').forEach(b => b.onclick = async () => {
       const n = +b.dataset.e, cur = new Set(p.role === 'delegue' ? (p.equipes || []) : []);
       cur.has(n) ? cur.delete(n) : cur.add(n);
