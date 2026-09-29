@@ -1,0 +1,948 @@
+{
+ "_source": "epreuves.fff.fr, pages « Le match » de la J2 (20/09/2026), relevées le 29/09/2026",
+ "matches": [
+  {
+   "equipe": 1,
+   "competition": "Régional 3 · J2",
+   "kickoff": "2026-09-20T15:00:00+02:00",
+   "club_side": "A",
+   "home_name": "US Thouaré",
+   "away_name": "AS Mésanger",
+   "opp_code": 502138,
+   "score": [
+    1,
+    3
+   ],
+   "fff": "/competition/match/56166661-u-s-thouareenne-a-s-de-mesanger",
+   "events": [
+    {
+     "min": 25,
+     "kind": "avertissement",
+     "t": "H",
+     "who": "KEVIN P."
+    },
+    {
+     "min": 30,
+     "kind": "changement",
+     "t": "A",
+     "in": "SIMON FOUGERE",
+     "out": "ASLAN JOSEPH-BONIFACE"
+    },
+    {
+     "min": 32,
+     "kind": "changement",
+     "t": "A",
+     "in": "LILIAN LECLAIR",
+     "out": "VIXENTE LACROIX"
+    },
+    {
+     "min": 35,
+     "kind": "but",
+     "t": "A",
+     "who": "MAEL CARETTE"
+    },
+    {
+     "min": 46,
+     "kind": "changement",
+     "t": "H",
+     "in": "DORIAN L.",
+     "out": "KEVIN P."
+    },
+    {
+     "min": 46,
+     "kind": "changement",
+     "t": "H",
+     "in": "BRANDON J.",
+     "out": "CHEIK A."
+    },
+    {
+     "min": 57,
+     "kind": "changement",
+     "t": "A",
+     "in": "ENZO CORABOEUF",
+     "out": "ROMAIN BENARD"
+    },
+    {
+     "min": 60,
+     "kind": "but",
+     "t": "A",
+     "who": "SIMON FOUGERE"
+    },
+    {
+     "min": 60,
+     "kind": "changement",
+     "t": "H",
+     "in": "VICTOR B.",
+     "out": "ROMAIN M."
+    },
+    {
+     "min": 64,
+     "kind": "but",
+     "t": "A",
+     "who": "ENZO CORABOEUF"
+    },
+    {
+     "min": 72,
+     "kind": "avertissement",
+     "t": "H",
+     "who": "MAXENCE A."
+    },
+    {
+     "min": 83,
+     "kind": "avertissement",
+     "t": "A",
+     "who": "ESTÉBAN DOLTAIRE"
+    },
+    {
+     "min": 87,
+     "kind": "but",
+     "t": "H",
+     "who": "BRANDON J."
+    }
+   ],
+   "rosters": {
+    "H": [
+     {
+      "n": "1",
+      "name": "YORANN L.",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "KEVIN P.",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "GAEL N.",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "CORENTIN P.",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "MAXENCE A.",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "ROMAIN M.",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "ROMAIN A.",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "THEO L.",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "LUCAS L.",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "ARTHUR M.",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "CHEIK A.",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "VICTOR B.",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "DORIAN L.",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "BRANDON J.",
+      "sub": true
+     }
+    ],
+    "A": [
+     {
+      "n": "1",
+      "name": "ANTOINE HIVERT",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "JULES NELET",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "ESTÉBAN DOLTAIRE",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "PERIG C.",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "SIMON GRIMAULT",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "ALEXIS H.",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "MAEL CARETTE",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "VIXENTE LACROIX",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "ROMAIN BENARD",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "VICTOR HUARD",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "ASLAN JOSEPH-BONIFACE",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "SIMON FOUGERE",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "ENZO CORABOEUF",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "LILIAN LECLAIR",
+      "sub": true
+     }
+    ]
+   }
+  },
+  {
+   "equipe": 2,
+   "competition": "District 2 · J2",
+   "kickoff": "2026-09-20T15:00:00+02:00",
+   "club_side": "H",
+   "home_name": "AS Mésanger B",
+   "away_name": "FC Vay Marsac",
+   "opp_code": 564495,
+   "score": [
+    2,
+    3
+   ],
+   "fff": "/competition/match/56427574-a-s-de-mesanger-football-club-vay-marsac",
+   "events": [
+    {
+     "min": 14,
+     "kind": "but",
+     "t": "H",
+     "who": "YAËL PANNETIER"
+    },
+    {
+     "min": 27,
+     "kind": "changement",
+     "t": "H",
+     "in": "ALEXANDRE HOUGARD",
+     "out": "JOCELYN MOREAU"
+    },
+    {
+     "min": 27,
+     "kind": "changement",
+     "t": "H",
+     "in": "FRANCK HAURAIX",
+     "out": "HUGO NELET"
+    },
+    {
+     "min": 32,
+     "kind": "changement",
+     "t": "A",
+     "in": "FRANCOIS XAVIER D.",
+     "out": "TOM B."
+    },
+    {
+     "min": 35,
+     "kind": "but",
+     "t": "A",
+     "who": "AYMERIC L."
+    },
+    {
+     "min": 37,
+     "kind": "changement",
+     "t": "H",
+     "in": "DJYLANE B.",
+     "out": "YAËL PANNETIER"
+    },
+    {
+     "min": 48,
+     "kind": "but",
+     "t": "A",
+     "who": "FABIEN M."
+    },
+    {
+     "min": 64,
+     "kind": "changement",
+     "t": "A",
+     "in": "MAXIME S.",
+     "out": "ELIE M."
+    },
+    {
+     "min": 67,
+     "kind": "but",
+     "t": "H",
+     "who": "ALEXANDRE HOUGARD"
+    },
+    {
+     "min": 68,
+     "kind": "but",
+     "t": "A",
+     "who": "AYMERIC L."
+    },
+    {
+     "min": 90,
+     "kind": "avertissement",
+     "t": "A",
+     "who": "ALEXIS B."
+    }
+   ],
+   "rosters": {
+    "H": [
+     {
+      "n": "1",
+      "name": "NOAH VIGNERON",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "MEHDI BOISNEAU",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "HUGO NELET",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "BENJAMIN HAIS",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "VALENTIN GICQUEAU",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "KÉVIN BEDOUET",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "YAËL PANNETIER",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "AURÉLIEN LESEIGNEUR",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "SIMON BODIER",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "JOCELYN MOREAU",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "MATÉO BERNARD",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "ALEXANDRE HOUGARD",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "DJYLANE B.",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "FRANCK HAURAIX",
+      "sub": true
+     }
+    ],
+    "A": [
+     {
+      "n": "1",
+      "name": "NICOLAS T.",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "TOM B.",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "MATTHIAS G.",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "MAXIME A.",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "JEREMY B.",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "ALEXIS B.",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "MATHIS R.",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "ELIE M.",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "FABIEN M.",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "VALENTIN F.",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "AYMERIC L.",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "FRANCOIS XAVIER D.",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "MAXIME S.",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "MORGAN L.",
+      "sub": true
+     }
+    ]
+   }
+  },
+  {
+   "equipe": 3,
+   "competition": "District 3 · J2",
+   "kickoff": "2026-09-20T12:30:00+02:00",
+   "club_side": "A",
+   "home_name": "AC Nort-sur-Erdre 3",
+   "away_name": "AS Mésanger C",
+   "opp_code": 512355,
+   "score": [
+    5,
+    2
+   ],
+   "_note": "buteurs absents de la feuille FFF ; les 2 buts de Mésanger C indiqués par Tristan (minute inconnue), buteurs adverses inconnus",
+   "fff": "/competition/match/56438953-nort-a-c-a-s-de-mesanger",
+   "events": [
+    {
+     "min": 35,
+     "kind": "changement",
+     "t": "H",
+     "in": "SIMON T.",
+     "out": "KENY D."
+    },
+    {
+     "min": 40,
+     "kind": "changement",
+     "t": "A",
+     "in": "ROMAIN GAUTHIER",
+     "out": "KENZO PASSELANDE"
+    },
+    {
+     "min": 50,
+     "kind": "changement",
+     "t": "H",
+     "in": "SWAN G.",
+     "out": "LUCAS D."
+    },
+    {
+     "min": 55,
+     "kind": "changement",
+     "t": "A",
+     "in": "CORENTIN ROBIN",
+     "out": "GUILLAUME BOURCIER"
+    },
+    {
+     "min": 70,
+     "kind": "changement",
+     "t": "A",
+     "in": "CLOVIS FAZILLEAU-COLLINEAU",
+     "out": "THOMAS BESSON"
+    },
+    {
+     "min": 75,
+     "kind": "changement",
+     "t": "H",
+     "in": "NOA G.",
+     "out": "MATHEO R."
+    },
+    {
+     "min": null,
+     "kind": "but",
+     "t": "A",
+     "who": "GUILLAUME BOURCIER"
+    },
+    {
+     "min": null,
+     "kind": "but",
+     "t": "A",
+     "who": "GABIN ORHON"
+    }
+   ],
+   "rosters": {
+    "H": [
+     {
+      "n": "1",
+      "name": "MAXIME R.",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "MATHEO R.",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "AXEL M.",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "MARLEY F.",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "BAPTISTE B.",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "TYSON T.",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "BENJAMIN T.",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "LUCAS D.",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "KENY D.",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "AXEL C.",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "LOIS F.",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "SWAN G.",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "SIMON T.",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "NOA G.",
+      "sub": true
+     }
+    ],
+    "A": [
+     {
+      "n": "1",
+      "name": "NOLAN BRICAUD",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "HIPPOLYTE LANGLAIS",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "GABIN ORHON",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "MATTHIAS GUILLON",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "NATHAN VIGNERON",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "FLORIAN GARNIER",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "ENZO ORHON",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "KENZO PASSELANDE",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "THOMAS BESSON",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "GUILLAUME BOURCIER",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "ROMAIN ROUL",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "ROMAIN GAUTHIER",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "CORENTIN ROBIN",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "CLOVIS FAZILLEAU-COLLINEAU",
+      "sub": true
+     }
+    ]
+   }
+  },
+  {
+   "equipe": 4,
+   "competition": "District 4 · J2",
+   "kickoff": "2026-09-20T12:00:00+02:00",
+   "club_side": "H",
+   "home_name": "AS Mésanger D",
+   "away_name": "Ancenis RCASG 3",
+   "opp_code": 500268,
+   "score": [
+    6,
+    1
+   ],
+   "fff": "/competition/match/79363102-a-s-de-mesanger-r-c-ancenis-saint-gereon",
+   "events": [
+    {
+     "min": 12,
+     "kind": "but",
+     "t": "H",
+     "who": "AURÉLIEN JOLY"
+    },
+    {
+     "min": 25,
+     "kind": "changement",
+     "t": "H",
+     "in": "JONA LAUNAY",
+     "out": "PAUL LETORD"
+    },
+    {
+     "min": 29,
+     "kind": "but",
+     "t": "H",
+     "who": "PAUL LETORD"
+    },
+    {
+     "min": 30,
+     "kind": "changement",
+     "t": "H",
+     "in": "LILIAN FERRON",
+     "out": "AMAURY LUCAS"
+    },
+    {
+     "min": 30,
+     "kind": "changement",
+     "t": "A",
+     "in": "MOATAZ I.",
+     "out": "YLAN L."
+    },
+    {
+     "min": 30,
+     "kind": "changement",
+     "t": "A",
+     "in": "ABDOULAYE B.",
+     "out": "SIDIKI B."
+    },
+    {
+     "min": 35,
+     "kind": "but",
+     "t": "H",
+     "who": "AURÉLIEN JOLY"
+    },
+    {
+     "min": 41,
+     "kind": "but",
+     "t": "H",
+     "who": "AMAURY LUCAS"
+    },
+    {
+     "min": 46,
+     "kind": "changement",
+     "t": "H",
+     "in": "WILHELM JOURDON ALLEAU",
+     "out": "ROMAIN GUILLET"
+    },
+    {
+     "min": 46,
+     "kind": "changement",
+     "t": "A",
+     "in": "STANISLAS A.",
+     "out": "MALONE G."
+    },
+    {
+     "min": 60,
+     "kind": "but",
+     "t": "H",
+     "who": "WILHELM JOURDON ALLEAU"
+    },
+    {
+     "min": 66,
+     "kind": "but",
+     "t": "H",
+     "who": "THYLIAN DUPONT"
+    },
+    {
+     "min": 79,
+     "kind": "but",
+     "t": "A",
+     "who": "AHMED A."
+    }
+   ],
+   "rosters": {
+    "H": [
+     {
+      "n": "1",
+      "name": "ROMAIN GUILLET",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "SACHA B.",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "MICAËL GAUTIER",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "AURÉLIEN JOLY",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "JOSSELIN BRUNET",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "ARTHUR FONTENEAU",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "THYLIAN DUPONT",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "ANGELO PROD'HOMME",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "AMAURY LUCAS",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "BRIEUC HAMON",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "PAUL LETORD",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "JONA LAUNAY",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "LILIAN FERRON",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "WILHELM JOURDON ALLEAU",
+      "sub": true
+     }
+    ],
+    "A": [
+     {
+      "n": "1",
+      "name": "MALONE G.",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "MARWAN I.",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "IANIS A.",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "ADRIEN B.",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "QUENTIN C.",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "ROMUALD R.",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "NASSIR A.",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "KILLYAN B.",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "AHMED A.",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "YLAN L.",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "SIDIKI B.",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "MOATAZ I.",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "ABDOULAYE B.",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "STANISLAS A.",
+      "sub": true
+     }
+    ]
+   }
+  }
+ ],
+ "_noms": "noms complets des joueurs de Mésanger : feuille des convocations Seniors du 27/09/2026 (asmfootball.fr) ; C9, C12, D1 choisis d’après l’équipe de convocation"
+}

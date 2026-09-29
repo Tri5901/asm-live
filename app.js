@@ -85,6 +85,19 @@ function labelOf(m, abs, p){ const lim = p===2 ? 2*m.half : m.half; return abs >
 
 // Chronologie (lecture seule ou modifiable)
 function timelineHTML(m, evs, editable){
+  // résultat repris de la FFF : les buts sans minute (buteur non saisi sur la feuille) sont résumés en tête
+  if (!editable){
+    const nomin = evs.filter(e => e.k === 'goal' && !e.min);
+    if (nomin.length){
+      const rest = evs.filter(e => !(e.k === 'goal' && !e.min));
+      const lines = ['H', 'A'].map(t => {
+        const g = nomin.filter(e => e.t === t); if (!g.length) return '';
+        const named = g.filter(e => e.n).map(e => who(m, t, e.n, '')), anon = g.length - named.length;
+        return `<div><b>${esc(teamName(m, t))}</b> : ${esc([...named, ...(anon ? [anon > 1 ? anon + ' buteurs non renseignés' : '1 buteur non renseigné'] : [])].join(', '))}</div>`;
+      }).join('');
+      return `<div class="empty" style="text-align:left">Buts sans minute (feuille de match FFF incomplète)${lines}</div>` + (rest.length ? timelineHTML(m, rest, false) : '');
+    }
+  }
   if (!evs.length) return `<div class="empty">${editable ? 'Lance le chrono puis touche une action : la minute est notée toute seule.' : 'Aucune action pour le moment.'}</div>`;
   const list = [...evs].sort((a,b)=> b.sort - a.sort || String(b.created_at||'').localeCompare(String(a.created_at||'')));
   const ICON = {goal:'<span class="evi goal">⚽</span>', yellow:'<span class="evi"><i class="kc y"></i></span>', red:'<span class="evi"><i class="kc r"></i></span>', sub:'<span class="evi sub">⇄</span>'};
