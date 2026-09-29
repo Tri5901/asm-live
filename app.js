@@ -354,7 +354,7 @@ function drawHome(matches, goalRows){
     return `<a class="mcard${m.status==='direct' ? ' live' : ''}" href="#/match/${esc(m.id)}">
       <div class="mtop"><span class="tchip" title="${esc(teamLabel(m.equipe))}">${teamLetter(m.equipe)}</span><span class="mcomp">${esc(m.competition || teamLabel(m.equipe))}</span>${canManage(m) ? `<span class="gerer" role="link" tabindex="0" data-href="#/gerer/${esc(m.id)}" aria-label="Gérer ce match">✎ Gérer</span>` : ''}${badge}</div>
       <div class="mrow">${side('H')}<div class="mmid">${mid}</div>${side('A')}</div>
-      ${isStaff() && m.delegue_nom ? `<div class="mdel">Délégué : ${esc(m.delegue_nom)}</div>` : ''}</a>`;
+      ${m.delegue_nom ? `<div class="mdel">Délégué : ${esc(m.delegue_nom)}</div>` : ''}</a>`;
   };
   const byDay = list => { let h = '', last = ''; list.forEach(m => { const d = new Date(m.kickoff).toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'}); if (d !== last){ h += `<div class="day">${esc(d)}</div>`; last = d; } h += card(m); }); return h; };
   const all = matches;
@@ -431,7 +431,7 @@ async function matchView(id){
     view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false)
       + `<div class="mactions"><button class="pill" id="btnBell">🔔 Buts des ${esc(teamLabel(m.equipe))}</button><button class="pill" id="btnShareLive">↗ Partager</button></div>`
       + (canManage(m) ? `<a class="fbtn primary big" href="#/gerer/${esc(m.id)}">Gérer ce match</a>` : '')
-      + (isStaff() ? `<div class="field deleg"><span>Délégué du match</span>${delegPickHTML('delSel', m.delegue_id, m.delegue_nom, !canManage(m))}${!canManage(m) ? '<small>Seuls le responsable de l’équipe, le délégué désigné ou un admin peuvent modifier ce match.</small>' : ''}</div>` : '')
+      + (isStaff() || m.delegue_nom ? `<div class="field deleg"><span>Délégué du match</span>${delegPickHTML('delSel', m.delegue_id, m.delegue_nom, !canManage(m))}${isStaff() && !canManage(m) ? '<small>Seuls le responsable de l’équipe, le délégué désigné ou un admin peuvent modifier ce match.</small>' : ''}</div>` : '')
       + (isAdmin() && people ? `<div class="audit">Match créé par ${esc(personName(m.created_by))}${m.rosters_at ? ` · Compo saisie par ${esc(personName(m.rosters_by))} le ${esc(fmtDate(m.rosters_at))}` : ''}</div>` : '')
       + (m.status==='prevu' ? lineupsHTML(m) : '')
       + `<section class="log"><div class="loghead"><h2>Chronologie</h2></div><div id="events">${timelineHTML(m, evs, false)}</div></section>`
