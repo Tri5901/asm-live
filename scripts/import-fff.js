@@ -17,7 +17,7 @@ const out = src.matches.map(M => {
     // minute inconnue (min null) : but connu mais pas sa minute
     const min = e.min == null ? '' : e.add ? `${e.min}+${e.add}'` : `${e.min}'`;
     const base = { id: crypto.randomUUID(), match_id: id, t: e.t, n: null, out_n: null, in_n: null, min, sort: e.min == null ? 0 : e.min + (e.add || 0) + i / 100, p: e.min > 45 ? 2 : 1 };
-    if (e.kind === 'but') return { ...base, k: 'goal', n: e.who ? num(e.t, e.who) : null }; // sans buteur (contre son camp…)
+    if (e.kind === 'but') return { ...base, k: 'goal', n: e.csc ? 'CSC' : e.who ? num(e.t, e.who) : null }; // CSC = contre son camp adverse
     if (e.kind === 'changement') return { ...base, k: 'sub', out_n: num(e.t, e.out), in_n: num(e.t, e.in) };
     if (e.kind === 'avertissement') return { ...base, k: 'yellow', n: num(e.t, e.who) };
     return { ...base, k: 'red', n: num(e.t, e.who) };

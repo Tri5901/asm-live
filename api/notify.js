@@ -41,7 +41,7 @@ module.exports = async (req, res) => {
   const clubGoal = ev.t === m.club_side;
   const payload = JSON.stringify({
     title: clubGoal ? `⚽ BUT pour ${name(ev.t)} !` : `But de ${name(ev.t)}`,
-    body: `${name('H')} ${sc('H')} – ${sc('A')} ${name('A')} · ${ev.min}` + (ev.n ? ` · n°${ev.n}${player ? ' ' + player : ''}` : ''),
+    body: `${name('H')} ${sc('H')} – ${sc('A')} ${name('A')} · ${ev.min}` + (ev.n === 'CSC' ? ' · contre son camp' : ev.n ? ` · n°${ev.n}${player ? ' ' + player : ''}` : ''),
     url: `/#/match/${m.id}`,
     tag: `but-${ev.id}`,
     team: LETTERS[(m.equipe || 1) - 1]

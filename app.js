@@ -46,7 +46,7 @@ const oppSide = m => clubSide(m)==='H' ? 'A' : 'H';
 const goals = (evs, t) => evs.filter(e=>e.k==='goal' && e.t===t).length;
 const rosterOf = (m, t) => ((m.rosters||{})[t]||[]);
 const nameOf = (m, t, n) => { const p = rosterOf(m,t).find(p=>p.n===String(n)); return p ? p.name : ''; };
-const who = (m, t, n, none) => n ? `n°${n}${nameOf(m,t,n) ? ' ' + nameOf(m,t,n) : ''}` : none;
+const who = (m, t, n, none) => n === 'CSC' ? 'Contre son camp (CSC)' : n ? `n°${n}${nameOf(m,t,n) ? ' ' + nameOf(m,t,n) : ''}` : none;
 const rosterSorted = (m, t) => [...rosterOf(m,t)].sort((a,b)=>(+a.n)-(+b.n));
 
 function elapsedMs(m){ return (+m.acc||0) + (m.running ? Date.now() - (+m.started_at||0) : 0); }
@@ -676,7 +676,7 @@ async function consoleView(id, openCompo){
   cleanup = () => { clearInterval(tick); syncListeners.delete(renderSync); window.removeEventListener('online', renderSync); window.removeEventListener('offline', renderSync); };
 
   // Saisie d'un numéro de joueur
-  function askNumber(title, sub, minLabel, cb, t, choices){
+  function askNumber(title, sub, minLabel, cb, t, choices, csc){
     let val = '';
     const chips = (choices||[]).map(p=>`<button class="chip${p.bench?' bench':''}" data-c="${esc(p.n)}"><b>${esc(p.n)}</b><span>${esc(p.name)}</span></button>`).join('');
     openSheet(`
@@ -690,6 +690,7 @@ async function consoleView(id, openCompo){
         <button class="key" data-n="0">0</button>
         <button class="key ok" data-n="ok">Valider</button>
       </div>
+      ${csc ? '<button class="fbtn" id="cscBtn" style="width:100%;margin-top:8px">Contre son camp (CSC)</button>' : ''}
       <div class="minrow"><label for="minEdit">Minute</label><input id="minEdit" value="${esc(minLabel)}"></div>
       <button class="cancel" id="cancel">Annuler</button>`);
     const disp = $('disp');
@@ -704,6 +705,7 @@ async function consoleView(id, openCompo){
       upd();
     });
     $('cancel').onclick = closeSheet;
+    if ($('cscBtn')) $('cscBtn').onclick = () => done('CSC');
   }
   function onPitch(t){
     const set = new Set(rosterOf(S,t).filter(p=>!p.sub).map(p=>p.n));
@@ -737,7 +739,7 @@ async function consoleView(id, openCompo){
     } else {
       const pitch = onPitch(t);
       const list = rosterSorted(S,t).map(p => pitch.has(p.n) ? p : {...p, bench:true});
-      askNumber(LABEL[k], tn, cm.label, (n, min) => add({t, k, n, min, sort:cm.sort}), t, k==='goal' ? list.filter(p=>!p.bench) : list);
+      askNumber(LABEL[k], tn, cm.label, (n, min) => add({t, k, n, min, sort:cm.sort}), t, k==='goal' ? list.filter(p=>!p.bench) : list, k==='goal');
     }
   });
   function stepper(title, text, initial, fmt, okLabel, onOk){
@@ -1193,7 +1195,7 @@ async function statsView(){
       && (!statComp || (statComp === 'coupe') === isCup(m)));
     const ids = new Set(list.map(m=>m.id));
     const byMatch = {}; evs.forEach(e => { if (ids.has(e.match_id)) (byMatch[e.match_id] ||= []).push(e); });
-    const P = {}; let unknownGoals = 0;
+    const P = {}; let unknownGoals = 0, cscGoals = 0;
     const get = name => { const k = playerKey(name); return P[k] ||= {name, mj:0, tit:0, goals:0, y:0, r:0}; };
     let W=0, D=0, L=0, gf=0, ga=0;
     for (const m of list){
@@ -1207,6 +1209,7 @@ async function statsView(){
       me.filter(e=>e.t===c && e.k==='sub' && e.in_n).forEach(e => { const x = nm(e.in_n); if (x){ get(x); played.add(playerKey(x)); } });
       played.forEach(k => { if (P[k]) P[k].mj++; });
       me.filter(e=>e.t===c && e.k!=='sub').forEach(e => {
+        if (e.k==='goal' && e.n==='CSC'){ cscGoals++; return; }
         const x = e.n ? nm(e.n) : null;
         if (!x){ if (e.k==='goal') unknownGoals++; return; }
         const s = get(x); if (e.k==='goal') s.goals++; if (e.k==='yellow') s.y++; if (e.k==='red') s.r++;
@@ -1229,7 +1232,7 @@ async function statsView(){
         <div class="kpi"><b>${ga}</b><span>Encaissés</span></div>
       </div>
       ${rows.length ? `<div class="tblwrap"><table class="stats"><thead><tr>${COLS.map(([k,l])=>`<th class="${statSort.key===k?'on':''}" aria-sort="${statSort.key===k?(statSort.dir<0?'descending':'ascending'):'none'}"><button data-k="${k}">${l}${statSort.key===k?(statSort.dir<0?' ▾':' ▴'):''}</button></th>`).join('')}</tr></thead>
-        <tbody>${rows.map(p=>`<tr><td>${esc(p.name)}</td>${cell(p.mj)}${cell(p.tit)}${cell(p.goals)}${cell(p.y)}${cell(p.r)}</tr>`).join('')}</tbody></table></div>`
+        <tbody>${rows.map(p=>`<tr><td>${esc(p.name)}</td>${cell(p.mj)}${cell(p.tit)}${cell(p.goals)}${cell(p.y)}${cell(p.r)}</tr>`).join('')}${cscGoals ? `<tr class="csc"><td>CSC <small>(contre son camp adverse)</small></td><td></td><td></td>${cell(cscGoals)}<td></td><td></td></tr>` : ''}</tbody></table></div>`
         : `<div class="empty">Les stats apparaîtront après le premier match dont la composition de l'${CLUB} a été saisie.</div>`}
       <p class="note">${statComp === 'coupe' ? 'Matchs de coupe uniquement. ' : statComp ? 'Matchs de championnat uniquement. ' : ''}Stats des joueurs de l'${CLUB}, calculées à partir des compositions et de la chronologie de chaque match.${unknownGoals ? ` ${unknownGoals} but${unknownGoals>1?'s':''} sans buteur identifié.` : ''}</p>`;
     view.querySelectorAll('th button').forEach(b => b.onclick = () => {
