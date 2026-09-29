@@ -1,0 +1,2138 @@
+{
+ "_source": "epreuves.fff.fr (pages « Le match »), relevé du 29/09/2026 ; noms complets : convocation Seniors du 27/09/2026 + relevés précédents",
+ "matches": [
+  {
+   "equipe": 1,
+   "competition": "Coupe de France · 1er tour",
+   "kickoff": "2026-08-23T15:00:00+02:00",
+   "club_side": "A",
+   "home_name": "RC Orvault",
+   "away_name": "AS Mésanger",
+   "opp_code": 547452,
+   "score": [
+    2,
+    4
+   ],
+   "fff": "/competition/match/55825461-orvault-r-c-a-s-de-mesanger",
+   "events": [
+    {
+     "min": 11,
+     "kind": "but",
+     "t": "H",
+     "who": "GABIN MERESSE"
+    },
+    {
+     "min": 22,
+     "kind": "avertissement",
+     "t": "H",
+     "who": "GABIN MERESSE"
+    },
+    {
+     "min": 28,
+     "kind": "but",
+     "t": "A",
+     "who": "SIMON FOUGERE"
+    },
+    {
+     "min": 47,
+     "kind": "but",
+     "t": "A",
+     "who": "MAEL CARETTE"
+    },
+    {
+     "min": 47,
+     "kind": "changement",
+     "t": "H",
+     "in": "CHRISTIAN NAKAD",
+     "out": "GABIN MERESSE"
+    },
+    {
+     "min": 50,
+     "kind": "changement",
+     "t": "H",
+     "in": "MARTIN HARDY",
+     "out": "MOHAMED WASSIM ALOUI"
+    },
+    {
+     "min": 52,
+     "kind": "but",
+     "t": "H",
+     "who": "PAUL MARIONNEAU"
+    },
+    {
+     "min": 57,
+     "kind": "changement",
+     "t": "H",
+     "in": "LASSANA DIA",
+     "out": "KEVIN STEVANT"
+    },
+    {
+     "min": 60,
+     "kind": "but",
+     "t": "A",
+     "who": "MAEL CARETTE"
+    },
+    {
+     "min": 70,
+     "kind": "changement",
+     "t": "A",
+     "in": "JOCELYN MOREAU",
+     "out": "VIXENTE LACROIX"
+    },
+    {
+     "min": 76,
+     "kind": "changement",
+     "t": "A",
+     "in": "JULES NELET",
+     "out": "MAEL CARETTE"
+    },
+    {
+     "min": 86,
+     "kind": "changement",
+     "t": "A",
+     "in": "HUGO NELET",
+     "out": "SIMON FOUGERE"
+    },
+    {
+     "min": 90,
+     "kind": "but",
+     "t": "A",
+     "who": "ROMAIN BENARD"
+    },
+    {
+     "min": 90,
+     "kind": "avertissement",
+     "t": "A",
+     "who": "JULES NELET"
+    }
+   ],
+   "rosters": {
+    "H": [
+     {
+      "n": "1",
+      "name": "MARIUS BRIAND",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "PIERRE LEFORT",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "KEVIN STEVANT",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "MOHAMED WASSIM ALOUI",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "CAMILLE JADE",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "JEAN LOUIS GUEVELOU",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "PAUL MARIONNEAU",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "ANONYME",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "AHMED EL MAHDI FRIAT",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "GAUTIER BURBAN",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "GABIN MERESSE",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "LASSANA DIA",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "CHRISTIAN NAKAD",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "LOUIS SERRA SEGUI",
+      "sub": true
+     },
+     {
+      "n": "15",
+      "name": "MARTIN HARDY",
+      "sub": true
+     },
+     {
+      "n": "16",
+      "name": "THOMAS CHEMINANT",
+      "sub": true
+     }
+    ],
+    "A": [
+     {
+      "n": "1",
+      "name": "NOAH VIGNERON",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "PERIG CHOUARD",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "ESTÉBAN DOLTAIRE",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "FABIEN LANOE",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "SIMON GRIMAULT",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "ALEXIS HURET",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "MAEL CARETTE",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "VIXENTE LACROIX",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "ROMAIN BENARD",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "VICTOR HUARD",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "SIMON FOUGERE",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "JOCELYN MOREAU",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "HUGO NELET",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "JULES NELET",
+      "sub": true
+     },
+     {
+      "n": "15",
+      "name": "MELVIN PANNETIER",
+      "sub": true
+     },
+     {
+      "n": "16",
+      "name": "ANTOINE HIVERT",
+      "sub": true
+     }
+    ]
+   }
+  },
+  {
+   "equipe": 1,
+   "competition": "Coupe de France · 2e tour",
+   "kickoff": "2026-08-30T15:00:00+02:00",
+   "club_side": "A",
+   "home_name": "ARC Tillières",
+   "away_name": "AS Mésanger",
+   "opp_code": 541296,
+   "score": [
+    0,
+    1
+   ],
+   "fff": "/competition/match/78940136-av-regriperois-crepinois-tillie-a-s-de-mesanger",
+   "events": [
+    {
+     "min": 6,
+     "kind": "but",
+     "t": "A",
+     "who": "VICTOR HUARD"
+    },
+    {
+     "min": 26,
+     "kind": "avertissement",
+     "t": "A",
+     "who": "SIMON GRIMAULT"
+    },
+    {
+     "min": 38,
+     "kind": "changement",
+     "t": "A",
+     "in": "JULES NELET",
+     "out": "MELVIN PANNETIER"
+    },
+    {
+     "min": 46,
+     "kind": "changement",
+     "t": "H",
+     "in": "KEIZYAHN SOUIHEL",
+     "out": "ALEXIS GOULET"
+    },
+    {
+     "min": 46,
+     "kind": "changement",
+     "t": "H",
+     "in": "LEO VIVIEN",
+     "out": "ARTHUR CLAUTOUR"
+    },
+    {
+     "min": 55,
+     "kind": "avertissement",
+     "t": "H",
+     "who": "ENZO HURET"
+    },
+    {
+     "min": 55,
+     "kind": "changement",
+     "t": "H",
+     "in": "MAXIM POHER",
+     "out": "MARTIN BRIBET"
+    },
+    {
+     "min": 58,
+     "kind": "changement",
+     "t": "A",
+     "in": "HUGO NELET",
+     "out": "SIMON FOUGERE"
+    },
+    {
+     "min": 85,
+     "kind": "avertissement",
+     "t": "H",
+     "who": "TIMEO MARTIN"
+    },
+    {
+     "min": 90,
+     "kind": "changement",
+     "t": "A",
+     "in": "JOCELYN MOREAU",
+     "out": "ALEXIS HURET"
+    }
+   ],
+   "rosters": {
+    "H": [
+     {
+      "n": "1",
+      "name": "ENZO CHARRIER",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "BASTIEN LAUDE",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "ALEXIS GOULET",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "TIMEO MARTIN",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "ENZO HURET",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "ROMAIN PINEAU",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "ANONYME",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "MARTIN BRIBET",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "VICTOR LOIZEAU",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "AXEL GASNIER",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "ARTHUR CLAUTOUR",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "LEO VIVIEN",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "ALEXANDRE POHU",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "KEIZYAHN SOUIHEL",
+      "sub": true
+     },
+     {
+      "n": "15",
+      "name": "MAXIM POHER",
+      "sub": true
+     },
+     {
+      "n": "16",
+      "name": "MICHAEL RIBEIRO ALVES",
+      "sub": true
+     }
+    ],
+    "A": [
+     {
+      "n": "1",
+      "name": "NOAH VIGNERON",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "MELVIN PANNETIER",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "ESTÉBAN DOLTAIRE",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "FABIEN LANOE",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "SIMON GRIMAULT",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "ALEXIS HURET",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "MAEL CARETTE",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "VIXENTE LACROIX",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "ROMAIN BENARD",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "VICTOR HUARD",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "SIMON FOUGERE",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "PERIG CHOUARD",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "JOCELYN MOREAU",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "JULES NELET",
+      "sub": true
+     },
+     {
+      "n": "15",
+      "name": "HUGO NELET",
+      "sub": true
+     },
+     {
+      "n": "16",
+      "name": "ANTOINE HIVERT",
+      "sub": true
+     }
+    ]
+   }
+  },
+  {
+   "equipe": 1,
+   "competition": "Coupe de France · 3e tour",
+   "kickoff": "2026-09-13T15:00:00+02:00",
+   "club_side": "H",
+   "home_name": "AS Mésanger",
+   "away_name": "US La Baule-Le Pouliguen",
+   "opp_code": 553847,
+   "score": [
+    0,
+    4
+   ],
+   "fff": "/competition/match/79293968-a-s-de-mesanger-u-s-la-baule-le-pouliguen",
+   "events": [
+    {
+     "min": 23,
+     "kind": "avertissement",
+     "t": "H",
+     "who": "VIXENTE LACROIX"
+    },
+    {
+     "min": 32,
+     "kind": "avertissement",
+     "t": "A",
+     "who": "ARMAND ROBILLIART KLA"
+    },
+    {
+     "min": 39,
+     "kind": "but",
+     "t": "A",
+     "who": "ANTONIOZINHO CANICIO MANGAR GOMES"
+    },
+    {
+     "min": 46,
+     "kind": "changement",
+     "t": "A",
+     "in": "CHARLY MANDENG",
+     "out": "BABACAR THIOR THIOR"
+    },
+    {
+     "min": 54,
+     "kind": "changement",
+     "t": "H",
+     "in": "ROMAIN BENARD",
+     "out": "ENZO CORABOEUF"
+    },
+    {
+     "min": 55,
+     "kind": "but",
+     "t": "A",
+     "who": "ALOIS ACKAH"
+    },
+    {
+     "min": 59,
+     "kind": "avertissement",
+     "t": "A",
+     "who": "ANTONIOZINHO CANICIO MANGAR GOMES"
+    },
+    {
+     "min": 59,
+     "kind": "changement",
+     "t": "A",
+     "in": "TOM THOMAS",
+     "out": "NICOLAS MENDY"
+    },
+    {
+     "min": 63,
+     "kind": "but",
+     "t": "A",
+     "who": "NOLANN BLOYER"
+    },
+    {
+     "min": 67,
+     "kind": "changement",
+     "t": "H",
+     "in": "JULES NELET",
+     "out": "ESTÉBAN DOLTAIRE"
+    },
+    {
+     "min": 67,
+     "kind": "changement",
+     "t": "H",
+     "in": "JOCELYN MOREAU",
+     "out": "VIXENTE LACROIX"
+    },
+    {
+     "min": 67,
+     "kind": "changement",
+     "t": "H",
+     "in": "ASLAN JOSEPH-BONIFACE",
+     "out": "MAEL CARETTE"
+    },
+    {
+     "min": 67,
+     "kind": "changement",
+     "t": "A",
+     "in": "BRICE MENDY",
+     "out": "ALOIS ACKAH"
+    },
+    {
+     "min": 83,
+     "kind": "but",
+     "t": "A",
+     "who": "NATHAN DONNARY"
+    }
+   ],
+   "rosters": {
+    "H": [
+     {
+      "n": "1",
+      "name": "ANTOINE HIVERT",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "FABIEN LANOE",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "ESTÉBAN DOLTAIRE",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "MELVIN PANNETIER",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "SIMON GRIMAULT",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "ALEXIS HURET",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "ENZO CORABOEUF",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "VIXENTE LACROIX",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "MAEL CARETTE",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "VICTOR HUARD",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "SIMON FOUGERE",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "ROMAIN BENARD",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "JULES NELET",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "JOCELYN MOREAU",
+      "sub": true
+     },
+     {
+      "n": "15",
+      "name": "ASLAN JOSEPH-BONIFACE",
+      "sub": true
+     },
+     {
+      "n": "16",
+      "name": "NOAH VIGNERON",
+      "sub": true
+     }
+    ],
+    "A": [
+     {
+      "n": "1",
+      "name": "MAXENCE BOSSAVY",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "HAMZA LAZREG",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "NICOLAS MENDY",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "ANTONIOZINHO CANICIO MANGAR GOMES",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "ELIOT ACHIA",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "NATHAN ROUSSE",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "ARMAND ROBILLIART KLA",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "BABACAR THIOR THIOR",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "NOLANN BLOYER",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "NATHAN DONNARY",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "ALOIS ACKAH",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "TOM THOMAS",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "BRICE MENDY",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "CHARLY MANDENG",
+      "sub": true
+     }
+    ]
+   }
+  },
+  {
+   "equipe": 1,
+   "competition": "Coupe des Pays de la Loire · 1er tour",
+   "kickoff": "2026-09-27T15:00:00+02:00",
+   "club_side": "A",
+   "home_name": "Réveil St Géréon",
+   "away_name": "AS Mésanger",
+   "opp_code": 520217,
+   "score": [
+    1,
+    2
+   ],
+   "fff": "/competition/match/79625260-rev-st-gereon-a-s-de-mesanger",
+   "events": [
+    {
+     "min": 13,
+     "kind": "but",
+     "t": "A",
+     "who": "SIMON FOUGERE"
+    },
+    {
+     "min": 31,
+     "kind": "changement",
+     "t": "A",
+     "in": "MELVIN PANNETIER",
+     "out": "ESTÉBAN DOLTAIRE"
+    },
+    {
+     "min": 31,
+     "kind": "changement",
+     "t": "A",
+     "in": "MAEL CARETTE",
+     "out": "LILIAN LECLAIR"
+    },
+    {
+     "min": 39,
+     "kind": "changement",
+     "t": "H",
+     "in": "ILYAS B.",
+     "out": "CORENTIN B."
+    },
+    {
+     "min": 45,
+     "kind": "but",
+     "t": "A",
+     "who": "VICTOR HUARD"
+    },
+    {
+     "min": 46,
+     "kind": "changement",
+     "t": "H",
+     "in": "DYLAN L.",
+     "out": "ENZO D."
+    },
+    {
+     "min": 46,
+     "kind": "changement",
+     "t": "H",
+     "in": "MUHAMET M.",
+     "out": "PIERRE B."
+    },
+    {
+     "min": 46,
+     "kind": "changement",
+     "t": "A",
+     "in": "ASLAN JOSEPH-BONIFACE",
+     "out": "SIMON FOUGERE"
+    },
+    {
+     "min": 75,
+     "kind": "avertissement",
+     "t": "H",
+     "who": "MUHAMET M."
+    },
+    {
+     "min": 80,
+     "kind": "avertissement",
+     "t": "A",
+     "who": "LILIAN LECLAIR"
+    },
+    {
+     "min": 90,
+     "kind": "but",
+     "t": "H",
+     "who": "ENZO D."
+    }
+   ],
+   "rosters": {
+    "H": [
+     {
+      "n": "1",
+      "name": "EVAN D.",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "ENZO D.",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "JULES G.",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "OSCAR B.",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "MATTEO S.",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "PIERRE B.",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "LAZTAN L.",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "GABRIEL G.",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "CORENTIN B.",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "ELIOT S.",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "BAPTISTE D.",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "ILYAS B.",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "MUHAMET M.",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "DYLAN L.",
+      "sub": true
+     }
+    ],
+    "A": [
+     {
+      "n": "1",
+      "name": "ANTOINE HIVERT",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "JULES NELET",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "ESTÉBAN DOLTAIRE",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "FABIEN LANOE",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "SIMON GRIMAULT",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "VIXENTE LACROIX",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "ENZO CORABOEUF",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "LILIAN LECLAIR",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "ROMAIN BENARD",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "VICTOR HUARD",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "SIMON FOUGERE",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "MAEL CARETTE",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "MELVIN PANNETIER",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "ASLAN JOSEPH-BONIFACE",
+      "sub": true
+     }
+    ]
+   }
+  },
+  {
+   "equipe": 2,
+   "competition": "Coupe du District · 1er tour",
+   "kickoff": "2026-09-27T12:30:00+02:00",
+   "club_side": "A",
+   "home_name": "St Vincent Lustvi 3",
+   "away_name": "AS Mésanger B",
+   "opp_code": 549082,
+   "score": [
+    2,
+    13
+   ],
+   "fff": "/competition/match/79635687-st-vincent-des-landes-lustvi-a-s-de-mesanger",
+   "events": [
+    {
+     "min": 7,
+     "kind": "but",
+     "t": "H",
+     "who": "NOAH M."
+    },
+    {
+     "min": 9,
+     "kind": "changement",
+     "t": "A",
+     "in": "MEHDI BOISNEAU",
+     "out": "KÉVIN BEDOUET"
+    },
+    {
+     "min": 18,
+     "kind": "changement",
+     "t": "H",
+     "in": "FLORIAN L.",
+     "out": "CEDRIC B."
+    },
+    {
+     "min": 21,
+     "kind": "but",
+     "t": "A",
+     "who": "MATÉO BERNARD"
+    },
+    {
+     "min": 22,
+     "kind": "but",
+     "t": "A",
+     "who": "MATÉO BERNARD"
+    },
+    {
+     "min": 27,
+     "kind": "but",
+     "t": "A",
+     "who": "YAËL PANNETIER"
+    },
+    {
+     "min": 27,
+     "kind": "changement",
+     "t": "H",
+     "in": "KYLIAN C.",
+     "out": "TOM L."
+    },
+    {
+     "min": 29,
+     "kind": "but",
+     "t": "A",
+     "who": "MATÉO BERNARD"
+    },
+    {
+     "min": 29,
+     "kind": "changement",
+     "t": "A",
+     "in": "GUILLAUME BOURCIER",
+     "out": "YAËL PANNETIER"
+    },
+    {
+     "min": 29,
+     "kind": "changement",
+     "t": "A",
+     "in": "ENZO ORHON",
+     "out": "JULIEN HAIE"
+    },
+    {
+     "min": 46,
+     "kind": "but",
+     "t": "H",
+     "who": "JULIAN B."
+    },
+    {
+     "min": 46,
+     "kind": "changement",
+     "t": "H",
+     "in": "RONAN D.",
+     "out": "NOAH M."
+    },
+    {
+     "min": 51,
+     "kind": "but",
+     "t": "A",
+     "who": "FRANCK HAURAIX"
+    },
+    {
+     "min": 57,
+     "kind": "but",
+     "t": "A",
+     "who": "JULIEN HAIE"
+    },
+    {
+     "min": 68,
+     "kind": "but",
+     "t": "A",
+     "who": "SIMON BODIER"
+    },
+    {
+     "min": 70,
+     "kind": "but",
+     "t": "A",
+     "who": "FRANCK HAURAIX"
+    },
+    {
+     "min": 75,
+     "kind": "but",
+     "t": "A",
+     "who": "ENZO ORHON"
+    },
+    {
+     "min": 77,
+     "kind": "avertissement",
+     "t": "H",
+     "who": "ENZO B."
+    },
+    {
+     "min": 80,
+     "kind": "but",
+     "t": "A",
+     "who": "MATÉO BERNARD"
+    },
+    {
+     "min": 82,
+     "kind": "but",
+     "t": "A",
+     "who": null,
+     "csc": true
+    },
+    {
+     "min": 82,
+     "kind": "but",
+     "t": "A",
+     "who": "ALEXANDRE HOUGARD"
+    },
+    {
+     "min": 82,
+     "kind": "but",
+     "t": "A",
+     "who": "ALEXANDRE HOUGARD"
+    }
+   ],
+   "rosters": {
+    "H": [
+     {
+      "n": "1",
+      "name": "LENAIC R.",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "TOM L.",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "ENZO B.",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "FREDDY G.",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "LUDOVIC P.",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "YOANN G.",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "NOAH M.",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "JULIAN B.",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "JULIEN M.",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "CEDRIC B.",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "ALEXANDRE F.",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "KYLIAN C.",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "RONAN D.",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "FLORIAN L.",
+      "sub": true
+     }
+    ],
+    "A": [
+     {
+      "n": "1",
+      "name": "NOAH VIGNERON",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "FRANCK HAURAIX",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "NATHAN VIGNERON",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "BENJAMIN HAIS",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "KÉVIN BEDOUET",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "JOCELYN MOREAU",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "YAËL PANNETIER",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "JULIEN HAIE",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "SIMON BODIER",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "ALEXANDRE HOUGARD",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "MATÉO BERNARD",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "MEHDI BOISNEAU",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "GUILLAUME BOURCIER",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "ENZO ORHON",
+      "sub": true
+     }
+    ]
+   }
+  },
+  {
+   "equipe": 3,
+   "competition": "Coupe du District · 1er tour",
+   "kickoff": "2026-09-27T15:00:00+02:00",
+   "club_side": "A",
+   "home_name": "SP Petit-Auverne",
+   "away_name": "AS Mésanger C",
+   "opp_code": 521711,
+   "score": [
+    0,
+    13
+   ],
+   "fff": "/competition/match/79635671-petit-auverne-s-a-s-de-mesanger",
+   "events": [
+    {
+     "min": 1,
+     "kind": "but",
+     "t": "A",
+     "who": "THYLIAN DUPONT"
+    },
+    {
+     "min": 3,
+     "kind": "but",
+     "t": "A",
+     "who": "ROMAIN ROUL"
+    },
+    {
+     "min": 14,
+     "kind": "but",
+     "t": "A",
+     "who": "THOMAS BESSON"
+    },
+    {
+     "min": 18,
+     "kind": "changement",
+     "t": "H",
+     "in": "DORIAN C.",
+     "out": "MYLAN R."
+    },
+    {
+     "min": 18,
+     "kind": "changement",
+     "t": "H",
+     "in": "JONATHAN E.",
+     "out": "LOIC M."
+    },
+    {
+     "min": 25,
+     "kind": "but",
+     "t": "A",
+     "who": "THOMAS BESSON"
+    },
+    {
+     "min": 26,
+     "kind": "but",
+     "t": "A",
+     "who": "GABIN ORHON"
+    },
+    {
+     "min": 28,
+     "kind": "changement",
+     "t": "A",
+     "in": "FLORIAN BARBIN",
+     "out": "GABIN ORHON"
+    },
+    {
+     "min": 28,
+     "kind": "changement",
+     "t": "A",
+     "in": "HIPPOLYTE LANGLAIS",
+     "out": "ROMAIN ROUL"
+    },
+    {
+     "min": 28,
+     "kind": "changement",
+     "t": "A",
+     "in": "ARTHUR FONTENEAU",
+     "out": "FLORIAN GARNIER"
+    },
+    {
+     "min": 30,
+     "kind": "but",
+     "t": "A",
+     "who": "HIPPOLYTE LANGLAIS"
+    },
+    {
+     "min": 39,
+     "kind": "changement",
+     "t": "H",
+     "in": "AHMED H.",
+     "out": "JULIEN G."
+    },
+    {
+     "min": 45,
+     "kind": "but",
+     "t": "A",
+     "who": "THYLIAN DUPONT"
+    },
+    {
+     "min": 50,
+     "kind": "but",
+     "t": "A",
+     "who": "ROMAIN GAUTHIER"
+    },
+    {
+     "min": 65,
+     "kind": "but",
+     "t": "A",
+     "who": "HIPPOLYTE LANGLAIS"
+    },
+    {
+     "min": 69,
+     "kind": "but",
+     "t": "A",
+     "who": "HIPPOLYTE LANGLAIS"
+    },
+    {
+     "min": 76,
+     "kind": "but",
+     "t": "A",
+     "who": "HIPPOLYTE LANGLAIS"
+    },
+    {
+     "min": 82,
+     "kind": "but",
+     "t": "A",
+     "who": "THOMAS BESSON"
+    },
+    {
+     "min": 87,
+     "kind": "but",
+     "t": "A",
+     "who": "ARTHUR FONTENEAU"
+    }
+   ],
+   "rosters": {
+    "H": [
+     {
+      "n": "1",
+      "name": "ALEXIS V.",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "THOMAS N.",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "WILLIAM C.",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "BASILE P.",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "THOMAS P.",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "GERMAIN C.",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "JEREMIE C.",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "JULIEN G.",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "KILYAN G.",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "MYLAN R.",
+      "sub": false
+     },
+     {
+      "n": "14",
+      "name": "LOIC M.",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "AHMED H.",
+      "sub": true
+     },
+     {
+      "n": "12",
+      "name": "JONATHAN E.",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "DORIAN C.",
+      "sub": true
+     }
+    ],
+    "A": [
+     {
+      "n": "1",
+      "name": "NOLAN BRICAUD",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "GABIN ORHON",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "CLOVIS FAZILLEAU-COLLINEAU",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "MATTHIAS GUILLON",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "ROMAIN GAUTHIER",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "ANGELO PROD'HOMME",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "ROMAIN ROUL",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "FLORIAN GARNIER",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "THOMAS BESSON",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "CORENTIN ROBIN",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "THYLIAN DUPONT",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "FLORIAN BARBIN",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "ARTHUR FONTENEAU",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "HIPPOLYTE LANGLAIS",
+      "sub": true
+     }
+    ]
+   }
+  },
+  {
+   "equipe": 4,
+   "competition": "Coupe du District · 1er tour",
+   "kickoff": "2026-09-27T15:00:00+02:00",
+   "club_side": "H",
+   "home_name": "AS Mésanger D",
+   "away_name": "CCS Nantes St Félix 2",
+   "opp_code": 510653,
+   "score": [
+    0,
+    2
+   ],
+   "fff": "/competition/match/79635704-a-s-de-mesanger-c-c-s-nantes-st-felix",
+   "events": [
+    {
+     "min": 9,
+     "kind": "but",
+     "t": "A",
+     "who": "IMRAN K."
+    },
+    {
+     "min": 25,
+     "kind": "changement",
+     "t": "H",
+     "in": "LILIAN FERRON",
+     "out": "MICAËL GAUTIER"
+    },
+    {
+     "min": 30,
+     "kind": "changement",
+     "t": "A",
+     "in": "MILKIAS F.",
+     "out": "IMRAN K."
+    },
+    {
+     "min": 35,
+     "kind": "changement",
+     "t": "A",
+     "in": "BOUBACAR B.",
+     "out": "VALENTIN M."
+    },
+    {
+     "min": 40,
+     "kind": "changement",
+     "t": "A",
+     "in": "FLORENT C.",
+     "out": "MARIUS S."
+    },
+    {
+     "min": 45,
+     "kind": "changement",
+     "t": "H",
+     "in": "ALEXIS BERTIN",
+     "out": "THOMAS VOISINE"
+    },
+    {
+     "min": 50,
+     "kind": "but",
+     "t": "A",
+     "who": "BOUBACAR B."
+    }
+   ],
+   "rosters": {
+    "H": [
+     {
+      "n": "1",
+      "name": "ROMAIN GUILLET",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "JOSSELIN BRUNET",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "THÉO GUYARD",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "JONA LAUNAY",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "FLORIAN PELLERIN",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "MATHIS BRANGEON",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "MICAËL GAUTIER",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "THOMAS VOISINE",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "HENRI VERSTRAETE",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "GAÉTAN BOURCIER",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "WILHELM JOURDON ALLEAU",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "ALEXIS BERTIN",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "LUCAS G.",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "LILIAN FERRON",
+      "sub": true
+     }
+    ],
+    "A": [
+     {
+      "n": "1",
+      "name": "LUDOVIC K.",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "ANTOINE G.",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "VALENTIN G.",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "EDGAR B.",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "ANTHONY D.",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "SULLIVAN D.",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "SALAHEDDINE D.",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "SHAKIEL T.",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "MARIUS S.",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "VALENTIN M.",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "IMRAN K.",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "MILKIAS F.",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "BOUBACAR B.",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "FLORENT C.",
+      "sub": true
+     }
+    ]
+   }
+  },
+  {
+   "equipe": 5,
+   "competition": "Coupe du District · 1er tour",
+   "kickoff": "2026-09-27T12:30:00+02:00",
+   "club_side": "H",
+   "home_name": "AS Mésanger E",
+   "away_name": "AC Nort-sur-Erdre 4",
+   "opp_code": 512355,
+   "score": [
+    0,
+    20
+   ],
+   "fff": "/competition/match/79635697-a-s-de-mesanger-nort-a-c",
+   "events": [
+    {
+     "min": 9,
+     "kind": "but",
+     "t": "A",
+     "who": "LEO F."
+    },
+    {
+     "min": 20,
+     "kind": "but",
+     "t": "A",
+     "who": "LEO F."
+    },
+    {
+     "min": 21,
+     "kind": "but",
+     "t": "A",
+     "who": "LEO F."
+    },
+    {
+     "min": 23,
+     "kind": "but",
+     "t": "A",
+     "who": "LEO F."
+    },
+    {
+     "min": 31,
+     "kind": "but",
+     "t": "A",
+     "who": "LEO F."
+    },
+    {
+     "min": 35,
+     "kind": "changement",
+     "t": "H",
+     "in": "TOMMY BEN SOUSSAN-ONFROY",
+     "out": "TIMÉO GUERIN"
+    },
+    {
+     "min": 38,
+     "kind": "changement",
+     "t": "A",
+     "in": "ZAYAN S.",
+     "out": "LEO F."
+    },
+    {
+     "min": 40,
+     "kind": "changement",
+     "t": "H",
+     "in": "DENIS LUCAS",
+     "out": "SYLVAIN LUCAS"
+    },
+    {
+     "min": 41,
+     "kind": "but",
+     "t": "A",
+     "who": "LEO F."
+    },
+    {
+     "min": 45,
+     "kind": "but",
+     "t": "A",
+     "who": "LEO F."
+    },
+    {
+     "min": 45,
+     "kind": "but",
+     "t": "A",
+     "who": "LEO F."
+    },
+    {
+     "min": 45,
+     "kind": "changement",
+     "t": "H",
+     "in": "EVAN ALLARD",
+     "out": "JONATHAN MERCIER"
+    },
+    {
+     "min": 45,
+     "kind": "changement",
+     "t": "A",
+     "in": "SIMON M.",
+     "out": "TOM L."
+    },
+    {
+     "min": 45,
+     "kind": "changement",
+     "t": "A",
+     "in": "MATHIS H.",
+     "out": "ROMAIN P."
+    },
+    {
+     "min": 53,
+     "kind": "but",
+     "t": "A",
+     "who": "LEO F."
+    },
+    {
+     "min": 55,
+     "kind": "but",
+     "t": "A",
+     "who": "LEO F."
+    },
+    {
+     "min": 57,
+     "kind": "but",
+     "t": "A",
+     "who": "LEO F."
+    },
+    {
+     "min": 60,
+     "kind": "but",
+     "t": "A",
+     "who": "LEO F."
+    },
+    {
+     "min": 61,
+     "kind": "but",
+     "t": "A",
+     "who": "LEO F."
+    },
+    {
+     "min": 65,
+     "kind": "but",
+     "t": "A",
+     "who": "LEO F."
+    },
+    {
+     "min": 68,
+     "kind": "but",
+     "t": "A",
+     "who": "LEO F."
+    },
+    {
+     "min": 70,
+     "kind": "but",
+     "t": "A",
+     "who": "LEO F."
+    },
+    {
+     "min": 74,
+     "kind": "but",
+     "t": "A",
+     "who": "LEO F."
+    },
+    {
+     "min": 86,
+     "kind": "but",
+     "t": "A",
+     "who": "LEO F."
+    },
+    {
+     "min": 88,
+     "kind": "but",
+     "t": "A",
+     "who": "LEO F."
+    },
+    {
+     "min": 90,
+     "kind": "but",
+     "t": "A",
+     "who": "LEO F."
+    }
+   ],
+   "rosters": {
+    "H": [
+     {
+      "n": "1",
+      "name": "CORENTIN MAUSSION",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "THOMAS BLANDIN",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "CHARLIE LEMAY",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "MAXIME RODET",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "PHILIPPE COLLINEAU",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "UGO MATHIEU-LEMAITRE",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "MARIUS MARSAC",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "NOAH DENIS",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "SYLVAIN LUCAS",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "TIMÉO GUERIN",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "JONATHAN MERCIER",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "EVAN ALLARD",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "TOMMY BEN SOUSSAN-ONFROY",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "DENIS LUCAS",
+      "sub": true
+     }
+    ],
+    "A": [
+     {
+      "n": "1",
+      "name": "NOE B.",
+      "sub": false
+     },
+     {
+      "n": "2",
+      "name": "ORAIN P.",
+      "sub": false
+     },
+     {
+      "n": "3",
+      "name": "GABIN L.",
+      "sub": false
+     },
+     {
+      "n": "4",
+      "name": "TOM L.",
+      "sub": false
+     },
+     {
+      "n": "5",
+      "name": "VINCENT D.",
+      "sub": false
+     },
+     {
+      "n": "6",
+      "name": "PIERRE L.",
+      "sub": false
+     },
+     {
+      "n": "7",
+      "name": "ROMAIN P.",
+      "sub": false
+     },
+     {
+      "n": "8",
+      "name": "JULLIAN O.",
+      "sub": false
+     },
+     {
+      "n": "9",
+      "name": "JULIEN S.",
+      "sub": false
+     },
+     {
+      "n": "10",
+      "name": "MATHEO N.",
+      "sub": false
+     },
+     {
+      "n": "11",
+      "name": "LEO F.",
+      "sub": false
+     },
+     {
+      "n": "12",
+      "name": "SIMON M.",
+      "sub": true
+     },
+     {
+      "n": "13",
+      "name": "MATHIS H.",
+      "sub": true
+     },
+     {
+      "n": "14",
+      "name": "ZAYAN S.",
+      "sub": true
+     }
+    ]
+   }
+  }
+ ]
+}

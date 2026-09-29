@@ -1174,21 +1174,23 @@ async function classementsView(){
 }
 
 // ---------- Stats joueurs ----------
-let statSort = {key:'goals', dir:-1}, statSeason = null, statTeam = 0;
+let statSort = {key:'goals', dir:-1}, statSeason = null, statTeam = 0, statComp = '';
+const isCup = m => /coupe/i.test(m.competition || '');
 function playerKey(name){
   return name.normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[^A-Z ]/g,' ').split(/\s+/).filter(Boolean).sort().join(' ');
 }
 async function statsView(){
   view.innerHTML = '<div class="loading">Chargement…</div>';
   const [{ data: ms, error }, { data: evs, error: e2 }] = await Promise.all([
-    sb.from('matches').select('id,kickoff,equipe,club_side,rosters,status').neq('status','prevu'),
+    sb.from('matches').select('id,kickoff,equipe,club_side,rosters,status,competition').neq('status','prevu'),
     sb.from('events').select('match_id,t,k,n,in_n')
   ]);
   if (error || e2) throw (error || e2);
   const seasons = [...new Set(ms.map(m=>seasonOf(m.kickoff)))].sort().reverse();
   if (!statSeason || !seasons.includes(statSeason)) statSeason = seasons[0] || null;
   const draw = () => {
-    const list = ms.filter(m => seasonOf(m.kickoff)===statSeason && (!statTeam || (m.equipe||1)===statTeam));
+    const list = ms.filter(m => seasonOf(m.kickoff)===statSeason && (!statTeam || (m.equipe||1)===statTeam)
+      && (!statComp || (statComp === 'coupe') === isCup(m)));
     const ids = new Set(list.map(m=>m.id));
     const byMatch = {}; evs.forEach(e => { if (ids.has(e.match_id)) (byMatch[e.match_id] ||= []).push(e); });
     const P = {}; let unknownGoals = 0;
@@ -1219,6 +1221,7 @@ async function statsView(){
     const cell = (v) => `<td class="${v?'':'zero'}">${v}</td>`;
     view.innerHTML = `
       <div class="seasons">${seasons.length > 1 ? `<label>Saison <select id="season">${seasons.map(s=>`<option${s===statSeason?' selected':''}>${s}</option>`).join('')}</select></label> ` : (statSeason ? `<b>Saison ${statSeason}</b> ` : '')}<label>Équipe <select id="steam"><option value="0">Toutes</option>${TEAMS.map(n=>`<option value="${n}"${statTeam===n?' selected':''}>Seniors ${teamLetter(n)}</option>`).join('')}</select></label></div>
+      <div class="chipbar compbar" role="group" aria-label="Compétition">${[['', 'Tout'], ['championnat', 'Championnat'], ['coupe', 'Coupes']].map(([v, l]) => `<button data-comp="${v}" class="${statComp===v?'on':''}" aria-pressed="${statComp===v}">${l}</button>`).join('')}</div>
       <div class="kpis">
         <div class="kpi"><b>${list.length}</b><span>Matchs</span></div>
         <div class="kpi"><b>${W}-${D}-${L}</b><span>V-N-D</span></div>
@@ -1228,12 +1231,13 @@ async function statsView(){
       ${rows.length ? `<div class="tblwrap"><table class="stats"><thead><tr>${COLS.map(([k,l])=>`<th class="${statSort.key===k?'on':''}" aria-sort="${statSort.key===k?(statSort.dir<0?'descending':'ascending'):'none'}"><button data-k="${k}">${l}${statSort.key===k?(statSort.dir<0?' ▾':' ▴'):''}</button></th>`).join('')}</tr></thead>
         <tbody>${rows.map(p=>`<tr><td>${esc(p.name)}</td>${cell(p.mj)}${cell(p.tit)}${cell(p.goals)}${cell(p.y)}${cell(p.r)}</tr>`).join('')}</tbody></table></div>`
         : `<div class="empty">Les stats apparaîtront après le premier match dont la composition de l'${CLUB} a été saisie.</div>`}
-      <p class="note">Stats des joueurs de l'${CLUB}, calculées à partir des compositions et de la chronologie de chaque match.${unknownGoals ? ` ${unknownGoals} but${unknownGoals>1?'s':''} sans buteur identifié.` : ''}</p>`;
+      <p class="note">${statComp === 'coupe' ? 'Matchs de coupe uniquement. ' : statComp ? 'Matchs de championnat uniquement. ' : ''}Stats des joueurs de l'${CLUB}, calculées à partir des compositions et de la chronologie de chaque match.${unknownGoals ? ` ${unknownGoals} but${unknownGoals>1?'s':''} sans buteur identifié.` : ''}</p>`;
     view.querySelectorAll('th button').forEach(b => b.onclick = () => {
       const k = b.dataset.k; statSort = statSort.key===k ? {key:k, dir:-statSort.dir} : {key:k, dir: k==='name' ? 1 : -1}; draw();
     });
     const s = $('season'); if (s) s.onchange = () => { statSeason = s.value; draw(); };
     $('steam').onchange = e => { statTeam = +e.target.value; draw(); };
+    view.querySelectorAll('[data-comp]').forEach(b => b.onclick = () => { statComp = b.dataset.comp; draw(); });
   };
   draw();
 }
