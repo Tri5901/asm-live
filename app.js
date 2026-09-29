@@ -816,7 +816,15 @@ async function consoleView(id, openCompo){
       $('luPhoto').onclick = () => $('luFile').click();
       $('luFile').onchange = async ev => {
         const file = ev.target.files[0]; ev.target.value = '';
-        if (file) await readSheetPhoto(file, $('luStat'), found => { const t = cur; found.forEach(p => addPlayer(t, p)); draw(); $('luStat').textContent = `${plural(found.length, 'joueur')} ajouté${found.length > 1 ? 's' : ''} depuis la photo. Vérifie les noms et les remplaçants.`; });
+        if (file) await readSheetPhoto(file, $('luStat'), teams => {
+          let txt;
+          if (teams.length === 2){
+            // tablette FFF : équipe recevante à gauche, visiteuse à droite ; remplace les listes
+            ed.H = []; ed.A = []; teams[0].forEach(p => addPlayer('H', p)); teams[1].forEach(p => addPlayer('A', p));
+            txt = `${plural(teams[0].length, 'joueur')} pour ${teamName(S,'H')} et ${teams[1].length} pour ${teamName(S,'A')}, lus sur la photo.`;
+          } else { const t = cur; teams[0].forEach(p => addPlayer(t, p)); txt = `${plural(teams[0].length, 'joueur')} ajouté${teams[0].length > 1 ? 's' : ''} depuis la photo.`; }
+          draw(); $('luStat').textContent = txt + ' Vérifie les noms et les remplaçants.';
+        });
       };
       $('luSave').onclick = save;
       $('luCancel').onclick = closeSheet;
@@ -916,19 +924,43 @@ async function consoleView(id, openCompo){
 function loadScript(src){
   return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('script')); document.head.appendChild(s); });
 }
-async function prepImage(file){
-  const bmp = await createImageBitmap(file);
-  const scale = Math.min(1, 2400 / Math.max(bmp.width, bmp.height));
-  const w = Math.round(bmp.width*scale), h = Math.round(bmp.height*scale);
+// Photo → image noir et blanc prête pour la lecture : tournée de rot degrés, mise à ~3000 px,
+// seuil local (reflets, écran gris) puis effacement des traits du tableau qui gênent la lecture.
+function prepImage(bmp, rot, size = 2400){
+  const turn = rot === 90 || rot === 270;
+  const scale = Math.min(2.5, size / Math.max(bmp.width, bmp.height));
+  const w0 = Math.round(bmp.width * scale), h0 = Math.round(bmp.height * scale);
+  const w = turn ? h0 : w0, h = turn ? w0 : h0;
   const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
-  const ctx = cv.getContext('2d'); ctx.drawImage(bmp, 0, 0, w, h);
-  const img = ctx.getImageData(0, 0, w, h), d = img.data;
-  let lo = 255, hi = 0;
-  for (let i = 0; i < d.length; i += 4){ const g = d[i]*.299 + d[i+1]*.587 + d[i+2]*.114; d[i] = g; if (g<lo) lo=g; if (g>hi) hi=g; }
-  const span = Math.max(1, hi - lo);
-  for (let i = 0; i < d.length; i += 4){ const g = Math.min(255, Math.max(0, (d[i]-lo)*255/span)); d[i] = d[i+1] = d[i+2] = g; }
-  ctx.putImageData(img, 0, 0);
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingQuality = 'high'; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+  ctx.translate(w / 2, h / 2); ctx.rotate(rot * Math.PI / 180); ctx.drawImage(bmp, -w0 / 2, -h0 / 2, w0, h0);
+  const img = ctx.getImageData(0, 0, w, h), d = img.data, g = new Uint8Array(w * h);
+  for (let k = 0, p = 0; k < g.length; k++, p += 4) g[k] = d[p] * .299 + d[p + 1] * .587 + d[p + 2] * .114;
+  let lo = 255, hi = 0; for (let k = 0; k < g.length; k++){ if (g[k] < lo) lo = g[k]; if (g[k] > hi) hi = g[k]; }
+  const sp = Math.max(1, hi - lo); for (let k = 0; k < g.length; k++) g[k] = (g[k] - lo) * 255 / sp;
+  const out = cleanGrid(g, w, h);
+  for (let k = 0, p = 0; k < out.length; k++, p += 4){ d[p] = d[p + 1] = d[p + 2] = out[k]; d[p + 3] = 255; }
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.putImageData(img, 0, 0);
   return cv;
+}
+function cleanGrid(d, w, h){
+  const W = w + 1, I = new Float64Array(W * (h + 1));
+  for (let y = 0; y < h; y++){ let s = 0; for (let x = 0; x < w; x++){ s += d[y * w + x]; I[(y + 1) * W + x + 1] = I[y * W + x + 1] + s; } }
+  const r = Math.max(8, Math.round(Math.min(w, h) / 40)), out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++){
+    const y0 = Math.max(0, y - r), y1 = Math.min(h, y + r + 1);
+    for (let x = 0; x < w; x++){
+      const x0 = Math.max(0, x - r), x1 = Math.min(w, x + r + 1);
+      const m = (I[y1 * W + x1] - I[y0 * W + x1] - I[y1 * W + x0] + I[y0 * W + x0]) / ((x1 - x0) * (y1 - y0));
+      out[y * w + x] = d[y * w + x] < m * .85 ? 0 : 255;
+    }
+  }
+  const L = Math.round(Math.max(w, h) * .06), kill = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++){ let a = -1; for (let x = 0; x <= w; x++){ const k = x < w && out[y * w + x] === 0; if (k && a < 0) a = x; if (!k && a >= 0){ if (x - a >= L) for (let q = a; q < x; q++) kill[y * w + q] = 1; a = -1; } } }
+  for (let x = 0; x < w; x++){ let a = -1; for (let y = 0; y <= h; y++){ const k = y < h && out[y * w + x] === 0; if (k && a < 0) a = y; if (!k && a >= 0){ if (y - a >= L * .6) for (let q = a; q < y; q++) kill[q * w + x] = 1; a = -1; } } }
+  for (let k = 0; k < w * h; k++) if (kill[k]){ out[k] = 255; if (k % w) out[k - 1] = 255; if ((k + 1) % w) out[k + 1] = 255; if (k >= w) out[k - w] = 255; if (k + w < w * h) out[k + w] = 255; }
+  return out;
 }
 function parseSheet(text){
   const out = [], seen = new Set();
@@ -944,18 +976,108 @@ function parseSheet(text){
   }
   return out;
 }
+// Mots lus (avec leur position) → joueurs. Reconnaît la tablette FFF « Compositions » :
+// équipe recevante à gauche, visiteuse à droite, « R » = remplaçant, « C » = capitaine.
+function parseWords(words, width){
+  words = (words || []).map(w => ({ t: w.text.trim(), x: w.bbox.x0, x1: w.bbox.x1, y: (w.bbox.y0 + w.bbox.y1) / 2, h: w.bbox.y1 - w.bbox.y0 })).filter(w => w.t);
+  if (!words.length) return [];
+  const hMed = words.map(w => w.h).sort((a, b) => a - b)[words.length >> 1] || 10;
+  words.sort((a, b) => a.y - b.y);
+  const rows = [];
+  for (const w of words){
+    const r = rows.find(r => Math.abs(r.y - w.y) < hMed * .6);
+    if (r){ r.w.push(w); r.y = (r.y * (r.w.length - 1) + w.y) / r.w.length; } else rows.push({ y: w.y, w: [w] });
+  }
+  const isNum = t => /^\d{1,2}$/.test(t.replace(/[.)\]|:]/g, ''));
+  const isName = t => /^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'’\-]+$/.test(t);
+  const HEAD = /^(maillot|nom|prénom|prenom|nom\/prénom|equipe|équipe|recevante|visiteuse|arbitre|central|compositions?|feuille|presse|licence|n°)$/i;
+  const players = [];
+  for (const r of rows.sort((a, b) => a.y - b.y)){
+    r.w.sort((a, b) => a.x - b.x);
+    let p = null, lastX = 0;
+    for (const w of r.w){
+      if (isNum(w.t)){ if (p) players.push(p); p = { n: String(+w.t.replace(/\D/g, '')), x: w.x, y: r.y, name: [], flags: '' }; lastX = w.x1; continue; }
+      if (!p) continue;
+      if (w.x - lastX > hMed * 6 && p.name.length) p.done = true; // grand blanc : fin du nom (le R / C peut suivre)
+      lastX = w.x1;
+      if (/^(R|C|CR|RC|E\/?DR|M)$/.test(w.t)){ p.flags += w.t; continue; }
+      if (isName(w.t) && !HEAD.test(w.t) && !p.done) p.name.push(w.t);
+    }
+    if (p) players.push(p);
+  }
+  const ok = players.filter(p => p.n !== '0' && p.name.join(' ').length >= 3 && p.name.length <= 5);
+  if (!ok.length) return [];
+  // deux équipes côte à côte : deux groupes de numéros nettement séparés (gauche = recevante)
+  const xs = ok.map(p => p.x).sort((a, b) => a - b);
+  let best = null;
+  for (let k = 3; k <= xs.length - 3; k++){
+    const L = xs.slice(0, k), R = xs.slice(k), mL = L.reduce((a, b) => a + b) / L.length, mR = R.reduce((a, b) => a + b) / R.length;
+    const v = L.reduce((a, x) => a + (x - mL) ** 2, 0) + R.reduce((a, x) => a + (x - mR) ** 2, 0);
+    if (!best || v < best.v) best = { v, cut: (xs[k - 1] + xs[k]) / 2, d: mR - mL };
+  }
+  const two = best && best.d > width * .25;
+  const teams = two ? [ok.filter(p => p.x < best.cut), ok.filter(p => p.x > best.cut)] : [ok];
+  return teams.map(list => {
+    const seen = new Set(), out = [];
+    list.sort((a, b) => a.y - b.y).forEach(p => { if (!seen.has(p.n)){ seen.add(p.n); out.push(p); } });
+    return out.map(p => ({ n: p.n, name: fmtNom(p.name.join(' ')), r: /R/.test(p.flags.replace(/DR/g, '')) }));
+  });
+}
+// Fusionne plusieurs lectures de la même photo : pour chaque numéro, le nom lu le plus souvent / le plus propre
+function mergeReads(reads){
+  const nT = Math.max(...reads.map(r => r.length));
+  reads = reads.filter(r => r.length === nT);
+  return Array.from({ length: nT }, (_, t) => {
+    const by = new Map();
+    reads.forEach(r => r[t].forEach(p => { if (!by.has(p.n)) by.set(p.n, []); by.get(p.n).push(p); }));
+    const out = [...by.entries()].sort((a, b) => +a[0] - +b[0]).map(([n, c]) => {
+      const score = name => c.filter(p => p.name === name).length * 2 + (name.split(' ').length >= 2 ? 3 : 0) - (name.split(' ').some(w => w.length > 12) ? 2 : 0);
+      const name = c.map(p => p.name).sort((a, b) => score(b) - score(a))[0];
+      return { n, name, r: c.some(p => p.r), seen: c.length };
+    }).filter(p => p.seen > 1 || reads.length === 1 || p.name.split(' ').length >= 2);
+    const hasR = out.some(p => p.r);
+    return out.map((p, k) => ({ n: p.n, name: p.name, sub: hasR ? p.r : k >= 11 }));
+  });
+}
+let ocrWorker = null;
+// Lit la photo ; onFound reçoit une liste par équipe : [recevante, visiteuse] ou [une seule équipe]
 async function readSheetPhoto(file, stat, onFound){
   if (!navigator.onLine && !window.Tesseract){ stat.textContent = 'La lecture de photo a besoin du réseau la première fois.'; return; }
   try{
     stat.textContent = 'Préparation de la photo…';
-    const [cv] = await Promise.all([prepImage(file), window.Tesseract ? null : loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js')]);
-    stat.textContent = 'Lecture en cours… (la première fois peut prendre 20 s)';
-    const { data } = await window.Tesseract.recognize(cv, 'fra', {
-      logger: m => { if (m.status==='recognizing text') stat.textContent = `Lecture en cours… ${Math.round(m.progress*100)} %`; }
+    const [bmp] = await Promise.all([createImageBitmap(file), window.Tesseract ? null : loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js')]);
+    if (!ocrWorker) ocrWorker = await window.Tesseract.createWorker('fra', 1, {
+      logger: m => { if (m.status === 'recognizing text' && ocrWorker && ocrWorker.stat) ocrWorker.stat(m.progress); }
     });
-    const found = parseSheet(data.text || '');
-    if (!found.length){ stat.textContent = 'Aucun joueur reconnu. Reprends la photo bien à plat, en cadrant seulement la liste de l\'équipe.'; return; }
-    onFound(found);
+    // photo prise de travers (tablette en paysage, téléphone en portrait) : on essaie les autres sens
+    const read = async (rot, size, psm, label) => {
+      ocrWorker.stat = p => { stat.textContent = label + Math.round(p * 100) + ' %'; };
+      stat.textContent = label;
+      await ocrWorker.setParameters({ tessedit_pageseg_mode: psm });
+      const cv = prepImage(bmp, rot, size);
+      const { data } = await ocrWorker.recognize(cv);
+      let teams = parseWords(data.words, cv.width);
+      const flat = parseSheet(data.text || '');
+      if (flat.length > teams.reduce((x, t) => x + t.length, 0)) teams = [flat.map(p => ({ n: p.n, name: fmtNom(p.name), r: false }))];
+      return teams;
+    };
+    const count = t => t.reduce((x, l) => x + l.length, 0);
+    const good = t => t.flat().filter(p => p.name.split(' ').length >= 2).length; // noms en 2 mots = lecture dans le bon sens
+    let rot = null, first = [];
+    for (const r of [0, 90, 270]){
+      const t = await read(r, 2400, '6', r ? 'Photo de travers, nouvel essai… ' : 'Lecture en cours… ');
+      if (good(t) > good(first)){ first = t; rot = r; }
+      if (good(first) >= 6) break;
+    }
+    let best = first.length ? mergeReads([first]) : [];
+    if (good(first) >= 6){
+      const second = await read(rot, 2400, '3', 'Vérification… ');
+      best = mergeReads([first, second]);
+    }
+    const bestN = count(best);
+    ocrWorker.stat = null;
+    if (!bestN){ stat.textContent = 'Aucun joueur reconnu. Reprends la photo bien en face, en cadrant le tableau des compositions.'; return; }
+    onFound(best);
   }catch(e){
     console.error(e);
     stat.textContent = 'La lecture a échoué. Tu peux taper les joueurs à la main.';
