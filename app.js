@@ -1176,7 +1176,7 @@ async function classementsView(){
 }
 
 // ---------- Stats joueurs ----------
-let statSort = {key:'goals', dir:-1}, statSeason = null, statTeam = 0, statComp = '';
+let statSort = {key:'goals', dir:-1}, statSeason = null, statTeam = 0, statComp = '', statMode = 'joueurs';
 const isCup = m => /coupe/i.test(m.competition || '');
 function playerKey(name){
   return name.normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[^A-Z ]/g,' ').split(/\s+/).filter(Boolean).sort().join(' ');
@@ -1222,7 +1222,32 @@ async function statsView(playerArg){
     });
     const COLS = [['name','Joueur'],['mj','Matchs'],['tit','Titul.'],['goals','Buts'],['y','🟨'],['r','🟥']];
     const cell = (v) => `<td class="${v?'':'zero'}">${v}</td>`;
-    view.innerHTML = `
+    // classement des buteurs, équipe par équipe (un joueur compte pour chaque équipe où il a marqué)
+    const boards = {};
+    for (const m of list){
+      const c = m.club_side, eq = m.equipe || 1, roster = ((m.rosters||{})[c]) || [], me = byMatch[m.id] || [];
+      const B = boards[eq] ||= { players: {}, csc: 0, n: 0 }; B.n++;
+      const played = new Set(roster.filter(p => !p.sub).map(p => p.n));
+      me.forEach(e => { if (e.t===c && e.k==='sub' && e.in_n) played.add(e.in_n); });
+      roster.forEach(p => { if (!played.has(p.n)) return; const k = playerKey(p.name); (B.players[k] ||= { k, name: p.name, goals: 0, mj: 0 }).mj++; });
+      me.forEach(e => {
+        if (e.t!==c || e.k!=='goal') return;
+        if (e.n==='CSC'){ B.csc++; return; }
+        const p = roster.find(x => x.n===String(e.n)); if (!p) return;
+        const k = playerKey(p.name); (B.players[k] ||= { k, name: p.name, goals: 0, mj: 0 }).goals++;
+      });
+    }
+    const boardHTML = eq => {
+      const B = boards[eq]; if (!B) return '';
+      const sc = Object.values(B.players).filter(p => p.goals).sort((a, b) => b.goals - a.goals || a.mj - b.mj || a.name.localeCompare(b.name, 'fr'));
+      let rank = 0, prev = null;
+      return `<section class="board"><div class="bhead"><span class="tchip">${teamLetter(eq)}</span><b>${esc(teamLabel(eq))}</b><span>${B.n} match${B.n>1?'s':''}</span></div>
+        ${sc.length ? `<ol class="blist">${sc.map((p, i) => { if (p.goals !== prev){ rank = i + 1; prev = p.goals; }
+          return `<li class="prow" data-pk="${esc(p.k)}" tabindex="0"><span class="brk${rank<=3?' top'+rank:''}">${rank}</span><span class="bname">${esc(p.name)}<small>${p.mj} match${p.mj>1?'s':''} · ${(p.goals/Math.max(1,p.mj)).toLocaleString('fr-FR',{maximumFractionDigits:2})} / match</small></span><b>${p.goals}</b></li>`; }).join('')}</ol>` : '<div class="empty">Aucun buteur.</div>'}
+        ${B.csc ? `<p class="bcsc">+ ${B.csc} but${B.csc>1?'s':''} contre son camp adverse</p>` : ''}</section>`;
+    };
+    const modeBar = `<div class="seg statmode" role="group" aria-label="Affichage">${[['joueurs', 'Tous les joueurs'], ['buteurs', 'Buteurs par équipe']].map(([v, l]) => `<button type="button" data-mode="${v}" class="${statMode===v?'on':''}" aria-pressed="${statMode===v}">${l}</button>`).join('')}</div>`;
+    view.innerHTML = modeBar + `
       <div class="seasons">${seasons.length > 1 ? `<label>Saison <select id="season">${seasons.map(s=>`<option${s===statSeason?' selected':''}>${s}</option>`).join('')}</select></label> ` : (statSeason ? `<b>Saison ${statSeason}</b> ` : '')}<label>Équipe <select id="steam"><option value="0">Toutes</option>${TEAMS.map(n=>`<option value="${n}"${statTeam===n?' selected':''}>Seniors ${teamLetter(n)}</option>`).join('')}</select></label></div>
       <div class="chipbar compbar" role="group" aria-label="Compétition">${[['', 'Tout'], ['championnat', 'Championnat'], ['coupe', 'Coupes']].map(([v, l]) => `<button data-comp="${v}" class="${statComp===v?'on':''}" aria-pressed="${statComp===v}">${l}</button>`).join('')}</div>
       <div class="kpis">
@@ -1231,7 +1256,7 @@ async function statsView(playerArg){
         <div class="kpi"><b>${gf}</b><span>Buts marqués</span></div>
         <div class="kpi"><b>${ga}</b><span>Encaissés</span></div>
       </div>
-      ${rows.length ? `<div class="tblwrap"><table class="stats"><thead><tr>${COLS.map(([k,l])=>`<th class="${statSort.key===k?'on':''}" aria-sort="${statSort.key===k?(statSort.dir<0?'descending':'ascending'):'none'}"><button data-k="${k}">${l}${statSort.key===k?(statSort.dir<0?' ▾':' ▴'):''}</button></th>`).join('')}</tr></thead>
+      ${statMode === 'buteurs' ? (TEAMS.map(boardHTML).join('') || '<div class="empty">Aucun match avec ce filtre.</div>') : rows.length ? `<div class="tblwrap"><table class="stats"><thead><tr>${COLS.map(([k,l])=>`<th class="${statSort.key===k?'on':''}" aria-sort="${statSort.key===k?(statSort.dir<0?'descending':'ascending'):'none'}"><button data-k="${k}">${l}${statSort.key===k?(statSort.dir<0?' ▾':' ▴'):''}</button></th>`).join('')}</tr></thead>
         <tbody>${rows.map(p=>`<tr class="prow" data-pk="${esc(p.k)}" tabindex="0"><td>${esc(p.name)}</td>${cell(p.mj)}${cell(p.tit)}${cell(p.goals)}${cell(p.y)}${cell(p.r)}</tr>`).join('')}${cscGoals ? `<tr class="csc"><td>CSC <small>(contre son camp adverse)</small></td><td></td><td></td>${cell(cscGoals)}<td></td><td></td></tr>` : ''}</tbody></table></div>`
         : `<div class="empty">Les stats apparaîtront après le premier match dont la composition de l'${CLUB} a été saisie.</div>`}
       <p class="note">${statComp === 'coupe' ? 'Matchs de coupe uniquement. ' : statComp ? 'Matchs de championnat uniquement. ' : ''}Stats des joueurs de l'${CLUB}, calculées à partir des compositions et de la chronologie de chaque match.${unknownGoals ? ` ${unknownGoals} but${unknownGoals>1?'s':''} sans buteur identifié.` : ''}</p>`;
@@ -1241,6 +1266,7 @@ async function statsView(playerArg){
     const s = $('season'); if (s) s.onchange = () => { statSeason = s.value; draw(); };
     $('steam').onchange = e => { statTeam = +e.target.value; draw(); };
     view.querySelectorAll('[data-comp]').forEach(b => b.onclick = () => { statComp = b.dataset.comp; draw(); });
+    view.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { statMode = b.dataset.mode; draw(); });
     view.querySelectorAll('.prow').forEach(r => { const go = () => { location.hash = '#/stats/joueur/' + encodeURIComponent(r.dataset.pk); }; r.onclick = go; r.onkeydown = e => { if (e.key === 'Enter') go(); }; });
   };
   const byMatchAll = {}; evs.forEach(e => { (byMatchAll[e.match_id] ||= []).push(e); });
