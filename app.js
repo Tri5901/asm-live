@@ -436,8 +436,10 @@ function lineupsHTML(m){
       + '</div>';
   };
   const has = rosterOf(m,'H').length || rosterOf(m,'A').length;
+  // compo cachée : le public sait seulement si elle a été saisie
+  if (m.compo_cachee && !canManage(m)) return m.compo_cachee_saisie
+    ? '<section class="log"><div class="loghead"><h2>Compositions</h2></div><div class="empty">🔒 Compo saisie, non accessible au public.</div></section>' : '';
   if (!has && !canManage(m)) return '';
-  if (m.compo_cachee && !canManage(m)) return '';
   const vis = isTeamManager(m.equipe)
     ? `<button type="button" class="vistog${m.compo_cachee ? ' off' : ''}" id="compoVis" aria-pressed="${!m.compo_cachee}"><i></i>${m.compo_cachee ? 'Cachée au public' : 'Visible par tous'}</button>`
     : m.compo_cachee ? '<span class="vistog off static"><i></i>Cachée au public</span>' : '';
