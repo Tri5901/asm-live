@@ -1430,7 +1430,8 @@ async function adminView(){
   if (!view.querySelector('.acc')) view.innerHTML = '<div class="loading">Chargement…</div>';
   let { data, error } = await sb.from('profiles').select('*').order('created_at');
   if (error) throw error;
-  const supprimes = data.filter(p => p.role === 'supprime').length;
+  const deleted = data.filter(p => p.role === 'supprime').sort((a, b) => String(b.deleted_at||'').localeCompare(String(a.deleted_at||'')));
+  const supprimes = deleted.length;
   data = data.filter(p => p.role !== 'supprime');
   const ROLES = [['pending', 'Sans accès'], ['joueur', 'Joueur'], ['dirigeant', 'Dirigeant'], ['delegue', 'Responsable'], ['admin', 'Admin']];
   const GROUPS = [['pending', 'En attente de validation'], ['admin', 'Admins'], ['delegue', 'Responsables'], ['dirigeant', 'Dirigeants'], ['joueur', 'Joueurs']];
@@ -1456,11 +1457,45 @@ async function adminView(){
       const l = data.filter(p => p.role === r).sort((a, b) => nameOf(a).localeCompare(nameOf(b), 'fr'));
       return l.length ? `<div class="sec${r === 'pending' ? ' secwarn' : ''}">${t} · ${l.length}</div><div class="alist">${l.map(row).join('')}</div>` : '';
     }).join('')}
-    ${supprimes ? `<p class="note">${supprimes} compte${supprimes > 1 ? 's' : ''} supprimé${supprimes > 1 ? 's' : ''} : ${supprimes > 1 ? 'leurs noms restent' : 'son nom reste'} dans l’historique des matchs.</p>` : ''}
+    ${supprimes ? `<div class="sec">Comptes supprimés · ${supprimes}</div>
+      <p class="note" style="margin:0 0 6px">Leur nom reste dans l’historique des matchs. Si la personne a recréé un compte, rattache-le : tout son historique passe sur le nouveau compte.</p>
+      <div class="alist">${deleted.map(p => `<div class="arow del"><span class="pav">${initial(p)}</span><div class="who"><b>${esc(nameOf(p))}</b><small>${p.deleted_at ? 'Supprimé le ' + esc(new Date(p.deleted_at).toLocaleDateString('fr-FR')) : 'Compte supprimé'}</small></div><button type="button" class="amod" data-link="${esc(p.id)}">Rattacher</button></div>`).join('')}</div>` : ''}
   </div>`;
 
   view.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editPerson(data.find(p => p.id === b.dataset.edit)));
+  view.querySelectorAll('[data-link]').forEach(b => b.onclick = () => linkAccount(deleted.find(p => p.id === b.dataset.link)));
   renderAdminOnline();
+
+  // Rattacher un compte supprimé à un compte existant
+  function linkAccount(old){
+    const cands = data.slice().sort((a, b) => nameOf(a).localeCompare(nameOf(b), 'fr'));
+    openSheet(`<h3 id="shTitle">Rattacher « ${esc(nameOf(old))} »</h3>
+      <p>Choisis le nouveau compte de cette personne. Les matchs créés, compos saisies, actions et délégations de l’ancien compte lui seront transférés.</p>
+      <input id="lkQ" class="dpq" type="search" placeholder="Rechercher un nom…" autocomplete="off">
+      <div class="alist dplist" id="lkList"></div>
+      <button class="cancel" id="lkNo">Annuler</button>`);
+    const q = $('lkQ'), list = $('lkList');
+    const drawList = () => {
+      const w = sansAccent(q.value).split(/\s+/).filter(Boolean);
+      const f = cands.filter(p => w.every(x => sansAccent(nameOf(p) + ' ' + (p.email||'')).includes(x)));
+      list.innerHTML = f.map(p => `<button type="button" class="arow dprow" data-to="${esc(p.id)}"><div class="who"><b>${esc(nameOf(p))}</b><small>${esc(p.email || '')}</small></div></button>`).join('') || '<div class="empty">Aucun compte ne correspond.</div>';
+      list.querySelectorAll('[data-to]').forEach(b => b.onclick = () => {
+        const to = cands.find(p => p.id === b.dataset.to);
+        askConfirm(`Rattacher à ${nameOf(to)} ?`,
+          `Tout l’historique de « ${nameOf(old)} » (compte supprimé) passera sur le compte de ${nameOf(to)}, puis l’ancienne fiche sera effacée. Les droits de ${nameOf(to)} ne changent pas. C’est définitif.`,
+          'Rattacher', async () => {
+            const { data: r, error } = await sb.rpc('rattacher_compte', { p_ancien: old.id, p_nouveau: to.id });
+            if (error){ toast(isNetErr(error) ? 'Pas de réseau' : 'Rattachement refusé'); return; }
+            const n = (r.matchs||0) + (r.compos||0) + (r.delegations||0) + (r.actions||0);
+            people = null; delegues = null;
+            toast(n ? `Historique transféré à ${nameOf(to)} (${r.actions||0} action${r.actions>1?'s':''}, ${r.matchs||0} match${r.matchs>1?'s':''} créé${r.matchs>1?'s':''})` : `Rattaché à ${nameOf(to)} (aucun historique à transférer)`);
+            adminView();
+          });
+      });
+    };
+    q.oninput = drawList; drawList();
+    $('lkNo').onclick = closeSheet;
+  }
 
   function editPerson(p){
     const me = p.id === session.user.id;
