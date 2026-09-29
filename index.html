@@ -396,6 +396,13 @@ table.cls tr.me td.rk,table.cls tr.me td.tm{color:var(--ink);font-weight:800}
 .onbig b{font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:44px;line-height:1}
 .onbig span{color:var(--muted)}
 .oncount{font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:20px;font-variant-numeric:tabular-nums}
+.arow .pav{position:relative}
+.arow.isOn .pav::after{content:"";position:absolute;right:-1px;bottom:-1px;width:12px;height:12px;border-radius:50%;background:#3ddc84;border:2px solid var(--surface)}
+.onstate{display:block;margin-top:3px;font-size:12px;font-weight:600;color:#2e9e5b}
+.onstate:empty{display:none}
+.accon{display:flex;align-items:center;gap:8px;margin:8px 0 0;font-size:14px;font-weight:600}
+.accon:empty{display:none}
+.accon i{width:9px;height:9px;border-radius:50%;background:#3ddc84;box-shadow:0 0 0 3px rgba(61,220,132,.25)}
 </style>
 </head>
 <body>

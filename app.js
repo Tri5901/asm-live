@@ -148,6 +148,7 @@ async function loadProfile(){
   renderAcct();
 }
 function renderAcct(){
+  presTrack();
   renderOnline();
   const a = $('acct');
   if (session){
@@ -1099,15 +1100,16 @@ async function adminView(){
     : p.role === 'delegue' ? 'Responsable · ' + (teamsOf(p).length ? teamsOf(p).map(teamLetter).join(', ') : 'aucune équipe')
     : p.role === 'joueur' ? 'Joueur' : 'En attente';
 
-  const row = p => `<div class="arow">
+  const row = p => `<div class="arow" data-uid="${esc(p.id)}">
       <span class="pav">${initial(p)}</span>
       <div class="who"><b>${esc(nameOf(p))}${p.id === session.user.id ? ' <small>(toi)</small>' : ''}</b><small>${esc(p.email || '')}</small>
-        <span class="rbadge r-${p.role}">${esc(summary(p))}</span></div>
+        <span class="rbadge r-${p.role}">${esc(summary(p))}</span><span class="onstate"></span></div>
       <button type="button" class="amod" data-edit="${esc(p.id)}">Modifier</button>
     </div>`;
   const pendingN = data.filter(p => p.role === 'pending').length;
   view.innerHTML = `<div class="acc">
     <div class="acctop"><h1>Accès</h1><a class="link" href="#/compte">← Mon compte</a></div>
+    <p class="accon" id="accOnline"></p>
     <p class="note" style="margin-top:4px">Un <b>responsable</b> crée et saisit les matchs de ses équipes. Un <b>joueur</b> ne peut saisir que les matchs où il est désigné délégué. Un <b>admin</b> gère tout.</p>
     ${GROUPS.map(([r, t]) => {
       const l = data.filter(p => p.role === r).sort((a, b) => nameOf(a).localeCompare(nameOf(b), 'fr'));
@@ -1117,6 +1119,7 @@ async function adminView(){
   </div>`;
 
   view.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editPerson(data.find(p => p.id === b.dataset.edit)));
+  renderAdminOnline();
 
   function editPerson(p){
     const me = p.id === session.user.id;
@@ -1247,7 +1250,7 @@ function presPage(){
   const [p, a] = (location.hash.replace(/^#\/?/, '') || '').split('/');
   return p === 'match' || p === 'gerer' ? 'match:' + a : (p || 'accueil');
 }
-function presTrack(){ if (presCh && presReady) presCh.track({ page: presPage(), compte: !!session }).catch(() => {}); }
+function presTrack(){ if (presCh && presReady) presCh.track({ page: presPage(), compte: !!session, uid: myId() }).catch(() => {}); }
 function startPresence(){
   presCh = sb.channel('en-ligne', { config: { presence: { key: presKey } } });
   presCh.on('presence', { event: 'sync' }, () => { presState = presCh.presenceState(); renderOnline(); });
@@ -1259,6 +1262,32 @@ function renderOnline(){
   b.hidden = !isAdmin();
   b.querySelector('span').textContent = Object.keys(presState).length || '…';
   if (document.body.classList.contains('open') && $('onlineList')) $('onlineList').innerHTML = onlineHTML();
+  renderAdminOnline();
+}
+function pageLabel(p){
+  if (!p) return 'Autre';
+  if (p.startsWith('match:')){
+    const m = [...((lsGet('asm-home', null) || {}).matches || []), ...presMatches].find(x => x.id === p.slice(6));
+    return m ? '⚽ ' + teamName(m, 'H') + ' – ' + teamName(m, 'A') : '⚽ un match';
+  }
+  return ({ accueil: 'Accueil', classements: 'Classements', stats: 'Stats joueurs', compte: 'Mon compte', admin: 'Accès', connexion: 'Connexion', nouveau: 'Nouveau match' })[p] || p;
+}
+// comptes en ligne : uid → pages ouvertes
+function onlineUsers(){
+  const u = new Map();
+  Object.values(presState).forEach(a => (a || []).forEach(m => { if (m && m.uid){ if (!u.has(m.uid)) u.set(m.uid, new Set()); u.get(m.uid).add(m.page); } }));
+  return u;
+}
+function renderAdminOnline(){
+  const rows = document.querySelectorAll('.arow[data-uid]'); if (!rows.length) return;
+  const u = onlineUsers();
+  rows.forEach(r => {
+    const pages = u.get(r.dataset.uid), el = r.querySelector('.onstate');
+    r.classList.toggle('isOn', !!pages);
+    if (el) el.textContent = pages ? 'En ligne · ' + [...pages].map(pageLabel).join(', ') : '';
+  });
+  const sum = $('accOnline');
+  if (sum){ const n = [...u.keys()].filter(id => document.querySelector('.arow[data-uid="' + id + '"]')).length; sum.innerHTML = '<i></i>' + n + ' compte' + (n > 1 ? 's' : '') + ' connecté' + (n > 1 ? 's' : '') + ' en ce moment'; }
 }
 function onlineHTML(){
   const metas = Object.values(presState).map(a => (a && a[0]) || {});
