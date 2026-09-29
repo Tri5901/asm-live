@@ -1451,6 +1451,7 @@ async function adminView(){
   const pendingN = data.filter(p => p.role === 'pending').length;
   view.innerHTML = `<div class="acc">
     <div class="acctop"><h1>Accès</h1><a class="link" href="#/compte">← Mon compte</a></div>
+    <div class="acctotal"><b>${data.length}</b><span>compte${data.length>1?'s':''} créé${data.length>1?'s':''}<small>${[['admin','admin'],['delegue','responsable'],['dirigeant','dirigeant'],['joueur','joueur'],['pending','en attente']].map(([r,l])=>{const n=data.filter(p=>p.role===r).length; return n ? n+' '+l+(n>1&&r!=='pending'?'s':'') : '';}).filter(Boolean).join(' · ')}${supprimes ? ' · ' + supprimes + ' supprimé' + (supprimes>1?'s':'') : ''}</small></span></div>
     <p class="accon" id="accOnline"></p>
     <p class="note" style="margin-top:4px">Un <b>responsable</b> crée et saisit les matchs de ses équipes. Un <b>joueur</b> ou un <b>dirigeant</b> ne peut saisir que les matchs où il est désigné délégué. Un <b>admin</b> gère tout.</p>
     ${GROUPS.map(([r, t]) => {
