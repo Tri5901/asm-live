@@ -1459,7 +1459,7 @@ async function adminView(){
     }).join('')}
     ${supprimes ? `<div class="sec">Comptes supprimés · ${supprimes}</div>
       <p class="note" style="margin:0 0 6px">Leur nom reste dans l’historique des matchs. Si la personne a recréé un compte, rattache-le : tout son historique passe sur le nouveau compte.</p>
-      <div class="alist">${deleted.map(p => `<div class="arow del"><span class="pav">${initial(p)}</span><div class="who"><b>${esc(nameOf(p))}</b><small>${p.deleted_at ? 'Supprimé le ' + esc(new Date(p.deleted_at).toLocaleDateString('fr-FR')) : 'Compte supprimé'}</small></div><button type="button" class="amod" data-link="${esc(p.id)}">Rattacher</button></div>`).join('')}</div>` : ''}
+      <div class="alist">${deleted.map(p => `<div class="arow gone"><span class="pav">${initial(p)}</span><div class="who"><b>${esc(nameOf(p))}</b><small>${p.deleted_at ? 'Supprimé le ' + esc(new Date(p.deleted_at).toLocaleDateString('fr-FR')) : 'Compte supprimé'}</small></div><button type="button" class="amod" data-link="${esc(p.id)}">Rattacher</button></div>`).join('')}</div>` : ''}
   </div>`;
 
   view.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editPerson(data.find(p => p.id === b.dataset.edit)));
