@@ -240,12 +240,38 @@ async function route(){
 }
 window.addEventListener('hashchange', route);
 
+// Canal temps réel. off.ok() indique s'il est vraiment connecté : sinon (plus de place sur l'offre
+// gratuite, réseau coupé…) la page se rafraîchit d'elle-même à intervalle court.
 function liveChannel(name, onChange, filters){
   const ch = sb.channel(name + '-' + Math.random().toString(36).slice(2));
+  let ok = false;
   filters.forEach(f => ch.on('postgres_changes', {schema:'public', ...f}, onChange));
-  ch.subscribe();
-  return () => sb.removeChannel(ch);
+  ch.subscribe(st => { ok = st === 'SUBSCRIBED'; });
+  const off = () => sb.removeChannel(ch);
+  off.ok = () => ok && !rtAsleep;
+  return off;
 }
+// Relève : toutes les 10 s si le temps réel n'est pas connecté, et une fois par minute dans tous les cas
+function fallbackPoll(off, reload){
+  let n = 0;
+  return setInterval(() => { n++; if (document.visibilityState !== 'visible') return; if (!off.ok() || n % 6 === 0) reload(); }, 10000);
+}
+// Mise en veille : l'appli en arrière-plan depuis 30 s libère sa connexion temps réel (limite de 200 places)
+let rtAsleep = false, rtSleepTimer = null;
+document.addEventListener('visibilitychange', () => {
+  if (!sb) return;
+  if (document.visibilityState === 'hidden'){
+    clearTimeout(rtSleepTimer);
+    rtSleepTimer = setTimeout(() => { rtAsleep = true; sb.removeAllChannels(); presCh = null; presReady = false; presState = {}; }, 30000);
+  } else {
+    clearTimeout(rtSleepTimer);
+    if (rtAsleep){
+      rtAsleep = false;
+      startPresence();
+      if (!location.hash.startsWith('#/gerer')) route(); // la console du délégué n'utilise pas le temps réel
+    }
+  }
+});
 function debounce(fn, ms){ let t; return () => { clearTimeout(t); t = setTimeout(fn, ms); }; }
 
 // ---------- Accueil : liste des matchs ----------
@@ -269,7 +295,8 @@ async function homeView(){
   }), 5000);
   const vis = () => { if (document.visibilityState==='visible') reload(); };
   document.addEventListener('visibilitychange', vis);
-  cleanup = () => { off(); clearInterval(tick); document.removeEventListener('visibilitychange', vis); };
+  const poll = fallbackPoll(off, reload);
+  cleanup = () => { off(); clearInterval(tick); clearInterval(poll); document.removeEventListener('visibilitychange', vis); };
 }
 let homeTeam = lsGet('asm-team', 0), showAllNext = false;
 function drawHome(matches, goalRows){
@@ -392,7 +419,7 @@ async function matchView(id){
     const c = $('clock'), p = $('period');
     if (c) c.textContent = clockText(m); if (p) p.textContent = periodText(m);
   }, 1000);
-  const poll = setInterval(reload, 30000); // filet de sécurité si le temps réel décroche
+  const poll = fallbackPoll(off, reload); // filet de sécurité si le temps réel décroche ou est complet
   const vis = () => { if (document.visibilityState==='visible') reload(); };
   document.addEventListener('visibilitychange', vis);
   cleanup = () => { off(); clearInterval(tick); clearInterval(poll); document.removeEventListener('visibilitychange', vis); document.title = 'AS Mésanger – Matchs en direct'; };
@@ -1255,8 +1282,8 @@ function startPresence(){
   presCh = sb.channel('en-ligne', { config: { presence: { key: presKey } } });
   presCh.on('presence', { event: 'sync' }, () => { presState = presCh.presenceState(); renderOnline(); });
   presCh.subscribe(st => { if (st === 'SUBSCRIBED'){ presReady = true; presTrack(); } });
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') presTrack(); });
 }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') presTrack(); });
 function renderOnline(){
   const b = $('online'); if (!b) return;
   b.hidden = !isAdmin();
