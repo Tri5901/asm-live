@@ -132,14 +132,14 @@ function delegueList(cur, curNom){
 }
 function delegPickHTML(id, cur, curNom, disabled){
   const o = delegueList(cur, curNom).find(x => x.id === cur);
-  return `<button type="button" class="dpick" id="${id}" data-value="${esc(cur || '')}"${disabled ? ' disabled' : ''}><span>${esc(o ? o.nom : 'Personne (tous les délégués)')}</span>${disabled ? '' : '<i aria-hidden="true">🔍</i>'}</button>`;
+  return `<button type="button" class="dpick" id="${id}" data-value="${esc(cur || '')}"${disabled ? ' disabled' : ''}><span>${esc(o ? o.nom : 'Non défini (par défaut : responsable d’équipe)')}</span>${disabled ? '' : '<i aria-hidden="true">🔍</i>'}</button>`;
 }
 const sansAccent = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 function bindDelegPick(btn, curNom, onPick){
   if (!btn || btn.disabled) return;
   btn.onclick = () => {
     const cur = btn.dataset.value || '';
-    const all = [{ id: '', nom: 'Personne (tous les délégués)', tag: '' }, ...delegueList(cur, curNom).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))];
+    const all = [{ id: '', nom: 'Non défini (par défaut : responsable d’équipe)', tag: '' }, ...delegueList(cur, curNom).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))];
     openSheet(`<h3 id="shTitle">Délégué du match</h3>
       <input id="dpQ" class="dpq" type="search" placeholder="Rechercher un nom…" autocomplete="off" enterkeyhint="search">
       <div class="alist dplist" id="dpList"></div>
@@ -459,7 +459,7 @@ async function matchView(id){
     bindDelegPick($('delSel'), m.delegue_nom, async id => {
       const { data: upd, error } = await sb.from('matches').update({delegue_id: id, delegue_nom: delegueNom(id)}).eq('id', m.id).select('id');
       if (error || !upd || !upd.length){ toast(isNetErr(error) ? 'Pas de réseau' : 'Modification refusée'); draw(); return; }
-      m.delegue_id = id; m.delegue_nom = delegueNom(id); toast(id ? 'Délégué : ' + m.delegue_nom : 'Aucun délégué désigné'); draw();
+      m.delegue_id = id; m.delegue_nom = delegueNom(id); toast(id ? 'Délégué : ' + m.delegue_nom : 'Délégué non défini : le responsable d’équipe gère le match'); draw();
     });
     document.title = `${teamName(m,'H')} ${goals(evs,'H')}–${goals(evs,'A')} ${teamName(m,'A')} · AS Mésanger`;
   };
