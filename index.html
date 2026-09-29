@@ -427,6 +427,27 @@ table.cls tr.me td.rk,table.cls tr.me td.tm{color:var(--ink);font-weight:800}
 .compbar{margin:10px 0 4px}
 table.stats tr.csc td{font-style:italic;color:var(--muted)}
 table.stats tr.csc td small{font-size:11px}
+table.stats tr.prow{cursor:pointer}
+table.stats tr.prow:hover td,table.stats tr.prow:focus td{background:color-mix(in srgb,var(--club) 10%,transparent)}
+table.stats tr.prow td:first-child{text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
+.phero{display:flex;align-items:center;gap:12px;margin:2px 0 6px}
+.phero h1{margin:0;font-family:"Barlow Condensed",sans-serif;font-size:30px;line-height:1.05}
+.phero .sub{margin:2px 0 0;color:var(--muted);font-size:14px}
+.pav.big{width:52px;height:52px;font-size:24px;flex:none}
+.kpi i.kc,.phmid i.kc{display:inline-block;width:10px;height:14px;border-radius:2px;vertical-align:middle;margin:0 3px 3px 1px}
+.pfacts{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:4px 14px;margin:0 0 14px}
+.pfacts:empty{display:none}
+.pfacts div{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
+.pfacts div:last-child{border-bottom:0}
+.pfacts span{color:var(--muted)}
+.pfacts b{text-align:right}
+.phist{display:block;text-decoration:none;color:inherit;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin-bottom:8px}
+.phtop{display:flex;align-items:center;gap:8px}
+.phtop .mcomp{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.phmid{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin:6px 0 2px;font-size:16px}
+.pgoals{font-weight:700;font-size:14px}
+
+.phsub{color:var(--muted);font-size:13px}
 </style>
 </head>
 <body>

@@ -280,7 +280,7 @@ async function route(){
     if (page==='match') return await matchView(arg);
     if (page==='gerer') return await consoleView(arg, parts[2]==='compo');
     if (page==='nouveau') return await newMatchView();
-    if (page==='stats') return await statsView();
+    if (page==='stats') return await statsView(parts[1]==='joueur' ? decodeURIComponent(parts[2]||'') : null);
     if (page==='classements') return await classementsView();
     if (page==='connexion') return loginView();
     if (page==='compte') return accountView();
@@ -1181,11 +1181,11 @@ const isCup = m => /coupe/i.test(m.competition || '');
 function playerKey(name){
   return name.normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[^A-Z ]/g,' ').split(/\s+/).filter(Boolean).sort().join(' ');
 }
-async function statsView(){
+async function statsView(playerArg){
   view.innerHTML = '<div class="loading">Chargement…</div>';
   const [{ data: ms, error }, { data: evs, error: e2 }] = await Promise.all([
-    sb.from('matches').select('id,kickoff,equipe,club_side,rosters,status,competition').neq('status','prevu'),
-    sb.from('events').select('match_id,t,k,n,in_n')
+    sb.from('matches').select('id,kickoff,equipe,club_side,rosters,status,competition,home_name,away_name,opp_logo').neq('status','prevu'),
+    sb.from('events').select('match_id,t,k,n,in_n,out_n,min,sort')
   ]);
   if (error || e2) throw (error || e2);
   const seasons = [...new Set(ms.map(m=>seasonOf(m.kickoff)))].sort().reverse();
@@ -1196,7 +1196,7 @@ async function statsView(){
     const ids = new Set(list.map(m=>m.id));
     const byMatch = {}; evs.forEach(e => { if (ids.has(e.match_id)) (byMatch[e.match_id] ||= []).push(e); });
     const P = {}; let unknownGoals = 0, cscGoals = 0;
-    const get = name => { const k = playerKey(name); return P[k] ||= {name, mj:0, tit:0, goals:0, y:0, r:0}; };
+    const get = name => { const k = playerKey(name); return P[k] ||= {k, name, mj:0, tit:0, goals:0, y:0, r:0}; };
     let W=0, D=0, L=0, gf=0, ga=0;
     for (const m of list){
       const c = m.club_side, me = byMatch[m.id] || [];
@@ -1232,7 +1232,7 @@ async function statsView(){
         <div class="kpi"><b>${ga}</b><span>Encaissés</span></div>
       </div>
       ${rows.length ? `<div class="tblwrap"><table class="stats"><thead><tr>${COLS.map(([k,l])=>`<th class="${statSort.key===k?'on':''}" aria-sort="${statSort.key===k?(statSort.dir<0?'descending':'ascending'):'none'}"><button data-k="${k}">${l}${statSort.key===k?(statSort.dir<0?' ▾':' ▴'):''}</button></th>`).join('')}</tr></thead>
-        <tbody>${rows.map(p=>`<tr><td>${esc(p.name)}</td>${cell(p.mj)}${cell(p.tit)}${cell(p.goals)}${cell(p.y)}${cell(p.r)}</tr>`).join('')}${cscGoals ? `<tr class="csc"><td>CSC <small>(contre son camp adverse)</small></td><td></td><td></td>${cell(cscGoals)}<td></td><td></td></tr>` : ''}</tbody></table></div>`
+        <tbody>${rows.map(p=>`<tr class="prow" data-pk="${esc(p.k)}" tabindex="0"><td>${esc(p.name)}</td>${cell(p.mj)}${cell(p.tit)}${cell(p.goals)}${cell(p.y)}${cell(p.r)}</tr>`).join('')}${cscGoals ? `<tr class="csc"><td>CSC <small>(contre son camp adverse)</small></td><td></td><td></td>${cell(cscGoals)}<td></td><td></td></tr>` : ''}</tbody></table></div>`
         : `<div class="empty">Les stats apparaîtront après le premier match dont la composition de l'${CLUB} a été saisie.</div>`}
       <p class="note">${statComp === 'coupe' ? 'Matchs de coupe uniquement. ' : statComp ? 'Matchs de championnat uniquement. ' : ''}Stats des joueurs de l'${CLUB}, calculées à partir des compositions et de la chronologie de chaque match.${unknownGoals ? ` ${unknownGoals} but${unknownGoals>1?'s':''} sans buteur identifié.` : ''}</p>`;
     view.querySelectorAll('th button').forEach(b => b.onclick = () => {
@@ -1241,8 +1241,69 @@ async function statsView(){
     const s = $('season'); if (s) s.onchange = () => { statSeason = s.value; draw(); };
     $('steam').onchange = e => { statTeam = +e.target.value; draw(); };
     view.querySelectorAll('[data-comp]').forEach(b => b.onclick = () => { statComp = b.dataset.comp; draw(); });
+    view.querySelectorAll('.prow').forEach(r => { const go = () => { location.hash = '#/stats/joueur/' + encodeURIComponent(r.dataset.pk); }; r.onclick = go; r.onkeydown = e => { if (e.key === 'Enter') go(); }; });
   };
-  draw();
+  const byMatchAll = {}; evs.forEach(e => { (byMatchAll[e.match_id] ||= []).push(e); });
+  if (playerArg) drawPlayer(playerArg); else draw();
+
+  // ---------- Fiche d'un joueur ----------
+  function drawPlayer(key){
+    const minOf = e => Math.max(0, Math.floor(+e.sort || 0));
+    const hist = [];
+    for (const m of ms.filter(m => seasonOf(m.kickoff)===statSeason && (!statComp || (statComp === 'coupe') === isCup(m)))){
+      const c = m.club_side, p = ((m.rosters||{})[c] || []).find(x => playerKey(x.name) === key);
+      if (!p) continue;
+      const all = byMatchAll[m.id] || [], me = all.filter(e => e.t === c);
+      const inEv = me.find(e => e.k==='sub' && e.in_n===p.n), outEv = me.find(e => e.k==='sub' && e.out_n===p.n);
+      const red = me.find(e => e.k==='red' && e.n===p.n);
+      const played = !p.sub || !!inEv;
+      const start = p.sub ? (inEv ? minOf(inEv) : 90) : 0;
+      const end = Math.min(90, outEv ? minOf(outEv) : red ? minOf(red) : 90);
+      const gl = me.filter(e => e.k==='goal' && e.n===p.n);
+      hist.push({ m, p, played, start, mins: played ? Math.max(1, end - start) : 0, goals: gl, y: me.filter(e => e.k==='yellow' && e.n===p.n).length, r: red ? 1 : 0,
+        res: resultOf(m, all), gf: goals(all, c), ga: goals(all, c==='H'?'A':'H'), outMin: outEv ? outEv.min : '' });
+    }
+    hist.sort((a, b) => b.m.kickoff.localeCompare(a.m.kickoff));
+    const name = (hist[0] && hist[0].p.name) || 'Joueur';
+    const pl = hist.filter(h => h.played);
+    const nb = pl.length, g = pl.reduce((a, h) => a + h.goals.length, 0), mins = pl.reduce((a, h) => a + h.mins, 0);
+    const tit = pl.filter(h => !h.p.sub).length, ent = nb - tit;
+    const y = pl.reduce((a, h) => a + h.y, 0), r = pl.reduce((a, h) => a + h.r, 0);
+    const W = pl.filter(h => h.res==='V').length, N = pl.filter(h => h.res==='N').length, L = pl.filter(h => h.res==='D').length;
+    const multi = pl.filter(h => h.goals.length >= 2).length, scoring = pl.filter(h => h.goals.length).length;
+    const best = pl.reduce((b, h) => !b || h.goals.length > b.goals.length ? h : b, null);
+    const teams = [...new Set(pl.map(h => h.m.equipe || 1))].sort().map(teamLetter).join(', ');
+    const fr = (v, d=1) => v.toLocaleString('fr-FR', {maximumFractionDigits: d});
+    const kpi = (v, l) => `<div class="kpi"><b>${v}</b><span>${l}</span></div>`;
+    const opp = m => teamName(m, m.club_side==='H' ? 'A' : 'H');
+    view.innerHTML = `<a class="back" href="#/stats">← Stats joueurs</a>
+      <div class="phero"><span class="pav big">${esc(name.trim().charAt(0).toUpperCase())}</span><div><h1>${esc(name)}</h1>
+        <p class="sub">${nb ? `${nb} match${nb>1?'s':''} joué${nb>1?'s':''}${teams ? ' · Seniors ' + teams : ''}` : 'Aucun match joué'} · saison ${esc(statSeason||'')}</p></div></div>
+      <div class="chipbar compbar" role="group" aria-label="Compétition">${[['', 'Tout'], ['championnat', 'Championnat'], ['coupe', 'Coupes']].map(([v, l]) => `<button data-comp="${v}" class="${statComp===v?'on':''}" aria-pressed="${statComp===v}">${l}</button>`).join('')}</div>
+      <div class="kpis">${kpi(g, 'Buts')}${kpi(nb, 'Matchs')}${kpi(nb ? fr(g/nb, 2) : '–', 'Buts / match')}${kpi(g ? fr(mins/g, 0) + '′' : '–', '1 but toutes les')}</div>
+      <div class="kpis">${kpi(fr(mins, 0) + '′', 'Temps de jeu')}${kpi(tit, 'Titulaire')}${kpi(ent, 'Entrées')}${kpi(`${y}<i class="kc y"></i> ${r}<i class="kc r"></i>`, 'Cartons')}</div>
+      <div class="pfacts">
+        ${nb ? `<div><span>Bilan quand il joue</span><b>${W} V · ${N} N · ${L} D</b></div>` : ''}
+        ${nb ? `<div><span>Temps de jeu moyen</span><b>${fr(mins/nb, 0)} min par match</b></div>` : ''}
+        ${g ? `<div><span>Matchs avec au moins un but</span><b>${scoring} sur ${nb} (${fr(100*scoring/nb, 0)} %)</b></div>` : ''}
+        ${multi ? `<div><span>Doublés ou mieux</span><b>${multi}</b></div>` : ''}
+        ${best && best.goals.length ? `<div><span>Meilleur match</span><b>${best.goals.length} but${best.goals.length>1?'s':''} contre ${esc(opp(best.m))}</b></div>` : ''}
+      </div>
+      <div class="sec">Historique des matchs</div>
+      ${hist.map(h => {
+        const m = h.m, role = !h.played ? 'Sur le banc, pas entré' : h.p.sub ? `Entré à la ${h.start}e` : 'Titulaire';
+        const detail = [role, h.played ? `${h.mins} min` : '', h.outMin ? `sorti à la ${esc(h.outMin)}` : ''].filter(Boolean).join(' · ');
+        const but = h.goals.length ? `<span class="pgoals">${h.goals.map(e => '⚽' + (e.min ? ' ' + esc(e.min) : '')).join(' ')}</span>` : '';
+        const cards = (h.y ? '<i class="kc y"></i>'.repeat(h.y) : '') + (h.r ? '<i class="kc r"></i>' : '');
+        return `<a class="phist" href="#/match/${esc(m.id)}">
+          <div class="phtop"><span class="tchip">${teamLetter(m.equipe)}</span><span class="mcomp">${esc(fmtDate(m.kickoff, false))} · ${esc(m.competition || '')}</span><span class="badge ${h.res==='V'?'w':h.res==='D'?'l':''}">${h.res==='V'?'V':h.res==='D'?'D':'N'} ${h.gf}–${h.ga}</span></div>
+          <div class="phmid"><b>${m.club_side==='H' ? 'vs' : 'à'} ${esc(opp(m))}</b>${but}${cards}</div>
+          <div class="phsub">n°${esc(h.p.n)} · ${detail}</div></a>`;
+      }).join('') || '<div class="empty">Aucun match avec ce filtre.</div>'}
+      <p class="note">Temps de jeu calculé sur 90 minutes à partir des remplacements et cartons rouges saisis (temps additionnel non compté).</p>`;
+    view.querySelectorAll('[data-comp]').forEach(b => b.onclick = () => { statComp = b.dataset.comp; drawPlayer(key); });
+    document.title = name + ' · Stats · AS Mésanger';
+  }
 }
 
 // ---------- Connexion / compte ----------
