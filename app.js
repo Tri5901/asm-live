@@ -1081,64 +1081,118 @@ function accountView(){
     await sb.auth.signOut(); session = null; profile = null; lsSet('asm-profile', null); renderAcct(); location.hash = '#/';
   };
 }
+let adminTab = lsGet('asm-admin-tab', 'equipes');
 async function adminView(){
   if (!isAdmin()){ location.hash = '#/compte'; return; }
-  view.innerHTML = '<div class="loading">Chargement…</div>';
+  if (!view.querySelector('.acc')) view.innerHTML = '<div class="loading">Chargement…</div>';
   let { data, error } = await sb.from('profiles').select('*').order('created_at');
   if (error) throw error;
   const supprimes = data.filter(p => p.role === 'supprime').length;
   data = data.filter(p => p.role !== 'supprime');
-  const pending = data.filter(p=>p.role==='pending').length;
-  const row = p => {
-    const me = p.id === session.user.id, eqs = p.equipes || [];
-    return `<div class="urow" data-id="${esc(p.id)}">
-      <div class="uline"><div class="who"><b>${esc(p.nom || '—')}</b><small>${esc(p.email)}</small></div>
-      <select class="urole" aria-label="Accès de ${esc(p.nom||p.email)}" ${me ? 'disabled' : ''}>
-        <option value="pending"${p.role==='pending'?' selected':''}>Sans accès</option>
-        <option value="joueur"${p.role==='joueur'?' selected':''}>Joueur</option>
-        <option value="delegue"${p.role==='delegue'?' selected':''}>Responsable</option>
-        <option value="admin"${p.role==='admin'?' selected':''}>Admin</option>
-      </select>${me ? '' : `<button class="udel" type="button" aria-label="Supprimer le compte de ${esc(p.nom||p.email)}" title="Supprimer ce compte">🗑</button>`}</div>
-      ${p.role==='admin'
-        ? '<div class="uteams"><span class="uhint">Admin : toutes les équipes</span></div>'
-        : p.role==='joueur'
-        ? '<div class="uteams"><span class="uhint">Joueur : aucun accès, sauf les matchs où il est désigné délégué</span></div>'
-        : `<div class="uteams" role="group" aria-label="Équipes dont ${esc(p.nom||p.email)} est responsable"><span class="ulab">Responsable de</span>${TEAMS.map(n => `<button type="button" data-e="${n}" class="${p.role==='delegue' && eqs.includes(n)?'on':''}" aria-pressed="${p.role==='delegue' && eqs.includes(n)}" title="Seniors ${teamLetter(n)}">${teamLetter(n)}</button>`).join('')}<span class="uhint">${p.role==='delegue' && eqs.length ? '' : 'aucune équipe'}</span></div>`}
+  const pending = data.filter(p => p.role === 'pending');
+  const ROLES = [['pending', 'Sans accès'], ['joueur', 'Joueur'], ['delegue', 'Responsable'], ['admin', 'Admin']];
+  const nameOf = p => p.nom || p.email || 'Sans nom';
+  const initial = p => esc(nameOf(p).trim().charAt(0).toUpperCase());
+  const teamsOf = p => p.role === 'delegue' ? (p.equipes || []) : [];
+  const compOf = n => { const c = (lsGet('asm-cls', []) || []).find(r => r.equipe === n); return c ? c.competition : ''; };
+
+  const save = async (id, fields, msg) => {
+    const { data: upd, error } = await sb.from('profiles').update(fields).eq('id', id).select('id');
+    const ok = !error && upd && upd.length;
+    toast(ok ? (msg || 'Accès mis à jour') : 'Modification refusée');
+    if (ok) people = null;
+    return ok;
+  };
+
+  // --- Vue par équipe ---
+  const teamCard = n => {
+    const resp = data.filter(p => teamsOf(p).includes(n));
+    return `<div class="tcard">
+      <div class="thead"><span class="tbig">${teamLetter(n)}</span><div><b>${esc(teamLabel(n))}</b>${compOf(n) ? `<small>${esc(compOf(n))}</small>` : ''}</div></div>
+      <div class="tresp">${resp.length
+        ? resp.map(p => `<span class="rchip"><span class="pav sm">${initial(p)}</span>${esc(nameOf(p))}<button type="button" data-rm="${esc(p.id)}" data-e="${n}" aria-label="Retirer ${esc(nameOf(p))} des ${esc(teamLabel(n))}">×</button></span>`).join('')
+        : '<span class="tnone">Aucun responsable : seuls les admins gèrent cette équipe.</span>'}</div>
+      <button type="button" class="tadd" data-add="${n}">+ Ajouter un responsable</button>
     </div>`;
   };
-  view.innerHTML = `<div class="card"><h1>Accès</h1>
-    <p class="sub">Chaque personne crée son compte depuis « Connexion », puis tu lui donnes l'accès ici. Un <b>responsable</b> gère uniquement les matchs des équipes cochées (A à E). Un <b>admin</b> gère tout.${pending ? ` <b>${pending} en attente.</b>` : ''}</p>
-    ${data.map(row).join('')}
-    ${supprimes ? `<p class="note">${supprimes} compte${supprimes>1?'s':''} supprimé${supprimes>1?'s':''} : ${supprimes>1?'leurs noms restent':'son nom reste'} dans l’historique des matchs.</p>` : ''}
-    <div class="foot"><a class="fbtn" href="#/compte">Retour</a></div></div>`;
-  const save = async (id, fields) => {
-    const { data: upd, error } = await sb.from('profiles').update(fields).eq('id', id).select('id');
-    toast(error || !upd || !upd.length ? 'Modification refusée' : 'Accès mis à jour');
-    return !error && upd && upd.length;
+
+  // --- Vue par personne ---
+  const personCard = p => {
+    const me = p.id === session.user.id, eqs = teamsOf(p);
+    return `<div class="pcard" data-id="${esc(p.id)}">
+      <div class="phead"><span class="pav">${initial(p)}</span><div class="who"><b>${esc(nameOf(p))}${me ? ' <small>(toi)</small>' : ''}</b><small>${esc(p.email || '')}</small></div>
+        ${me ? '' : `<button class="udel" type="button" aria-label="Supprimer le compte de ${esc(nameOf(p))}" title="Supprimer ce compte">🗑</button>`}</div>
+      <div class="rseg" role="group" aria-label="Rôle de ${esc(nameOf(p))}">${ROLES.map(([v, l]) => `<button type="button" data-role="${v}" class="${p.role === v ? 'on' : ''}" aria-pressed="${p.role === v}"${me ? ' disabled' : ''}>${l}</button>`).join('')}</div>
+      ${p.role === 'delegue'
+        ? `<div class="uteams" role="group" aria-label="Équipes de ${esc(nameOf(p))}"><span class="ulab">Équipes</span>${TEAMS.map(n => `<button type="button" data-e="${n}" class="${eqs.includes(n) ? 'on' : ''}" aria-pressed="${eqs.includes(n)}" title="${esc(teamLabel(n))}">${teamLetter(n)}</button>`).join('')}${eqs.length ? '' : '<span class="uhint">à choisir</span>'}</div>`
+        : `<p class="phint">${p.role === 'admin' ? 'Gère toutes les équipes, les accès et les classements.' : p.role === 'joueur' ? 'Aucun accès, sauf les matchs où il est désigné délégué.' : 'En attente : ne peut rien modifier pour l’instant.'}</p>`}
+    </div>`;
   };
-  view.querySelectorAll('.urow').forEach(r => {
-    const id = r.dataset.id, p = data.find(x => x.id === id);
-    const sel = r.querySelector('.urole');
-    sel.onchange = async () => { if (await save(id, {role: sel.value})){ adminView(); } };
-    const del = r.querySelector('.udel');
-    if (del) del.onclick = () => askConfirm('Supprimer le compte de ' + (p.nom || p.email) + ' ?',
+  const groups = [['pending', 'En attente de validation'], ['delegue', 'Responsables'], ['joueur', 'Joueurs'], ['admin', 'Admins']];
+
+  const pendingBanner = pending.length && adminTab === 'equipes'
+    ? `<button type="button" class="pendban" id="goPending">👤 ${pending.length} compte${pending.length > 1 ? 's' : ''} en attente de validation : ${pending.map(p => esc(nameOf(p))).join(', ')} →</button>` : '';
+
+  view.innerHTML = `<div class="acc">
+    <div class="acctop"><h1>Accès</h1><a class="link" href="#/compte">← Mon compte</a></div>
+    <div class="seg acctabs"><button type="button" data-tab="equipes" class="${adminTab === 'equipes' ? 'on' : ''}">Par équipe</button><button type="button" data-tab="personnes" class="${adminTab === 'personnes' ? 'on' : ''}">Par personne${pending.length ? ` <span class="nb">${pending.length}</span>` : ''}</button></div>
+    ${pendingBanner}
+    ${adminTab === 'equipes'
+      ? `<p class="note" style="margin-top:0">Un responsable crée et saisit les matchs de ses équipes. Les admins gèrent toutes les équipes.</p>${TEAMS.map(teamCard).join('')}`
+      : groups.map(([r, t]) => { const l = data.filter(p => p.role === r); return l.length ? `<div class="sec">${t} · ${l.length}</div>${l.map(personCard).join('')}` : ''; }).join('')
+        + (supprimes ? `<p class="note">${supprimes} compte${supprimes > 1 ? 's' : ''} supprimé${supprimes > 1 ? 's' : ''} : ${supprimes > 1 ? 'leurs noms restent' : 'son nom reste'} dans l’historique des matchs.</p>` : '')}
+  </div>`;
+
+  view.querySelectorAll('.acctabs button').forEach(b => b.onclick = () => { adminTab = b.dataset.tab; lsSet('asm-admin-tab', adminTab); adminView(); });
+  if ($('goPending')) $('goPending').onclick = () => { adminTab = 'personnes'; lsSet('asm-admin-tab', adminTab); adminView(); };
+
+  // retirer un responsable d'une équipe
+  view.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
+    const p = data.find(x => x.id === b.dataset.rm), n = +b.dataset.e;
+    if (await save(p.id, { equipes: teamsOf(p).filter(x => x !== n) }, nameOf(p) + ' retiré des ' + teamLabel(n))) adminView();
+  });
+  // ajouter un responsable à une équipe
+  view.querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
+    const n = +b.dataset.add;
+    const cands = data.filter(p => p.role !== 'admin' && !teamsOf(p).includes(n));
+    const RL = { pending: 'en attente', joueur: 'joueur', delegue: 'responsable' };
+    openSheet(`<h3 id="shTitle">Responsable des ${esc(teamLabel(n))}</h3>
+      <p>Choisis la personne. Elle pourra créer et saisir les matchs de cette équipe.</p>
+      ${cands.length > 6 ? '<input class="psearch" id="pSearch" placeholder="Rechercher un nom…" autocomplete="off">' : ''}
+      <div class="plist">${cands.length ? cands.map(p => `<button type="button" class="pitem" data-pick="${esc(p.id)}" data-q="${esc((nameOf(p) + ' ' + (p.email || '')).toLowerCase())}">
+          <span class="pav">${initial(p)}</span><span class="who"><b>${esc(nameOf(p))}</b><small>${esc(RL[p.role] || '')}${teamsOf(p).length ? ' · ' + teamsOf(p).map(teamLetter).join(', ') : ''}</small></span></button>`).join('')
+        : '<div class="empty">Personne d’autre à ajouter. Les nouveaux doivent d’abord créer leur compte (bouton Connexion).</div>'}</div>
+      <button class="cancel" id="pNo">Annuler</button>`);
+    $('pNo').onclick = closeSheet;
+    if ($('pSearch')) $('pSearch').oninput = e => { const q = e.target.value.toLowerCase(); $('shBody').querySelectorAll('.pitem').forEach(i => { i.hidden = !i.dataset.q.includes(q); }); };
+    $('shBody').querySelectorAll('[data-pick]').forEach(i => i.onclick = async () => {
+      const p = data.find(x => x.id === i.dataset.pick);
+      const eqs = [...new Set([...teamsOf(p), n])].sort();
+      closeSheet();
+      if (await save(p.id, { role: 'delegue', equipes: eqs }, nameOf(p) + ' est responsable des ' + teamLabel(n))) adminView();
+    });
+  });
+
+  // vue par personne : rôle, équipes, suppression
+  view.querySelectorAll('.pcard').forEach(c => {
+    const p = data.find(x => x.id === c.dataset.id);
+    c.querySelectorAll('.rseg button').forEach(b => b.onclick = async () => {
+      if (b.dataset.role === p.role) return;
+      if (await save(p.id, { role: b.dataset.role })) adminView();
+    });
+    c.querySelectorAll('.uteams button').forEach(b => b.onclick = async () => {
+      const n = +b.dataset.e, cur = new Set(teamsOf(p));
+      cur.has(n) ? cur.delete(n) : cur.add(n);
+      if (await save(p.id, { equipes: [...cur].sort() })) adminView();
+    });
+    const del = c.querySelector('.udel');
+    if (del) del.onclick = () => askConfirm('Supprimer le compte de ' + nameOf(p) + ' ?',
       'Cette personne ne pourra plus se connecter. Les matchs et actions qu’elle a saisis restent dans l’historique, avec son nom. Cette suppression est définitive.',
       'Supprimer le compte', async () => {
-        const { error } = await sb.rpc('supprimer_compte', { p_id: id });
+        const { error } = await sb.rpc('supprimer_compte', { p_id: p.id });
         if (error){ toast(/dernier admin/.test(error.message) ? 'Impossible : c’est le dernier admin' : 'Suppression refusée'); return; }
         people = null; toast('Compte supprimé'); adminView();
       });
-    r.querySelectorAll('.uteams button').forEach(b => b.onclick = async () => {
-      const n = +b.dataset.e, cur = new Set(p.role === 'delegue' ? (p.equipes || []) : []);
-      cur.has(n) ? cur.delete(n) : cur.add(n);
-      const eqs = [...cur].sort();
-      // Cocher une équipe à une personne « Sans accès » la passe directement Responsable
-      const fields = p.role === 'pending' ? {role: 'delegue', equipes: eqs} : {equipes: eqs};
-      if (await save(id, fields)){
-        if (fields.role){ adminView(); return; }
-        p.equipes = eqs; b.classList.toggle('on', cur.has(n)); b.setAttribute('aria-pressed', cur.has(n)); r.querySelector('.uhint').textContent = eqs.length ? '' : 'aucune équipe';
-      }
-    });
   });
 }
 
