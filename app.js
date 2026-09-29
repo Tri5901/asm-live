@@ -121,12 +121,47 @@ const canCreate = () => isAdmin() || (isStaff() && myTeams().length > 0);
 const canManage = m => isTeamManager(m.equipe) || (isMember() && !!m.delegue_id && m.delegue_id === myId());
 let delegues = null;
 async function loadDelegues(){ if (!delegues){ const { data } = await sb.rpc('list_delegues'); delegues = data || []; } return delegues; }
-function delegueOptions(cur, curNom){
-  const opts = [['', 'Personne (tous les délégués)']];
-  if (canCreate()) (delegues||[]).forEach(d => opts.push([d.id, d.nom + (d.role === 'joueur' ? ' (joueur)' : d.role === 'dirigeant' ? ' (dirigeant)' : '')]));
-  else if (myId()) opts.push([myId(), 'Moi']); // (les responsables voient toute la liste, voir canCreate)
-  if (cur && !opts.some(o => o[0] === cur)) opts.push([cur, curNom || 'Autre délégué']);
-  return opts.map(([v, l]) => `<option value="${esc(v)}"${v === (cur||'') ? ' selected' : ''}>${esc(l)}</option>`).join('');
+// Choix du délégué : bouton qui ouvre une liste avec recherche (le club compte beaucoup de personnes)
+const ROLE_TAG = { joueur: 'Joueur', dirigeant: 'Dirigeant', delegue: 'Responsable', admin: 'Admin' };
+function delegueList(cur, curNom){
+  const opts = [];
+  if (canCreate()) (delegues||[]).forEach(d => opts.push({ id: d.id, nom: d.nom, tag: ROLE_TAG[d.role] || '' }));
+  else if (myId()) opts.push({ id: myId(), nom: 'Moi', tag: '' });
+  if (cur && !opts.some(o => o.id === cur)) opts.push({ id: cur, nom: curNom || 'Autre délégué', tag: '' });
+  return opts;
+}
+function delegPickHTML(id, cur, curNom, disabled){
+  const o = delegueList(cur, curNom).find(x => x.id === cur);
+  return `<button type="button" class="dpick" id="${id}" data-value="${esc(cur || '')}"${disabled ? ' disabled' : ''}><span>${esc(o ? o.nom : 'Personne (tous les délégués)')}</span>${disabled ? '' : '<i aria-hidden="true">🔍</i>'}</button>`;
+}
+const sansAccent = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+function bindDelegPick(btn, curNom, onPick){
+  if (!btn || btn.disabled) return;
+  btn.onclick = () => {
+    const cur = btn.dataset.value || '';
+    const all = [{ id: '', nom: 'Personne (tous les délégués)', tag: '' }, ...delegueList(cur, curNom).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))];
+    openSheet(`<h3 id="shTitle">Délégué du match</h3>
+      <input id="dpQ" class="dpq" type="search" placeholder="Rechercher un nom…" autocomplete="off" enterkeyhint="search">
+      <div class="alist dplist" id="dpList"></div>
+      <button class="cancel" id="dpNo">Annuler</button>`);
+    const list = $('dpList'), q = $('dpQ');
+    const draw = () => {
+      const words = sansAccent(q.value).split(/\s+/).filter(Boolean);
+      const f = all.filter(o => !o.id || words.every(w => sansAccent(o.nom + ' ' + o.tag).includes(w)));
+      list.innerHTML = f.map(o => `<button type="button" class="arow dprow${o.id === cur ? ' on' : ''}" data-id="${esc(o.id)}"><div class="who"><b>${esc(o.nom)}</b>${o.tag ? `<small>${esc(o.tag)}</small>` : ''}</div>${o.id === cur ? '<span class="dpok">✓</span>' : ''}</button>`).join('')
+        + (f.length <= 1 && words.length ? '<div class="empty">Personne ne correspond à cette recherche.</div>' : '');
+      list.querySelectorAll('[data-id]').forEach(b => b.onclick = () => {
+        const o = all.find(x => x.id === b.dataset.id);
+        closeSheet();
+        if (o.id === cur) return;
+        btn.dataset.value = o.id; btn.querySelector('span').textContent = o.nom;
+        onPick && onPick(o.id || null);
+      });
+    };
+    q.oninput = draw; draw();
+    $('dpNo').onclick = closeSheet;
+    if (all.length <= 5) q.hidden = true;
+  };
 }
 let people = null;
 async function loadPeople(){
@@ -396,20 +431,18 @@ async function matchView(id){
     view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false)
       + `<div class="mactions"><button class="pill" id="btnBell">🔔 Buts des ${esc(teamLabel(m.equipe))}</button><button class="pill" id="btnShareLive">↗ Partager</button></div>`
       + (canManage(m) ? `<a class="fbtn primary big" href="#/gerer/${esc(m.id)}">Gérer ce match</a>` : '')
-      + (isStaff() ? `<label class="field deleg"><span>Délégué du match</span><select id="delSel"${canManage(m) ? '' : ' disabled'}>${delegueOptions(m.delegue_id, m.delegue_nom)}</select>${!canManage(m) ? '<small>Seuls le responsable de l’équipe, le délégué désigné ou un admin peuvent modifier ce match.</small>' : ''}</label>` : '')
+      + (isStaff() ? `<div class="field deleg"><span>Délégué du match</span>${delegPickHTML('delSel', m.delegue_id, m.delegue_nom, !canManage(m))}${!canManage(m) ? '<small>Seuls le responsable de l’équipe, le délégué désigné ou un admin peuvent modifier ce match.</small>' : ''}</div>` : '')
       + (isAdmin() && people ? `<div class="audit">Match créé par ${esc(personName(m.created_by))}${m.rosters_at ? ` · Compo saisie par ${esc(personName(m.rosters_by))} le ${esc(fmtDate(m.rosters_at))}` : ''}</div>` : '')
       + (m.status==='prevu' ? lineupsHTML(m) : '')
       + `<section class="log"><div class="loghead"><h2>Chronologie</h2></div><div id="events">${timelineHTML(m, evs, false)}</div></section>`
       + (m.status!=='prevu' ? lineupsHTML(m) : '');
     $('btnShareLive').onclick = () => shareLink(m);
     $('btnBell').onclick = () => openBell(m.equipe || 1);
-    const ds = $('delSel');
-    if (ds) ds.onchange = async () => {
-      const id = ds.value || null;
+    bindDelegPick($('delSel'), m.delegue_nom, async id => {
       const { data: upd, error } = await sb.from('matches').update({delegue_id: id, delegue_nom: delegueNom(id)}).eq('id', m.id).select('id');
-      if (error || !upd || !upd.length){ toast(isNetErr(error) ? 'Pas de réseau' : 'Modification refusée'); ds.value = m.delegue_id || ''; return; }
+      if (error || !upd || !upd.length){ toast(isNetErr(error) ? 'Pas de réseau' : 'Modification refusée'); draw(); return; }
       m.delegue_id = id; m.delegue_nom = delegueNom(id); toast(id ? 'Délégué : ' + m.delegue_nom : 'Aucun délégué désigné'); draw();
-    };
+    });
     document.title = `${teamName(m,'H')} ${goals(evs,'H')}–${goals(evs,'A')} ${teamName(m,'A')} · AS Mésanger`;
   };
   draw();
@@ -451,7 +484,7 @@ async function newMatchView(){
     <div class="field"><span>Lieu</span><div class="seg" id="nfSide"><button type="button" data-s="H" class="on">Domicile</button><button type="button" data-s="A">Extérieur</button></div></div>
     <label class="field"><span>Date et heure du coup d'envoi</span><input id="nfDate" type="datetime-local" value="${local}" required></label>
     <label class="field"><span>Compétition</span><input id="nfComp" autocomplete="off" placeholder="Championnat, Coupe…" list="compList"><datalist id="compList"></datalist></label>
-    <label class="field"><span>Délégué du match</span><select id="nfDel">${delegueOptions(isAdmin() ? '' : myId())}</select><small>Si un délégué est choisi, lui seul (et les admins) pourra saisir le match.</small></label>
+    <div class="field"><span>Délégué du match</span>${delegPickHTML('nfDel', isAdmin() ? '' : myId())}<small>Si un délégué est choisi, lui seul (et les admins) pourra saisir le match.</small></div>
     <div id="nfMsg"></div>
     <div class="foot" style="margin-top:4px"><button class="fbtn primary" id="nfGo">Créer le match</button><a class="fbtn" href="#/">Annuler</a></div>
   </form>`;
@@ -465,13 +498,14 @@ async function newMatchView(){
   $('nfSide').querySelectorAll('button').forEach(b => b.onclick = () => {
     side = b.dataset.s; $('nfSide').querySelectorAll('button').forEach(x=>x.classList.toggle('on', x===b));
   });
+  bindDelegPick($('nfDel'));
   $('nf').onsubmit = async ev => {
     ev.preventDefault();
     const opp = $('nfOpp').value.trim(); if (!opp) return;
     $('nfGo').disabled = true;
     const row = {
       id: uuid(), kickoff: new Date($('nfDate').value).toISOString(), competition: $('nfComp').value.trim(),
-      equipe, delegue_id: $('nfDel').value || null, delegue_nom: delegueNom($('nfDel').value || null), club_side: side, home_name: side==='H' ? clubTeamName(equipe) : opp, away_name: side==='H' ? opp : clubTeamName(equipe), half: HALF
+      equipe, delegue_id: $('nfDel').dataset.value || null, delegue_nom: delegueNom($('nfDel').dataset.value || null), club_side: side, home_name: side==='H' ? clubTeamName(equipe) : opp, away_name: side==='H' ? opp : clubTeamName(equipe), half: HALF
     };
     const { error } = await sb.from('matches').insert(row);
     if (error){ $('nfGo').disabled = false; $('nfMsg').innerHTML = `<div class="msg err">${esc(isNetErr(error) ? 'Pas de réseau : il faut être connecté pour créer le match.' : error.message)}</div>`; return; }
