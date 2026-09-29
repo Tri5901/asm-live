@@ -1241,7 +1241,7 @@ async function statsView(playerArg){
       const B = boards[eq]; if (!B) return '';
       const sc = Object.values(B.players).filter(p => p.goals).sort((a, b) => b.goals - a.goals || a.mj - b.mj || a.name.localeCompare(b.name, 'fr'));
       let rank = 0, prev = null;
-      return `<section class="board"><div class="bhead"><span class="tchip">${teamLetter(eq)}</span><b>${esc(teamLabel(eq))}</b><span>${B.n} match${B.n>1?'s':''}</span></div>
+      return `<section class="sboard"><div class="bhead"><span class="tchip">${teamLetter(eq)}</span><b>${esc(teamLabel(eq))}</b><span>${B.n} match${B.n>1?'s':''}</span></div>
         ${sc.length ? `<ol class="blist">${sc.map((p, i) => { if (p.goals !== prev){ rank = i + 1; prev = p.goals; }
           return `<li class="prow" data-pk="${esc(p.k)}" tabindex="0"><span class="brk${rank<=3?' top'+rank:''}">${rank}</span><span class="bname">${esc(p.name)}<small>${p.mj} match${p.mj>1?'s':''} · ${(p.goals/Math.max(1,p.mj)).toLocaleString('fr-FR',{maximumFractionDigits:2})} / match</small></span><b>${p.goals}</b></li>`; }).join('')}</ol>` : '<div class="empty">Aucun buteur.</div>'}
         ${B.csc ? `<p class="bcsc">+ ${B.csc} but${B.csc>1?'s':''} contre son camp adverse</p>` : ''}</section>`;
