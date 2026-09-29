@@ -1391,6 +1391,13 @@ if (sb){
 
 // PWA : fonctionnement hors ligne
 if ('serviceWorker' in navigator) {
+  // clic sur une notification alors que l'appli est déjà ouverte : aller sur la page concernée
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (!e.data || e.data.type !== 'ouvrir') return;
+    const h = new URL(e.data.url, location.href).hash || '#/';
+    if (location.hash !== h) location.hash = h; else route();
+  });
+  navigator.serviceWorker.startMessages();
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').then(reg => {
       reg.addEventListener('updatefound', () => {

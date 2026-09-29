@@ -1,6 +1,6 @@
 // Service worker AS Mésanger – Feuille de match
 // Incrémente VERSION à chaque mise en ligne pour que les téléphones récupèrent la nouvelle version.
-const VERSION = 'asm-v35';
+const VERSION = 'asm-v36';
 const APP_SHELL = [
   './',
   './index.html',
@@ -90,8 +90,14 @@ self.addEventListener('push', event => {
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   const url = new URL(event.notification.data && event.notification.data.url || './', self.registration.scope).href;
-  event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-    for (const c of list) if (c.url.startsWith(self.registration.scope) && 'focus' in c) { c.navigate(url); return c.focus(); }
-    return clients.openWindow(url);
+  // Appli déjà ouverte : on la met au premier plan et on lui dit quelle page afficher
+  // (message + navigation en secours) ; sinon on l'ouvre directement sur la bonne page.
+  event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async list => {
+    const c = list.find(w => w.url.startsWith(self.registration.scope));
+    if (!c) return clients.openWindow(url);
+    const w = await c.focus().catch(() => c);
+    try { (w || c).postMessage({ type: 'ouvrir', url }); } catch (e) {}
+    if (c.navigate && new URL(c.url).hash !== new URL(url).hash) c.navigate(url).catch(() => {});
+    return w;
   }));
 });
