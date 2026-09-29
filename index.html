@@ -390,11 +390,18 @@ table.cls tr.me td.rk,table.cls tr.me td.tm{color:var(--ink);font-weight:800}
 .eqpick button small{font-size:10.5px;color:var(--muted);margin-top:2px}
 .eqpick button.on{background:var(--club);border-color:var(--club);color:#000}
 .eqpick button.on small{color:#000}
+.onpill{flex:none;display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:999px;background:rgba(255,255,255,.12);color:#fff;font-weight:700;font-size:14px;font-variant-numeric:tabular-nums}
+.onpill i{width:8px;height:8px;border-radius:50%;background:#3ddc84;box-shadow:0 0 0 3px rgba(61,220,132,.25)}
+.onbig{display:flex;align-items:baseline;gap:10px;margin:6px 0 4px}
+.onbig b{font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:44px;line-height:1}
+.onbig span{color:var(--muted)}
+.oncount{font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:20px;font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
 <header class="appbar"><div class="appbar-in">
   <a class="brand" href="#/"><img class="crest" src="icons/notif-192.png" alt=""><div><b>AS MÉSANGER</b><small>Matchs en direct</small></div></a>
+  <button class="onpill" id="online" hidden aria-label="Personnes en ligne" title="Personnes en ligne"><i></i><span>…</span></button>
   <button class="iconbtn bell" id="bell" aria-label="Notifications de buts" title="Notifications de buts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button>
   <a class="acct" id="acct" href="#/connexion">Connexion</a>
 </div></header>

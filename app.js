@@ -148,6 +148,7 @@ async function loadProfile(){
   renderAcct();
 }
 function renderAcct(){
+  renderOnline();
   const a = $('acct');
   if (session){
     const nom = (profile && profile.nom || '').trim();
@@ -217,6 +218,7 @@ async function route(){
     a.dataset.tab === (page === '' || page === 'match' ? 'matchs' : page)));
   $('tabs').hidden = page==='gerer' || page==='match';
   $('fab').hidden = !(canCreate() && page==='');
+  presTrack();
   window.scrollTo(0,0);
   if (!sb){ view.innerHTML = `<div class="card"><h1>Configuration à terminer</h1><p class="sub">Le site n'est pas encore relié à sa base de données (fichier config.js).</p></div>`; return; }
   try{
@@ -1237,6 +1239,55 @@ function renderBell(){ const b = $('bell'); if (b) b.classList.toggle('on', lsGe
 $('bell').onclick = () => openBell(homeTeam || 0);
 renderBell();
 
+// ---------- Présence : qui est sur le site en ce moment ----------
+// Chaque visiteur signale seulement la page ouverte et s'il est connecté (pas de nom, pas d'adresse).
+const presKey = uuid();
+let presCh = null, presReady = false, presState = {};
+function presPage(){
+  const [p, a] = (location.hash.replace(/^#\/?/, '') || '').split('/');
+  return p === 'match' || p === 'gerer' ? 'match:' + a : (p || 'accueil');
+}
+function presTrack(){ if (presCh && presReady) presCh.track({ page: presPage(), compte: !!session }).catch(() => {}); }
+function startPresence(){
+  presCh = sb.channel('en-ligne', { config: { presence: { key: presKey } } });
+  presCh.on('presence', { event: 'sync' }, () => { presState = presCh.presenceState(); renderOnline(); });
+  presCh.subscribe(st => { if (st === 'SUBSCRIBED'){ presReady = true; presTrack(); } });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') presTrack(); });
+}
+function renderOnline(){
+  const b = $('online'); if (!b) return;
+  b.hidden = !isAdmin();
+  b.querySelector('span').textContent = Object.keys(presState).length || '…';
+  if (document.body.classList.contains('open') && $('onlineList')) $('onlineList').innerHTML = onlineHTML();
+}
+function onlineHTML(){
+  const metas = Object.values(presState).map(a => (a && a[0]) || {});
+  const n = metas.length, comptes = metas.filter(m => m.compte).length;
+  const matches = [...((lsGet('asm-home', null) || {}).matches || []), ...presMatches];
+  const NOMS = { accueil: 'Accueil', classements: 'Classements', stats: 'Stats joueurs', compte: 'Mon compte', admin: 'Accès', connexion: 'Connexion', nouveau: 'Nouveau match' };
+  const label = p => {
+    if (!p) return 'Autre';
+    if (p.startsWith('match:')){ const m = matches.find(x => x.id === p.slice(6)); return m ? '⚽ ' + teamName(m, 'H') + ' – ' + teamName(m, 'A') : '⚽ Un match'; }
+    return NOMS[p] || p;
+  };
+  const byPage = {}; metas.forEach(m => { byPage[m.page] = (byPage[m.page] || 0) + 1; });
+  const rows = Object.entries(byPage).sort((a, b) => b[1] - a[1]);
+  return `<div class="onbig"><b>${n}</b><span>personne${n > 1 ? 's' : ''} sur le site en ce moment</span></div>
+    <p class="note" style="margin:0 0 10px">${comptes} connecté${comptes > 1 ? 's' : ''} à un compte (toi compris) · ${n - comptes} visiteur${n - comptes > 1 ? 's' : ''}</p>
+    <div class="alist">${rows.map(([p, c]) => `<div class="arow"><div class="who"><b>${esc(label(p))}</b></div><span class="oncount">${c}</span></div>`).join('') || '<div class="arow">Personne</div>'}</div>`;
+}
+let presMatches = [];
+async function openOnline(){
+  // noms des matchs pas encore chargés sur ce téléphone
+  const known = new Set([...((lsGet('asm-home', null) || {}).matches || []), ...presMatches].map(m => m.id));
+  const ids = [...new Set(Object.values(presState).map(a => (a && a[0] || {}).page).filter(p => p && p.startsWith('match:')).map(p => p.slice(6)))].filter(id => !known.has(id));
+  if (ids.length){ const { data } = await sb.from('matches').select('id,home_name,away_name').in('id', ids); presMatches.push(...(data || [])); }
+  openSheet(`<h3 id="shTitle">En ligne</h3><p>Mis à jour en direct.</p><div id="onlineList">${onlineHTML()}</div>
+    <button class="cancel" id="onNo">Fermer</button>`);
+  $('onNo').onclick = closeSheet;
+}
+$('online').onclick = openOnline;
+
 // ---------- Démarrage ----------
 renderAcct();
 if (sb){
@@ -1245,6 +1296,7 @@ if (sb){
     if (ev === 'SIGNED_OUT'){ profile = null; lsSet('asm-profile', null); renderAcct(); }
   });
   loadProfile().catch(()=>{}).finally(() => { route(); flush(); });
+  startPresence();
 } else route();
 
 // PWA : fonctionnement hors ligne
