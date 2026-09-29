@@ -1039,6 +1039,10 @@ function loginView(){
         return draw(`<div class="msg err">${esc(m)}</div>`);
       }
       if (!res.data.session) return draw('<div class="msg">Compte créé. Confirme ton adresse avec le lien reçu par email, puis connecte-toi.</div>');
+      if (mode === 'up'){
+        // prévient les admins (une seule fois par compte, contrôlé par la base)
+        fetch('api/notify-signup', { method: 'POST', keepalive: true, headers: { Authorization: 'Bearer ' + res.data.session.access_token } }).catch(() => {});
+      }
       await loadProfile();
       location.hash = isStaff() ? '#/' : '#/compte';
     };
@@ -1110,10 +1114,10 @@ const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platfo
 const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 function b64ToBytes(b64){ const p = '='.repeat((4 - b64.length % 4) % 4); const s = atob((b64 + p).replace(/-/g,'+').replace(/_/g,'/')); return Uint8Array.from(s, c => c.charCodeAt(0)); }
-async function saveFollow(teams){
+async function saveFollow(teams, admin){
   const reg = await navigator.serviceWorker.ready;
   let sub = await reg.pushManager.getSubscription();
-  if (!teams.length){
+  if (!teams.length && !admin){
     if (sub){ const j = sub.toJSON(); await sb.rpc('push_subscribe', {p_endpoint:j.endpoint, p_p256dh:j.keys.p256dh, p_auth:j.keys.auth, p_equipes:[]}); await sub.unsubscribe(); }
     lsSet('asm-follow', []); return true;
   }
@@ -1123,7 +1127,7 @@ async function saveFollow(teams){
   }
   if (!sub) sub = await reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey: b64ToBytes(VAPID_PUBLIC)});
   const j = sub.toJSON();
-  const { error } = await sb.rpc('push_subscribe', {p_endpoint:j.endpoint, p_p256dh:j.keys.p256dh, p_auth:j.keys.auth, p_equipes:teams});
+  const { error } = await sb.rpc('push_subscribe', {p_endpoint:j.endpoint, p_p256dh:j.keys.p256dh, p_auth:j.keys.auth, p_equipes:teams, p_admin:!!admin});
   if (error) throw error;
   lsSet('asm-follow', teams); return true;
 }
@@ -1142,27 +1146,33 @@ function openBell(preselect){
     ${denied ? '<div class="msg err">Les notifications sont bloquées pour ce site. Autorise-les dans les réglages du téléphone (ou du navigateur), puis reviens ici.</div>' : ''}
     <div class="msg" id="bState">Vérification de ce téléphone…</div>
     <div class="follow">${TEAMS.map(n => `<label class="fl"><input type="checkbox" value="${n}"${cur.has(n)?' checked':''}><span>${teamLabel(n)}</span></label>`).join('')}</div>
+    ${isAdmin() ? `<label class="fl fladmin"><input type="checkbox" id="bAdmin"${lsGet('asm-follow-admin', false) ? ' checked' : ''}><span>👤 Nouveaux comptes à valider <small>(admins)</small></span></label>` : ''}
     <div class="foot" style="margin-top:12px"><button class="fbtn primary" id="bSave">Enregistrer</button><button class="fbtn" id="bNo">Annuler</button></div>
     <button class="link" id="bTest" hidden style="width:100%">Envoyer une notification d’essai</button>`);
   $('bNo').onclick = closeSheet;
   // État réel, lu dans la base (et non dans la mémoire du téléphone)
   pushState().then(st => {
     const el = $('bState'); if (!el) return;
-    el.textContent = st.teams && st.teams.length ? 'Ce téléphone reçoit les buts de : ' + st.teams.map(teamLabel).join(', ') + '.' : 'Ce téléphone n’est pas encore abonné.';
-    lsSet('asm-follow', st.teams || []); renderBell();
-    if (st.sub && st.teams && st.teams.length) $('bTest').hidden = false;
+    const parts = [];
+    if (st.teams.length) parts.push('les buts de : ' + st.teams.map(teamLabel).join(', '));
+    if (st.admin) parts.push('les nouveaux comptes à valider');
+    el.textContent = parts.length ? 'Ce téléphone reçoit ' + parts.join(' et ') + '.' : 'Ce téléphone n’est pas encore abonné.';
+    lsSet('asm-follow', st.teams); lsSet('asm-follow-admin', st.admin); renderBell();
+    if ($('bAdmin')) $('bAdmin').checked = st.admin;
+    if (st.sub && parts.length) $('bTest').hidden = false;
   }).catch(() => { const el = $('bState'); if (el) el.textContent = navigator.onLine ? 'État inconnu.' : 'Pas de réseau.'; });
   $('bTest').onclick = async () => { const st = await pushState(); toast(await sendTestPush(st.sub) ? 'Notification d’essai envoyée' : 'L’envoi d’essai a échoué'); };
   $('bSave').onclick = async () => {
-    const teams = [...$('shBody').querySelectorAll('input:checked')].map(i => +i.value);
+    const teams = [...$('shBody').querySelectorAll('.follow input:checked')].map(i => +i.value);
+    const admin = !!($('bAdmin') && $('bAdmin').checked);
     $('bSave').disabled = true;
     try{
-      const ok = await saveFollow(teams);
+      const ok = await saveFollow(teams, admin);
       if (!ok){ closeSheet(); renderBell(); toast('Notifications refusées'); return; }
       const st = await pushState();
       closeSheet(); renderBell();
-      if (!teams.length){ toast('Notifications désactivées'); return; }
-      if (!st.teams || !st.teams.length){ toast('Échec : l’abonnement n’a pas été enregistré'); return; }
+      if (!teams.length && !admin){ toast('Notifications désactivées'); return; }
+      if (st.teams.length !== teams.length || st.admin !== admin){ toast('Échec : l’abonnement n’a pas été enregistré'); return; }
       toast(await sendTestPush(st.sub) ? 'Activé : tu vas recevoir une notification d’essai' : 'Abonné, mais l’essai n’est pas arrivé');
     }catch(e){ console.error(e); $('bSave').disabled = false; toast(navigator.onLine ? 'Impossible d’activer : ' + (e && e.message || e) : 'Pas de réseau'); }
   };
@@ -1170,10 +1180,10 @@ function openBell(preselect){
 async function pushState(){
   const reg = await navigator.serviceWorker.ready;
   const sub = await reg.pushManager.getSubscription();
-  if (!sub) return { sub: null, teams: [] };
+  if (!sub) return { sub: null, teams: [], admin: false };
   const { data, error } = await sb.rpc('push_status', { p_endpoint: sub.endpoint });
   if (error) throw error;
-  return { sub, teams: data || [] };
+  return { sub, teams: (data && data.equipes) || [], admin: !!(data && data.admin) };
 }
 async function sendTestPush(sub){
   if (!sub) return false;
@@ -1182,7 +1192,7 @@ async function sendTestPush(sub){
     return r.ok;
   }catch(e){ return false; }
 }
-function renderBell(){ const b = $('bell'); if (b) b.classList.toggle('on', lsGet('asm-follow', []).length > 0); }
+function renderBell(){ const b = $('bell'); if (b) b.classList.toggle('on', lsGet('asm-follow', []).length > 0 || !!lsGet('asm-follow-admin', false)); }
 $('bell').onclick = () => openBell(homeTeam || 0);
 renderBell();
 
