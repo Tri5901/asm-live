@@ -108,6 +108,8 @@ function timelineHTML(m, evs, editable){
 let session = null;
 let profile = lsGet('asm-profile', null);
 const isStaff = () => !!profile && (profile.role==='delegue' || profile.role==='admin');
+// Joueur : aucun droit, sauf sur les matchs où il est désigné délégué
+const isMember = () => !!profile && ['joueur', 'delegue', 'admin'].includes(profile.role);
 const isAdmin = () => !!profile && profile.role==='admin';
 const myId = () => session && session.user ? session.user.id : null;
 // Un match avec un délégué désigné ne peut être saisi que par lui (ou un admin)
@@ -116,12 +118,12 @@ const myTeams = () => (profile && Array.isArray(profile.equipes)) ? profile.equi
 const isTeamManager = eq => isAdmin() || (isStaff() && myTeams().includes(eq || 1));
 const canCreate = () => isAdmin() || (isStaff() && myTeams().length > 0);
 // Peut saisir un match : admin, responsable de l'équipe, ou délégué désigné sur ce match
-const canManage = m => isTeamManager(m.equipe) || (isStaff() && !!m.delegue_id && m.delegue_id === myId());
+const canManage = m => isTeamManager(m.equipe) || (isMember() && !!m.delegue_id && m.delegue_id === myId());
 let delegues = null;
 async function loadDelegues(){ if (!delegues){ const { data } = await sb.rpc('list_delegues'); delegues = data || []; } return delegues; }
 function delegueOptions(cur, curNom){
   const opts = [['', 'Personne (tous les délégués)']];
-  if (canCreate()) (delegues||[]).forEach(d => opts.push([d.id, d.nom]));
+  if (canCreate()) (delegues||[]).forEach(d => opts.push([d.id, d.nom + (d.role === 'joueur' ? ' (joueur)' : '')]));
   else if (myId()) opts.push([myId(), 'Moi']); // (les responsables voient toute la liste, voir canCreate)
   if (cur && !opts.some(o => o[0] === cur)) opts.push([cur, curNom || 'Autre délégué']);
   return opts.map(([v, l]) => `<option value="${esc(v)}"${v === (cur||'') ? ' selected' : ''}>${esc(l)}</option>`).join('');
@@ -445,7 +447,7 @@ async function newMatchView(){
 // ---------- Console du délégué ----------
 async function consoleView(id, openCompo){
   if (isAdmin()) await loadPeople().catch(()=>{});
-  if (!isStaff()){ location.hash = session ? '#/compte' : '#/connexion'; return; }
+  if (!isMember()){ location.hash = session ? '#/compte' : '#/connexion'; return; }
   view.innerHTML = '<div class="loading">Chargement…</div>';
   const CK = 'asm-console-' + id;
   let S = null;
@@ -1051,12 +1053,13 @@ function loginView(){
 }
 function accountView(){
   if (!session){ location.hash = '#/connexion'; return; }
-  const ROLE = {pending:'En attente de validation', delegue:'Responsable d’équipe', admin:'Administrateur'};
+  const ROLE = {pending:'En attente de validation', joueur:'Joueur', delegue:'Responsable d’équipe', admin:'Administrateur'};
   const role = profile ? profile.role : 'pending';
   view.innerHTML = `<div class="card">
     <h1>${esc(profile && profile.nom || 'Mon compte')}</h1>
     <p class="sub">${esc(session.user.email)} · ${ROLE[role]}</p>
     ${role==='pending' ? '<div class="msg">Ton compte doit être validé par un administrateur du club avant de pouvoir saisir les matchs.</div>' : ''}
+    ${role==='joueur' ? '<div class="msg">Tu peux saisir uniquement les matchs où un responsable t’a désigné délégué. Ils apparaissent sur l’accueil avec la pastille « ✎ Gérer ».</div>' : ''}
     ${role==='delegue' ? `<div class="msg">${myTeams().length ? 'Tu gères les matchs des ' + myTeams().slice().sort().map(teamLabel).join(', ') + '.' : 'Aucune équipe ne t’est encore confiée : tu peux saisir uniquement les matchs où tu es désigné délégué.'}</div>` : ''}
     <div class="foot" style="margin-top:4px">
       ${canCreate() ? '<a class="fbtn club" href="#/nouveau">+ Nouveau match</a>' : ''}
@@ -1081,11 +1084,14 @@ async function adminView(){
       <div class="uline"><div class="who"><b>${esc(p.nom || '—')}</b><small>${esc(p.email)}</small></div>
       <select class="urole" aria-label="Accès de ${esc(p.nom||p.email)}" ${me ? 'disabled' : ''}>
         <option value="pending"${p.role==='pending'?' selected':''}>Sans accès</option>
+        <option value="joueur"${p.role==='joueur'?' selected':''}>Joueur</option>
         <option value="delegue"${p.role==='delegue'?' selected':''}>Responsable</option>
         <option value="admin"${p.role==='admin'?' selected':''}>Admin</option>
       </select></div>
       ${p.role==='admin'
         ? '<div class="uteams"><span class="uhint">Admin : toutes les équipes</span></div>'
+        : p.role==='joueur'
+        ? '<div class="uteams"><span class="uhint">Joueur : aucun accès, sauf les matchs où il est désigné délégué</span></div>'
         : `<div class="uteams" role="group" aria-label="Équipes dont ${esc(p.nom||p.email)} est responsable"><span class="ulab">Responsable de</span>${TEAMS.map(n => `<button type="button" data-e="${n}" class="${p.role==='delegue' && eqs.includes(n)?'on':''}" aria-pressed="${p.role==='delegue' && eqs.includes(n)}" title="Seniors ${teamLetter(n)}">${teamLetter(n)}</button>`).join('')}<span class="uhint">${p.role==='delegue' && eqs.length ? '' : 'aucune équipe'}</span></div>`}
     </div>`;
   };
