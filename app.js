@@ -359,11 +359,14 @@ function drawHome(matches, goalRows){
   const byDay = list => { let h = '', last = ''; list.forEach(m => { const d = new Date(m.kickoff).toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'}); if (d !== last){ h += `<div class="day">${esc(d)}</div>`; last = d; } h += card(m); }); return h; };
   const all = matches;
   matches = homeTeam ? matches.filter(m => (m.equipe||1) === homeTeam) : matches;
-  const live = matches.filter(m=>m.status==='direct');
-  const next = matches.filter(m=>m.status==='prevu').sort((a,b)=>a.kickoff.localeCompare(b.kickoff));
-  const done = matches.filter(m=>m.status==='termine');
+  // même heure : les dernières équipes d'abord, la A en dernier
+  const byTeam = (a,b) => (b.equipe||1) - (a.equipe||1);
+  const asc = (a,b) => a.kickoff.localeCompare(b.kickoff) || byTeam(a,b), desc = (a,b) => b.kickoff.localeCompare(a.kickoff) || byTeam(a,b);
+  const live = matches.filter(m=>m.status==='direct').sort(asc);
+  const next = matches.filter(m=>m.status==='prevu').sort(asc);
+  const done = matches.filter(m=>m.status==='termine').sort(desc);
   let html = `<div class="chipbar" role="group" aria-label="Équipe">${[0, ...TEAMS].map(n => `<button data-team="${n}" class="${homeTeam===n?'on':''}" aria-pressed="${homeTeam===n}">${n ? 'Seniors ' + teamLetter(n) : 'Toutes'}</button>`).join('')}</div>`;
-  const mine = myId() ? all.filter(m => m.delegue_id === myId() && m.status !== 'termine').sort((a,b)=>a.kickoff.localeCompare(b.kickoff)) : [];
+  const mine = myId() ? all.filter(m => m.delegue_id === myId() && m.status !== 'termine').sort(asc) : [];
   if (mine.length) html += `<div class="sec">Mes matchs (délégué)</div>` + byDay(mine);
   if (live.length) html += `<div class="sec">En direct</div>` + live.map(card).join('');
   const NEXT_MAX = 6;
