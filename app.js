@@ -457,7 +457,7 @@ async function consoleView(id, openCompo){
   }
   if (!S){ view.innerHTML = '<div class="empty">Ce match n\'existe plus.</div>'; return; }
   if (!canManage(S)){
-    view.innerHTML = `<div class="card"><h1>Match confié à un autre délégué</h1><p class="sub">${esc(S.delegue_nom || 'Un délégué')} s'occupe de ce match. Seul lui ou un admin peut le saisir.</p><a class="fbtn" href="#/match/${esc(id)}" style="width:100%">Voir le direct</a></div>`;
+    view.innerHTML = `<div class="card"><h1>Tu ne gères pas ce match</h1><p class="sub">Ce match des ${esc(teamLabel(S.equipe))} peut être saisi par le responsable de l’équipe${S.delegue_nom ? `, par ${esc(S.delegue_nom)} (délégué désigné)` : ''} ou par un admin.</p><a class="fbtn" href="#/match/${esc(id)}" style="width:100%">Voir le direct</a></div>`;
     return;
   }
   S.rosters = S.rosters || {H:[],A:[]};
