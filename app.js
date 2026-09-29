@@ -138,6 +138,10 @@ const personName = id => id ? ((people||{})[id] || 'compte supprimé') : 'import
 const hhmm = iso => iso ? new Date(iso).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'}) : '';
 const delegueNom = id => !id ? null : id === myId() ? (profile && profile.nom) || 'Moi' : ((delegues||[]).find(d => d.id === id) || {}).nom || null;
 
+// « jean-pierre LE GOFF » → « Jean-Pierre Le Goff » (même règle que la base)
+const fmtNom = t => String(t || '').trim().replace(/\s+/g, ' ').toLowerCase().replace(/(^|[^\p{L}])(\p{L})/gu, (x, a, b) => a + b.toUpperCase());
+const nomOk = n => fmtNom(n).split(' ').filter(w => w.length >= 2).length >= 2;
+const splitNom = n => { const w = fmtNom(n).split(' ').filter(Boolean); return [w[0] || '', w.slice(1).join(' ')]; };
 async function loadProfile(){
   if (!sb) return;
   const { data } = await sb.auth.getSession();
@@ -223,6 +227,7 @@ async function route(){
   window.scrollTo(0,0);
   if (!sb){ view.innerHTML = `<div class="card"><h1>Configuration à terminer</h1><p class="sub">Le site n'est pas encore relié à sa base de données (fichier config.js).</p></div>`; return; }
   try{
+    if (session && profile && profile.role !== 'supprime' && !nomOk(profile.nom) && page !== 'connexion') return nameView(true);
     if (page==='' ) return await homeView();
     if (page==='match') return await matchView(arg);
     if (page==='gerer') return await consoleView(arg, parts[2]==='compo');
@@ -1052,7 +1057,7 @@ function loginView(){
       <h1>${mode==='in' ? 'Connexion' : 'Créer un compte'}</h1>
       <p class="sub">Réservé aux délégués du club pour saisir les matchs. Pas besoin de compte pour suivre les matchs.</p>
       ${msg}
-      ${mode==='up' ? `<label class="field"><span>Prénom et nom</span><input id="lfNom" required autocomplete="name"></label>` : ''}
+      ${mode==='up' ? `<div class="frow2"><label class="field"><span>Prénom</span><input id="lfPrenom" required minlength="2" autocomplete="given-name" autocapitalize="words"></label><label class="field"><span>Nom</span><input id="lfNom" required minlength="2" autocomplete="family-name" autocapitalize="words"></label></div>` : ''}
       <label class="field"><span>Email</span><input id="lfMail" type="email" required autocomplete="email"></label>
       <label class="field"><span>Mot de passe</span><input id="lfPw" type="password" required minlength="6" autocomplete="${mode==='in'?'current-password':'new-password'}">${mode==='up' ? '<small>6 caractères minimum.</small>' : ''}</label>
       <div class="foot" style="margin-top:4px"><button class="fbtn primary" id="lfGo">${mode==='in' ? 'Se connecter' : 'Créer mon compte'}</button></div>
@@ -1065,7 +1070,7 @@ function loginView(){
       const email = $('lfMail').value.trim(), password = $('lfPw').value;
       let res;
       if (mode==='in') res = await sb.auth.signInWithPassword({email, password});
-      else res = await sb.auth.signUp({email, password, options:{data:{nom: $('lfNom').value.trim()}}});
+      else res = await sb.auth.signUp({email, password, options:{data:{nom: fmtNom($('lfPrenom').value) + ' ' + fmtNom($('lfNom').value)}}});
       if (res.error){
         const m = /invalid login/i.test(res.error.message) ? 'Email ou mot de passe incorrect.' : /already registered/i.test(res.error.message) ? 'Un compte existe déjà avec cet email.' : res.error.message;
         return draw(`<div class="msg err">${esc(m)}</div>`);
@@ -1081,13 +1086,37 @@ function loginView(){
   };
   draw();
 }
+function nameView(force){
+  const [p0, n0] = splitNom(profile && profile.nom);
+  view.innerHTML = `<form class="card" id="nmf">
+    <h1>${force ? 'Ton prénom et ton nom' : 'Modifier mon nom'}</h1>
+    <p class="sub">${force ? 'Pour que les responsables sachent qui saisit les matchs, indique ton prénom et ton nom.' : 'Il apparaît dans l’historique des matchs et dans la liste des délégués.'}</p>
+    <div class="frow2"><label class="field"><span>Prénom</span><input id="nmPrenom" required minlength="2" autocomplete="given-name" autocapitalize="words" value="${esc(p0)}"></label>
+    <label class="field"><span>Nom</span><input id="nmNom" required minlength="2" autocomplete="family-name" autocapitalize="words" value="${esc(n0)}"></label></div>
+    <p class="note" id="nmPrev"></p>
+    <div class="foot" style="margin-top:4px"><button class="fbtn primary" id="nmGo">Enregistrer</button>${force ? '' : '<a class="fbtn" href="#/compte">Annuler</a>'}</div>
+    ${force ? '<button type="button" class="link" id="nmOut" style="width:100%;margin-top:10px">Se déconnecter</button>' : ''}
+  </form>`;
+  const prev = () => { const t = (fmtNom($('nmPrenom').value) + ' ' + fmtNom($('nmNom').value)).trim(); $('nmPrev').textContent = t ? 'Affiché : ' + t : ''; };
+  $('nmPrenom').oninput = $('nmNom').oninput = prev; prev();
+  if ($('nmOut')) $('nmOut').onclick = async () => { await sb.auth.signOut(); session = null; profile = null; lsSet('asm-profile', null); renderAcct(); location.hash = '#/'; route(); };
+  $('nmf').onsubmit = async ev => {
+    ev.preventDefault();
+    $('nmGo').disabled = true;
+    const { data, error } = await sb.rpc('set_mon_nom', { p_prenom: $('nmPrenom').value, p_nom: $('nmNom').value });
+    if (error){ $('nmGo').disabled = false; toast(isNetErr(error) ? 'Pas de réseau' : 'Prénom et nom obligatoires'); return; }
+    profile = { ...profile, nom: data }; lsSet('asm-profile', profile); renderAcct(); people = null; delegues = null;
+    toast('Nom enregistré : ' + data);
+    if (force) route(); else location.hash = '#/compte';
+  };
+}
 function accountView(){
   if (!session){ location.hash = '#/connexion'; return; }
   const ROLE = {pending:'En attente de validation', joueur:'Joueur', delegue:'Responsable d’équipe', admin:'Administrateur'};
   const role = profile ? profile.role : 'pending';
   view.innerHTML = `<div class="card">
     <h1>${esc(profile && profile.nom || 'Mon compte')}</h1>
-    <p class="sub">${esc(session.user.email)} · ${ROLE[role]}</p>
+    <p class="sub">${esc(session.user.email)} · ${ROLE[role]} · <button class="link" id="editNom" style="padding:0">Modifier mon nom</button></p>
     ${role==='pending' ? '<div class="msg">Ton compte doit être validé par un administrateur du club avant de pouvoir saisir les matchs.</div>' : ''}
     ${role==='joueur' ? '<div class="msg">Tu peux saisir uniquement les matchs où un responsable t’a désigné délégué. Ils apparaissent sur l’accueil avec la pastille « ✎ Gérer ».</div>' : ''}
     ${role==='delegue' ? `<div class="msg">${myTeams().length ? 'Tu gères les matchs des ' + myTeams().slice().sort().map(teamLabel).join(', ') + '.' : 'Aucune équipe ne t’est encore confiée : tu peux saisir uniquement les matchs où tu es désigné délégué.'}</div>` : ''}
@@ -1098,6 +1127,7 @@ function accountView(){
     <div class="foot" style="margin-top:10px"><button class="fbtn" id="logout">Se déconnecter</button></div>
     <button class="link danger-link" id="delMe" style="width:100%;margin-top:14px">Supprimer mon compte</button>
   </div>`;
+  $('editNom').onclick = () => nameView(false);
   $('delMe').onclick = () => askConfirm('Supprimer ton compte ?',
     'Tu ne pourras plus te connecter. Les matchs et actions que tu as saisis restent dans l’historique, avec ton nom. Cette suppression est définitive.',
     'Supprimer mon compte', async () => {
@@ -1151,9 +1181,11 @@ async function adminView(){
   function editPerson(p){
     const me = p.id === session.user.id;
     let role = p.role, eqs = new Set(p.equipes || []);
+    let [pre, nm] = splitNom(p.nom);
     const draw = () => {
       openSheet(`<div class="phead"><span class="pav">${initial(p)}</span><div class="who"><h3 id="shTitle" style="margin:0">${esc(nameOf(p))}</h3><small>${esc(p.email || '')}</small></div></div>
-        <div class="field" style="margin-top:14px"><span>Rôle</span>
+        <div class="frow2" style="margin-top:14px"><label class="field"><span>Prénom</span><input id="edPre" value="${esc(pre)}" autocapitalize="words"></label><label class="field"><span>Nom</span><input id="edNom" value="${esc(nm)}" autocapitalize="words"></label></div>
+        <div class="field"><span>Rôle</span>
           <div class="rseg" role="group" aria-label="Rôle">${ROLES.map(([v, l]) => `<button type="button" data-role="${v}" class="${role === v ? 'on' : ''}" aria-pressed="${role === v}"${me ? ' disabled' : ''}>${l}</button>`).join('')}</div>
           <small>${role === 'admin' ? 'Gère toutes les équipes, les accès et les classements.' : role === 'delegue' ? 'Crée et saisit les matchs des équipes cochées ci-dessous.' : role === 'joueur' ? 'Aucun accès, sauf les matchs où il est désigné délégué.' : 'Ne peut rien modifier.'}${me ? ' Tu ne peux pas changer ton propre rôle.' : ''}</small></div>
         ${role === 'delegue' ? `<div class="field"><span>Équipes dont il est responsable</span>
@@ -1162,9 +1194,11 @@ async function adminView(){
         ${me ? '' : '<button class="link danger-link" id="edDel" style="width:100%;margin-top:12px">Supprimer ce compte</button>'}`);
       $('shBody').querySelectorAll('[data-role]').forEach(b => b.onclick = () => { role = b.dataset.role; draw(); });
       $('shBody').querySelectorAll('[data-e]').forEach(b => b.onclick = () => { const n = +b.dataset.e; eqs.has(n) ? eqs.delete(n) : eqs.add(n); draw(); });
+      $('edPre').oninput = e => { pre = e.target.value; }; $('edNom').oninput = e => { nm = e.target.value; };
       $('edNo').onclick = closeSheet;
       $('edSave').onclick = async () => {
-        const fields = { role, equipes: role === 'delegue' ? [...eqs].sort() : (p.equipes || []) };
+        if (!nomOk(pre + ' ' + nm) || fmtNom(pre).length < 2 || fmtNom(nm).length < 2){ toast('Prénom et nom obligatoires'); return; }
+        const fields = { role, equipes: role === 'delegue' ? [...eqs].sort() : (p.equipes || []), nom: fmtNom(pre) + ' ' + fmtNom(nm) };
         $('edSave').disabled = true;
         const { data: upd, error } = await sb.from('profiles').update(fields).eq('id', p.id).select('id');
         if (error || !upd || !upd.length){ $('edSave').disabled = false; toast('Modification refusée'); return; }
