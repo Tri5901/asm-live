@@ -1084,7 +1084,9 @@ async function adminView(){
         <option value="delegue"${p.role==='delegue'?' selected':''}>Responsable</option>
         <option value="admin"${p.role==='admin'?' selected':''}>Admin</option>
       </select></div>
-      ${p.role==='delegue' ? `<div class="uteams" role="group" aria-label="Équipes gérées">${TEAMS.map(n => `<button type="button" data-e="${n}" class="${eqs.includes(n)?'on':''}" aria-pressed="${eqs.includes(n)}">${teamLetter(n)}</button>`).join('')}<span class="uhint">${eqs.length ? '' : 'Aucune équipe'}</span></div>` : ''}
+      ${p.role==='admin'
+        ? '<div class="uteams"><span class="uhint">Admin : toutes les équipes</span></div>'
+        : `<div class="uteams" role="group" aria-label="Équipes dont ${esc(p.nom||p.email)} est responsable"><span class="ulab">Responsable de</span>${TEAMS.map(n => `<button type="button" data-e="${n}" class="${p.role==='delegue' && eqs.includes(n)?'on':''}" aria-pressed="${p.role==='delegue' && eqs.includes(n)}" title="Seniors ${teamLetter(n)}">${teamLetter(n)}</button>`).join('')}<span class="uhint">${p.role==='delegue' && eqs.length ? '' : 'aucune équipe'}</span></div>`}
     </div>`;
   };
   view.innerHTML = `<div class="card"><h1>Accès</h1>
@@ -1101,10 +1103,15 @@ async function adminView(){
     const sel = r.querySelector('.urole');
     sel.onchange = async () => { if (await save(id, {role: sel.value})){ adminView(); } };
     r.querySelectorAll('.uteams button').forEach(b => b.onclick = async () => {
-      const n = +b.dataset.e, cur = new Set(p.equipes || []);
+      const n = +b.dataset.e, cur = new Set(p.role === 'delegue' ? (p.equipes || []) : []);
       cur.has(n) ? cur.delete(n) : cur.add(n);
       const eqs = [...cur].sort();
-      if (await save(id, {equipes: eqs})){ p.equipes = eqs; b.classList.toggle('on', cur.has(n)); b.setAttribute('aria-pressed', cur.has(n)); r.querySelector('.uhint').textContent = eqs.length ? '' : 'Aucune équipe'; }
+      // Cocher une équipe à une personne « Sans accès » la passe directement Responsable
+      const fields = p.role === 'pending' ? {role: 'delegue', equipes: eqs} : {equipes: eqs};
+      if (await save(id, fields)){
+        if (fields.role){ adminView(); return; }
+        p.equipes = eqs; b.classList.toggle('on', cur.has(n)); b.setAttribute('aria-pressed', cur.has(n)); r.querySelector('.uhint').textContent = eqs.length ? '' : 'aucune équipe';
+      }
     });
   });
 }
