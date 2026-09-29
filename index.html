@@ -415,6 +415,15 @@ table.cls tr.me td.rk,table.cls tr.me td.tm{color:var(--ink);font-weight:800}
 .dprow{width:100%;text-align:left;font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .dprow.on{background:color-mix(in srgb,var(--club) 14%,transparent)}
 .dpok{font-weight:800}
+.visrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:-2px 0 10px}
+.visrow small{color:var(--muted);font-size:12px;flex:1 1 180px}
+.vistog{display:inline-flex;align-items:center;gap:8px;padding:6px 12px 6px 8px;border-radius:999px;font:inherit;font-size:13px;font-weight:700;background:color-mix(in srgb,#3ddc84 18%,transparent);color:var(--ink);border:1px solid color-mix(in srgb,#3ddc84 45%,transparent)}
+.vistog i{width:30px;height:18px;border-radius:999px;background:#3ddc84;position:relative;flex:none}
+.vistog i::after{content:"";position:absolute;top:2px;left:14px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .15s}
+.vistog.off{background:color-mix(in srgb,var(--red) 12%,transparent);border-color:color-mix(in srgb,var(--red) 40%,transparent)}
+.vistog.off i{background:var(--muted)}
+.vistog.off i::after{left:2px}
+.vistog.static{cursor:default}
 </style>
 </head>
 <body>

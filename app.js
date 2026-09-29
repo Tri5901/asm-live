@@ -387,6 +387,10 @@ async function fetchMatch(id){
     sb.from('events').select('*').eq('match_id', id)
   ]);
   if (error || e2) throw (error || e2);
+  if (m && m.compo_cachee && session){
+    const { data: p } = await sb.from('compos_privees').select('rosters').eq('match_id', id).maybeSingle();
+    if (p) m.rosters = p.rosters;
+  }
   return { m, evs: evs || [] };
 }
 function boardHTML(m, evs, staff){
@@ -417,7 +421,12 @@ function lineupsHTML(m){
   };
   const has = rosterOf(m,'H').length || rosterOf(m,'A').length;
   if (!has && !canManage(m)) return '';
+  if (m.compo_cachee && !canManage(m)) return '';
+  const vis = isTeamManager(m.equipe)
+    ? `<button type="button" class="vistog${m.compo_cachee ? ' off' : ''}" id="compoVis" aria-pressed="${!m.compo_cachee}"><i></i>${m.compo_cachee ? 'Cachée au public' : 'Visible par tous'}</button>`
+    : m.compo_cachee ? '<span class="vistog off static"><i></i>Cachée au public</span>' : '';
   return `<section class="log"><div class="loghead"><h2>Compositions</h2>${canManage(m) ? `<a class="link" href="#/gerer/${esc(m.id)}/compo">${has ? 'Modifier' : '📋 Saisir la compo'}</a>` : ''}</div>`
+    + (vis ? `<div class="visrow">${vis}<small>${m.compo_cachee ? 'Seuls les responsables, les admins et le délégué du match la voient.' : 'Tout le monde peut la voir sur la page du match.'}</small></div>` : '')
     + (has ? `<div class="lineups">${side('H')}${side('A')}</div>` : '<div class="empty">Compo pas encore saisie.</div>')
     + '</section>';
 }
@@ -438,6 +447,15 @@ async function matchView(id){
       + (m.status!=='prevu' ? lineupsHTML(m) : '');
     $('btnShareLive').onclick = () => shareLink(m);
     $('btnBell').onclick = () => openBell(m.equipe || 1);
+    if ($('compoVis')) $('compoVis').onclick = async () => {
+      const hide = !m.compo_cachee;
+      $('compoVis').disabled = true;
+      const { data: upd, error } = await sb.from('matches').update({ compo_cachee: hide }).eq('id', m.id).select('id');
+      if (error || !upd || !upd.length){ toast(isNetErr(error) ? 'Pas de réseau' : 'Modification refusée'); draw(); return; }
+      toast(hide ? 'Compo cachée au public' : 'Compo visible par tous');
+      try{ const r = await fetchMatch(m.id); if (r.m){ m = r.m; evs = r.evs; } }catch(e){ m.compo_cachee = hide; }
+      draw();
+    };
     bindDelegPick($('delSel'), m.delegue_nom, async id => {
       const { data: upd, error } = await sb.from('matches').update({delegue_id: id, delegue_nom: delegueNom(id)}).eq('id', m.id).select('id');
       if (error || !upd || !upd.length){ toast(isNetErr(error) ? 'Pas de réseau' : 'Modification refusée'); draw(); return; }
