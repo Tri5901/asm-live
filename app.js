@@ -111,13 +111,18 @@ const isStaff = () => !!profile && (profile.role==='delegue' || profile.role==='
 const isAdmin = () => !!profile && profile.role==='admin';
 const myId = () => session && session.user ? session.user.id : null;
 // Un match avec un délégué désigné ne peut être saisi que par lui (ou un admin)
-const canManage = m => isAdmin() || (isStaff() && (!m.delegue_id || m.delegue_id === myId()));
+// Responsable d'équipe : compte "delegue" avec les équipes cochées par un admin (profiles.equipes)
+const myTeams = () => (profile && Array.isArray(profile.equipes)) ? profile.equipes : [];
+const isTeamManager = eq => isAdmin() || (isStaff() && myTeams().includes(eq || 1));
+const canCreate = () => isAdmin() || (isStaff() && myTeams().length > 0);
+// Peut saisir un match : admin, responsable de l'équipe, ou délégué désigné sur ce match
+const canManage = m => isTeamManager(m.equipe) || (isStaff() && !!m.delegue_id && m.delegue_id === myId());
 let delegues = null;
 async function loadDelegues(){ if (!delegues){ const { data } = await sb.rpc('list_delegues'); delegues = data || []; } return delegues; }
 function delegueOptions(cur, curNom){
   const opts = [['', 'Personne (tous les délégués)']];
-  if (isAdmin()) (delegues||[]).forEach(d => opts.push([d.id, d.nom]));
-  else if (myId()) opts.push([myId(), 'Moi']);
+  if (canCreate()) (delegues||[]).forEach(d => opts.push([d.id, d.nom]));
+  else if (myId()) opts.push([myId(), 'Moi']); // (les responsables voient toute la liste, voir canCreate)
   if (cur && !opts.some(o => o[0] === cur)) opts.push([cur, curNom || 'Autre délégué']);
   return opts.map(([v, l]) => `<option value="${esc(v)}"${v === (cur||'') ? ' selected' : ''}>${esc(l)}</option>`).join('');
 }
@@ -209,7 +214,7 @@ async function route(){
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on',
     a.dataset.tab === (page === '' || page === 'match' ? 'matchs' : page)));
   $('tabs').hidden = page==='gerer' || page==='match';
-  $('fab').hidden = !(isStaff() && page==='');
+  $('fab').hidden = !(canCreate() && page==='');
   window.scrollTo(0,0);
   if (!sb){ view.innerHTML = `<div class="card"><h1>Configuration à terminer</h1><p class="sub">Le site n'est pas encore relié à sa base de données (fichier config.js).</p></div>`; return; }
   try{
@@ -275,7 +280,7 @@ function drawHome(matches, goalRows){
     else if (m.status==='termine'){ const r = resultOf(m, evs); badge = `<span class="badge ${r==='V'?'w':r==='D'?'l':''}">${r==='V'?'Victoire':r==='D'?'Défaite':'Nul'}</span>`; }
     const side = t => `<div class="mside${c===t?' club':''}">${logoOf(m,t) ? logoImg(m,t,'mlg') : '<span class="mlg ph"></span>'}<span>${esc(teamName(m,t))}</span></div>`;
     return `<a class="mcard${m.status==='direct' ? ' live' : ''}" href="#/match/${esc(m.id)}">
-      <div class="mtop"><span class="tchip" title="${esc(teamLabel(m.equipe))}">${teamLetter(m.equipe)}</span><span class="mcomp">${esc(m.competition || teamLabel(m.equipe))}</span>${badge}</div>
+      <div class="mtop"><span class="tchip" title="${esc(teamLabel(m.equipe))}">${teamLetter(m.equipe)}</span><span class="mcomp">${esc(m.competition || teamLabel(m.equipe))}</span>${canManage(m) ? `<span class="gerer" role="link" tabindex="0" data-href="#/gerer/${esc(m.id)}" aria-label="Gérer ce match">✎ Gérer</span>` : ''}${badge}</div>
       <div class="mrow">${side('H')}<div class="mmid">${mid}</div>${side('A')}</div>
       ${isStaff() && m.delegue_nom ? `<div class="mdel">Délégué : ${esc(m.delegue_nom)}</div>` : ''}</a>`;
   };
@@ -296,6 +301,10 @@ function drawHome(matches, goalRows){
   if (!matches.length) html += `<div class="empty" style="margin-top:12px">Aucun match pour l'instant.${isStaff() ? '' : ' Reviens le jour du match pour le suivre en direct.'}</div>`;
   view.innerHTML = html;
   view.querySelectorAll('[data-team]').forEach(b => b.onclick = () => { homeTeam = +b.dataset.team; lsSet('asm-team', homeTeam); showAllNext = false; drawHome(all, goalRows); });
+  view.querySelectorAll('.gerer').forEach(g => {
+    const go = e => { e.preventDefault(); e.stopPropagation(); location.hash = g.dataset.href; };
+    g.onclick = go; g.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') go(e); };
+  });
   const more = $('moreNext'); if (more) more.onclick = () => { showAllNext = true; drawHome(all, goalRows); };
 }
 
@@ -350,7 +359,7 @@ async function matchView(id){
     view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false)
       + `<div class="mactions"><button class="pill" id="btnBell">🔔 Buts des ${esc(teamLabel(m.equipe))}</button><button class="pill" id="btnShareLive">↗ Partager</button></div>`
       + (canManage(m) ? `<a class="fbtn primary big" href="#/gerer/${esc(m.id)}">Gérer ce match</a>` : '')
-      + (isStaff() ? `<label class="field deleg"><span>Délégué du match</span><select id="delSel"${canManage(m) ? '' : ' disabled'}>${delegueOptions(m.delegue_id, m.delegue_nom)}</select>${!canManage(m) ? '<small>Seul le délégué désigné ou un admin peut modifier ce match.</small>' : ''}</label>` : '')
+      + (isStaff() ? `<label class="field deleg"><span>Délégué du match</span><select id="delSel"${canManage(m) ? '' : ' disabled'}>${delegueOptions(m.delegue_id, m.delegue_nom)}</select>${!canManage(m) ? '<small>Seuls le responsable de l’équipe, le délégué désigné ou un admin peuvent modifier ce match.</small>' : ''}</label>` : '')
       + (isAdmin() && people ? `<div class="audit">Match créé par ${esc(personName(m.created_by))}${m.rosters_at ? ` · Compo saisie par ${esc(personName(m.rosters_by))} le ${esc(fmtDate(m.rosters_at))}` : ''}</div>` : '')
       + (m.status==='prevu' ? lineupsHTML(m) : '')
       + `<section class="log"><div class="loghead"><h2>Chronologie</h2></div><div id="events">${timelineHTML(m, evs, false)}</div></section>`
@@ -392,15 +401,16 @@ async function shareLink(m){
 
 // ---------- Nouveau match ----------
 async function newMatchView(){
-  if (!isStaff()){ location.hash = session ? '#/compte' : '#/connexion'; return; }
-  if (isAdmin()) await loadDelegues().catch(()=>{});
+  if (!canCreate()){ location.hash = session ? '#/compte' : '#/connexion'; return; }
+  await loadDelegues().catch(()=>{});
+  const TEAMS_OK = TEAMS.filter(n => isTeamManager(n));
   const d = new Date(); d.setMinutes(Math.ceil(d.getMinutes()/15)*15, 0, 0);
   const local = new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,16);
-  let side = 'H', equipe = homeTeam || 1;
+  let side = 'H', equipe = TEAMS_OK.includes(homeTeam) ? homeTeam : TEAMS_OK[0];
   view.innerHTML = `<form class="card" id="nf">
     <h1>Nouveau match</h1><p class="sub">Deux mi-temps de 45 min.</p>
     <label class="field"><span>Adversaire</span><input id="nfOpp" required autocomplete="off" placeholder="Nom de l'équipe adverse"></label>
-    <div class="field"><span>Équipe</span><div class="seg" id="nfTeam">${TEAMS.map(n=>`<button type="button" data-e="${n}" class="${n===equipe?'on':''}">${teamLetter(n)}</button>`).join('')}</div></div>
+    <div class="field"><span>Équipe</span><div class="seg" id="nfTeam">${TEAMS_OK.map(n=>`<button type="button" data-e="${n}" class="${n===equipe?'on':''}">${teamLetter(n)}</button>`).join('')}</div></div>
     <div class="field"><span>Lieu</span><div class="seg" id="nfSide"><button type="button" data-s="H" class="on">Domicile</button><button type="button" data-s="A">Extérieur</button></div></div>
     <label class="field"><span>Date et heure du coup d'envoi</span><input id="nfDate" type="datetime-local" value="${local}" required></label>
     <label class="field"><span>Compétition</span><input id="nfComp" autocomplete="off" placeholder="Championnat, Coupe…" list="compList"><datalist id="compList"></datalist></label>
@@ -481,7 +491,7 @@ async function consoleView(id, openCompo){
     </div>
     <div class="foot" style="margin-top:10px">
       <button class="fbtn" id="btnInfo">Modifier les infos</button>
-      <button class="fbtn danger" id="btnDelete">Supprimer le match</button>
+      ${isTeamManager(S.equipe) ? '<button class="fbtn danger" id="btnDelete">Supprimer le match</button>' : ''}
     </div>`;
 
   function renderClock(){
@@ -819,7 +829,7 @@ async function consoleView(id, openCompo){
     };
     $('inNo').onclick = closeSheet;
   };
-  $('btnDelete').onclick = () => askConfirm('Supprimer ce match ?', 'Le match, sa chronologie et ses compositions seront effacés pour tout le monde, et retirés des stats.', 'Supprimer définitivement', async () => {
+  if ($('btnDelete')) $('btnDelete').onclick = () => askConfirm('Supprimer ce match ?', 'Le match, sa chronologie et ses compositions seront effacés pour tout le monde, et retirés des stats.', 'Supprimer définitivement', async () => {
     const { error } = await sb.from('matches').delete().eq('id', id);
     if (error){ toast(isNetErr(error) ? 'Pas de réseau : réessaie plus tard' : error.message); return; }
     outbox = outbox.filter(o => o.match !== id); saveOutbox();
@@ -1037,15 +1047,16 @@ function loginView(){
 }
 function accountView(){
   if (!session){ location.hash = '#/connexion'; return; }
-  const ROLE = {pending:'En attente de validation', delegue:'Délégué', admin:'Administrateur'};
+  const ROLE = {pending:'En attente de validation', delegue:'Responsable d’équipe', admin:'Administrateur'};
   const role = profile ? profile.role : 'pending';
   view.innerHTML = `<div class="card">
     <h1>${esc(profile && profile.nom || 'Mon compte')}</h1>
     <p class="sub">${esc(session.user.email)} · ${ROLE[role]}</p>
     ${role==='pending' ? '<div class="msg">Ton compte doit être validé par un administrateur du club avant de pouvoir saisir les matchs.</div>' : ''}
+    ${role==='delegue' ? `<div class="msg">${myTeams().length ? 'Tu gères les matchs des ' + myTeams().slice().sort().map(teamLabel).join(', ') + '.' : 'Aucune équipe ne t’est encore confiée : tu peux saisir uniquement les matchs où tu es désigné délégué.'}</div>` : ''}
     <div class="foot" style="margin-top:4px">
-      ${isStaff() ? '<a class="fbtn club" href="#/nouveau">+ Nouveau match</a>' : ''}
-      ${isAdmin() ? '<a class="fbtn" href="#/admin">Gérer les délégués</a>' : ''}
+      ${canCreate() ? '<a class="fbtn club" href="#/nouveau">+ Nouveau match</a>' : ''}
+      ${isAdmin() ? '<a class="fbtn" href="#/admin">Gérer les accès</a>' : ''}
     </div>
     <div class="foot" style="margin-top:10px"><button class="fbtn danger" id="logout">Se déconnecter</button></div>
   </div>`;
@@ -1060,18 +1071,37 @@ async function adminView(){
   const { data, error } = await sb.from('profiles').select('*').order('created_at');
   if (error) throw error;
   const pending = data.filter(p=>p.role==='pending').length;
-  view.innerHTML = `<div class="card"><h1>Délégués</h1>
-    <p class="sub">Chaque personne crée son compte depuis « Connexion », puis tu lui donnes l'accès ici.${pending ? ` <b>${pending} en attente.</b>` : ''}</p>
-    ${data.map(p=>`<div class="urow"><div class="who"><b>${esc(p.nom || '—')}</b><small>${esc(p.email)}</small></div>
-      <select data-id="${esc(p.id)}" aria-label="Rôle de ${esc(p.nom||p.email)}" ${p.id===session.user.id?'disabled':''}>
+  const row = p => {
+    const me = p.id === session.user.id, eqs = p.equipes || [];
+    return `<div class="urow" data-id="${esc(p.id)}">
+      <div class="uline"><div class="who"><b>${esc(p.nom || '—')}</b><small>${esc(p.email)}</small></div>
+      <select class="urole" aria-label="Accès de ${esc(p.nom||p.email)}" ${me ? 'disabled' : ''}>
         <option value="pending"${p.role==='pending'?' selected':''}>Sans accès</option>
-        <option value="delegue"${p.role==='delegue'?' selected':''}>Délégué</option>
+        <option value="delegue"${p.role==='delegue'?' selected':''}>Responsable</option>
         <option value="admin"${p.role==='admin'?' selected':''}>Admin</option>
-      </select></div>`).join('')}
+      </select></div>
+      ${p.role==='delegue' ? `<div class="uteams" role="group" aria-label="Équipes gérées">${TEAMS.map(n => `<button type="button" data-e="${n}" class="${eqs.includes(n)?'on':''}" aria-pressed="${eqs.includes(n)}">${teamLetter(n)}</button>`).join('')}<span class="uhint">${eqs.length ? '' : 'Aucune équipe'}</span></div>` : ''}
+    </div>`;
+  };
+  view.innerHTML = `<div class="card"><h1>Accès</h1>
+    <p class="sub">Chaque personne crée son compte depuis « Connexion », puis tu lui donnes l'accès ici. Un <b>responsable</b> gère uniquement les matchs des équipes cochées (A à E). Un <b>admin</b> gère tout.${pending ? ` <b>${pending} en attente.</b>` : ''}</p>
+    ${data.map(row).join('')}
     <div class="foot"><a class="fbtn" href="#/compte">Retour</a></div></div>`;
-  view.querySelectorAll('select[data-id]').forEach(s => s.onchange = async () => {
-    const { error } = await sb.from('profiles').update({role: s.value}).eq('id', s.dataset.id);
-    toast(error ? 'Erreur : ' + error.message : 'Accès mis à jour');
+  const save = async (id, fields) => {
+    const { data: upd, error } = await sb.from('profiles').update(fields).eq('id', id).select('id');
+    toast(error || !upd || !upd.length ? 'Modification refusée' : 'Accès mis à jour');
+    return !error && upd && upd.length;
+  };
+  view.querySelectorAll('.urow').forEach(r => {
+    const id = r.dataset.id, p = data.find(x => x.id === id);
+    const sel = r.querySelector('.urole');
+    sel.onchange = async () => { if (await save(id, {role: sel.value})){ adminView(); } };
+    r.querySelectorAll('.uteams button').forEach(b => b.onclick = async () => {
+      const n = +b.dataset.e, cur = new Set(p.equipes || []);
+      cur.has(n) ? cur.delete(n) : cur.add(n);
+      const eqs = [...cur].sort();
+      if (await save(id, {equipes: eqs})){ p.equipes = eqs; b.classList.toggle('on', cur.has(n)); b.setAttribute('aria-pressed', cur.has(n)); r.querySelector('.uhint').textContent = eqs.length ? '' : 'Aucune équipe'; }
+    });
   });
 }
 
