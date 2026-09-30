@@ -495,7 +495,7 @@ async function matchView(id){
     view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false)
       + `<div class="mactions"><button class="pill" id="btnBell">🔔 Buts des ${esc(teamLabel(m.equipe))}</button><button class="pill" id="btnShareLive">↗ Partager</button></div>`
       + (canManage(m) ? `<a class="fbtn primary big" href="#/gerer/${esc(m.id)}">Gérer ce match</a>` : '')
-      + (isStaff() || m.delegue_nom ? `<div class="field deleg"><span>Délégué du match</span>${delegPickHTML('delSel', m.delegue_id, m.delegue_nom, !canManage(m))}${isStaff() && !canManage(m) ? '<small>Seuls le responsable de l’équipe, le délégué désigné ou un admin peuvent modifier ce match.</small>' : ''}</div>` : '')
+      + (isStaff() || m.delegue_nom ? `<div class="field deleg"><span>Délégué du match</span>${delegPickHTML('delSel', m.delegue_id, m.delegue_nom, !isTeamManager(m.equipe))}${canManage(m) && !isTeamManager(m.equipe) ? '<small>Seul le responsable de l’équipe (ou un admin) peut changer le délégué.</small>' : isStaff() && !canManage(m) ? '<small>Seuls le responsable de l’équipe, le délégué désigné ou un admin peuvent modifier ce match.</small>' : ''}</div>` : '')
       + (isAdmin() && people ? `<div class="audit">Match créé par ${esc(personName(m.created_by))}${m.rosters_at ? ` · Compo saisie par ${esc(personName(m.rosters_by))} le ${esc(fmtDate(m.rosters_at))}` : ''}</div>` : '')
       + (m.status==='prevu' ? lineupsHTML(m) : '')
       + `<section class="log"><div class="loghead"><h2>Chronologie</h2></div><div id="events">${timelineHTML(m, evs, false)}</div></section>`
