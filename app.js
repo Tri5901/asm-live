@@ -213,7 +213,7 @@ function bindDelegPick(btn, curNom, onPick){
 let people = null;
 async function loadPeople(){
   if (!isAdmin()) return {};
-  if (!people){ const { data } = await sb.from('profiles').select('id,nom,email,role'); people = {}; (data||[]).forEach(p => { people[p.id] = (p.nom || p.email || 'Sans nom') + (p.role === 'supprime' ? ' (compte supprimé)' : ''); }); }
+  if (!people){ const { data } = await sb.from('profiles').select('id,nom,email,role'); people = {}; (data||[]).forEach(p => { people[p.id] = p.id === '00000000-0000-0000-0000-000000000000' ? 'Compte effacé' : (p.nom || p.email || 'Sans nom') + (p.role === 'supprime' ? ' (compte supprimé)' : ''); }); }
   return people;
 }
 const personName = id => id ? ((people||{})[id] || 'compte supprimé') : 'import du calendrier';
@@ -1473,7 +1473,7 @@ async function adminView(){
   if (!view.querySelector('.acc')) view.innerHTML = '<div class="loading">Chargement…</div>';
   let { data, error } = await sb.from('profiles').select('*').order('created_at');
   if (error) throw error;
-  const deleted = data.filter(p => p.role === 'supprime').sort((a, b) => String(b.deleted_at||'').localeCompare(String(a.deleted_at||'')));
+  const deleted = data.filter(p => p.role === 'supprime' && p.id !== '00000000-0000-0000-0000-000000000000').sort((a, b) => String(b.deleted_at||'').localeCompare(String(a.deleted_at||'')));
   const supprimes = deleted.length;
   data = data.filter(p => p.role !== 'supprime');
   const ROLES = [['pending', 'Sans accès'], ['joueur', 'Joueur'], ['dirigeant', 'Dirigeant'], ['delegue', 'Responsable'], ['admin', 'Admin']];
@@ -1502,12 +1502,22 @@ async function adminView(){
       return l.length ? `<div class="sec${r === 'pending' ? ' secwarn' : ''}">${t} · ${l.length}</div><div class="alist">${l.map(row).join('')}</div>` : '';
     }).join('')}
     ${supprimes ? `<div class="sec">Comptes supprimés · ${supprimes}</div>
-      <p class="note" style="margin:0 0 6px">Leur nom reste dans l’historique des matchs. Si la personne a recréé un compte, rattache-le : tout son historique passe sur le nouveau compte.</p>
-      <div class="alist">${deleted.map(p => `<div class="arow gone"><span class="pav">${initial(p)}</span><div class="who"><b>${esc(nameOf(p))}</b><small>${p.deleted_at ? 'Supprimé le ' + esc(new Date(p.deleted_at).toLocaleDateString('fr-FR')) : 'Compte supprimé'}</small></div><button type="button" class="amod" data-link="${esc(p.id)}">Rattacher</button></div>`).join('')}</div>` : ''}
+      <p class="note" style="margin:0 0 6px">Leur nom reste dans l’historique des matchs. Si la personne a recréé un compte, <b>rattache-le</b> : tout son historique passe sur le nouveau compte. Sinon tu peux l’<b>effacer</b> définitivement.</p>
+      <div class="alist">${deleted.map(p => `<div class="arow gone"><span class="pav">${initial(p)}</span><div class="who"><b>${esc(nameOf(p))}</b><small>${p.deleted_at ? 'Supprimé le ' + esc(new Date(p.deleted_at).toLocaleDateString('fr-FR')) : 'Compte supprimé'}</small></div><div class="gonebtns"><button type="button" class="amod" data-link="${esc(p.id)}">Rattacher</button><button type="button" class="amod danger" data-wipe="${esc(p.id)}">Effacer</button></div></div>`).join('')}</div>` : ''}
   </div>`;
 
   view.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editPerson(data.find(p => p.id === b.dataset.edit)));
   view.querySelectorAll('[data-link]').forEach(b => b.onclick = () => linkAccount(deleted.find(p => p.id === b.dataset.link)));
+  view.querySelectorAll('[data-wipe]').forEach(b => b.onclick = () => {
+    const old = deleted.find(p => p.id === b.dataset.wipe);
+    askConfirm(`Effacer définitivement « ${nameOf(old)} » ?`,
+      'Son nom disparaît complètement du site. Les matchs, compos et actions qu’il avait saisis restent, attribués à « Compte effacé ». Impossible de le rattacher ensuite. C’est irréversible.',
+      'Effacer définitivement', async () => {
+        const { error } = await sb.rpc('effacer_compte', { p_id: old.id });
+        if (error){ toast(isNetErr(error) ? 'Pas de réseau' : 'Effacement refusé'); return; }
+        people = null; toast(`« ${nameOf(old)} » effacé définitivement`); adminView();
+      });
+  });
   renderAdminOnline();
 
   // Rattacher un compte supprimé à un compte existant
