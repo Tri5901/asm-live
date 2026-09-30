@@ -1160,7 +1160,7 @@ async function classementsView(){
     const enAttente = maj && maj.demande_at && (!maj.fait_at || new Date(maj.demande_at) > new Date(maj.fait_at));
     return `<div class="majbox">${enAttente
       ? `<b>Mise à jour demandée</b> par ${esc(maj.demande_par || '?')} à ${esc(hhmm(maj.demande_at))}. Elle sera faite dès que le propriétaire du site acceptera la demande.`
-      : 'Les classements se mettent à jour chaque lundi.'}
+      : 'Les classements se mettent à jour automatiquement le lundi à 8 h, 12 h et 20 h.'}
       <button class="fbtn" id="majBtn" style="width:100%;margin-top:10px"${enAttente ? ' disabled' : ''}>${enAttente ? 'Mise à jour en attente…' : '↻ Mettre à jour les classements'}</button></div>`;
   };
   const bind = () => {
@@ -1170,6 +1170,8 @@ async function classementsView(){
       mb.disabled = true;
       const { error } = await sb.rpc('demander_maj_classements');
       if (error){ mb.disabled = false; toast(isNetErr(error) ? 'Pas de réseau' : 'Demande refusée'); return; }
+      // prévient le propriétaire du site par notification
+      fetch('api/notify-maj', { method: 'POST', keepalive: true, headers: { Authorization: 'Bearer ' + session.access_token } }).catch(() => {});
       const r2 = await sb.from('classements_maj').select('*').maybeSingle(); maj = r2.data;
       toast('Demande envoyée'); draw();
     };
