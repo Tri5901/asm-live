@@ -1,6 +1,6 @@
-// Prévient les admins (notification) quand un admin demande une mise à jour des classements.
+// Prévient le propriétaire du site (notification) quand un admin demande une mise à jour des classements.
 // Appelé par le téléphone de l'admin juste après sa demande ; la base n'accepte qu'un envoi par demande
-// (fonction maj_notify_targets), et ne prévient pas celui qui a fait la demande.
+// (fonction maj_notify_targets) ; seul le propriétaire du site la reçoit (profiles.proprietaire).
 const webpush = require('web-push');
 
 const SUPABASE_URL = 'https://xzzttulqlydcespgkpnx.supabase.co';
