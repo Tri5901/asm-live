@@ -213,7 +213,7 @@ function bindDelegPick(btn, curNom, onPick){
 let people = null;
 async function loadPeople(){
   if (!isAdmin()) return {};
-  if (!people){ const { data } = await sb.from('profiles').select('id,nom,email,role'); people = {}; (data||[]).forEach(p => { people[p.id] = p.id === '00000000-0000-0000-0000-000000000000' ? 'Compte effacé' : (p.nom || p.email || 'Sans nom') + (p.role === 'supprime' ? ' (compte supprimé)' : ''); }); }
+  if (!people){ const { data } = await sb.from('profiles').select('id,nom,email,role'); people = {}; (data||[]).forEach(p => { people[p.id] = (p.nom || p.email || 'Sans nom') + (p.role === 'supprime' ? ' (compte supprimé)' : ''); }); }
   return people;
 }
 const personName = id => id ? ((people||{})[id] || 'compte supprimé') : 'import du calendrier';
@@ -1473,7 +1473,7 @@ async function adminView(){
   if (!view.querySelector('.acc')) view.innerHTML = '<div class="loading">Chargement…</div>';
   let { data, error } = await sb.from('profiles').select('*').order('created_at');
   if (error) throw error;
-  const deleted = data.filter(p => p.role === 'supprime' && p.id !== '00000000-0000-0000-0000-000000000000').sort((a, b) => String(b.deleted_at||'').localeCompare(String(a.deleted_at||'')));
+  const deleted = data.filter(p => p.role === 'supprime' && !p.efface).sort((a, b) => String(b.deleted_at||'').localeCompare(String(a.deleted_at||'')));
   const supprimes = deleted.length;
   data = data.filter(p => p.role !== 'supprime');
   const ROLES = [['pending', 'Sans accès'], ['joueur', 'Joueur'], ['dirigeant', 'Dirigeant'], ['delegue', 'Responsable'], ['admin', 'Admin']];
@@ -1511,7 +1511,7 @@ async function adminView(){
   view.querySelectorAll('[data-wipe]').forEach(b => b.onclick = () => {
     const old = deleted.find(p => p.id === b.dataset.wipe);
     askConfirm(`Effacer définitivement « ${nameOf(old)} » ?`,
-      'Son nom disparaît complètement du site. Les matchs, compos et actions qu’il avait saisis restent, attribués à « Compte effacé ». Impossible de le rattacher ensuite. C’est irréversible.',
+      'Le compte disparaît de la page Accès. Les matchs, compos et actions qu’il avait saisis restent dans l’historique, avec son prénom et son nom. Impossible de le rattacher ensuite. C’est irréversible.',
       'Effacer définitivement', async () => {
         const { error } = await sb.rpc('effacer_compte', { p_id: old.id });
         if (error){ toast(isNetErr(error) ? 'Pas de réseau' : 'Effacement refusé'); return; }
