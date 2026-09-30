@@ -4,10 +4,43 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_KEY, VAPID_PUBLIC } from './config.js';
 
 const CLUB = 'AS Mésanger';
-const TEAMS = [1, 2, 3, 4, 5]; // équipes seniors A à E
-const teamLetter = n => 'ABCDE'[(n || 1) - 1];
-const teamLabel = n => 'Seniors ' + teamLetter(n);
-const clubTeamName = n => (n > 1 ? `${CLUB} ${teamLetter(n)}` : CLUB);
+// Équipes du club, rangées par catégorie (table « equipes » de la base ; liste de secours ci-dessous).
+// Ajouter une catégorie = ajouter des lignes dans la base : tout le site s'adapte.
+const EQUIPES_DEFAUT = ['A', 'B', 'C', 'D', 'E'].map((c, i) => ({ id: i + 1, categorie: 'Seniors', cat_ordre: 1, ordre: i + 1, nom: 'Seniors ' + c, court: c, nom_club: i ? CLUB + ' ' + c : CLUB }));
+let EQUIPES = [], TEAMS = [], CATS = [];
+function setEquipes(list){
+  EQUIPES = (Array.isArray(list) && list.length ? list : EQUIPES_DEFAUT).filter(e => e.actif !== false)
+    .sort((a, b) => a.cat_ordre - b.cat_ordre || a.ordre - b.ordre);
+  TEAMS = EQUIPES.map(e => e.id);
+  CATS = [...new Set(EQUIPES.map(e => e.categorie))];
+}
+const teamOf = n => EQUIPES.find(e => e.id === (n || 1)) || { id: n, categorie: '?', nom: 'Équipe ' + n, court: String(n), nom_club: CLUB };
+const teamLetter = n => teamOf(n).court;
+const teamLabel = n => teamOf(n).nom;
+const clubTeamName = n => teamOf(n).nom_club;
+const catOf = n => teamOf(n).categorie;
+const catTeams = c => EQUIPES.filter(e => e.categorie === c).map(e => e.id);
+// nom court dans sa catégorie : « U18 A » → « A », « Seniors B » → « B », « Loisirs » → « Loisirs »
+const shortIn = n => { const t = teamOf(n); return t.nom.startsWith(t.categorie + ' ') ? t.nom.slice(t.categorie.length + 1) : t.nom === t.categorie ? t.nom : t.court; };
+const teamRank = n => { const i = TEAMS.indexOf(n || 1); return i < 0 ? 999 : i; };
+// « Seniors A, B, C · U18 » : liste d'équipes lisible, regroupée par catégorie
+function teamsText(ids){
+  return CATS.map(c => { const l = catTeams(c).filter(n => ids.includes(n)); if (!l.length) return '';
+    return l.length === 1 ? teamLabel(l[0]) : c + ' ' + l.map(teamLetter).join(', '); }).filter(Boolean).join(' · ');
+}
+// Filtre catégorie + équipe (accueil, classements, stats) : f = { cat, team } ; all = propose « tout le club » / « toute la catégorie »
+function teamFilterHTML(f, all = true, extra = () => ''){
+  const cat = f.cat || (all ? '' : CATS[0]);
+  const cats = (all ? [['', 'Tout le club']] : []).concat(CATS.map(c => [c, c]));
+  const teams = cat ? catTeams(cat) : [];
+  return `<div class="tfilter">${cats.length > 1 || !all ? `<div class="chipbar catbar" role="group" aria-label="Catégorie">${cats.map(([v, l]) => `<button type="button" data-fcat="${esc(v)}" class="${cat===v?'on':''}" aria-pressed="${cat===v}">${esc(l)}</button>`).join('')}</div>` : ''}
+    ${teams.length > 1 || (!all && teams.length) ? `<div class="chipbar teambar" role="group" aria-label="Équipe">${(all ? [0] : []).concat(teams).map(n => `<button type="button" data-fteam="${n}" class="${(f.team||0)===n?'on':''}" aria-pressed="${(f.team||0)===n}">${n ? esc(shortIn(n)) + extra(n) : 'Toutes'}</button>`).join('')}</div>` : ''}</div>`;
+}
+function bindTeamFilter(root, f, all, onChange){
+  root.querySelectorAll('[data-fcat]').forEach(b => b.onclick = () => { f.cat = b.dataset.fcat; f.team = all ? 0 : (catTeams(f.cat)[0] || 0); onChange(); });
+  root.querySelectorAll('[data-fteam]').forEach(b => b.onclick = () => { f.team = +b.dataset.fteam; if (f.team) f.cat = catOf(f.team); onChange(); });
+}
+const inFilter = (f, eq) => f.team ? (eq || 1) === f.team : f.cat ? catOf(eq) === f.cat : true;
 // Logo de chaque équipe : celui du club, ou celui de l'adversaire s'il est connu
 const logoOf = (m, t) => t === (m.club_side || 'H') ? 'icons/notif-192.png' : (m.opp_logo || '');
 const logoImg = (m, t, cls) => { const src = logoOf(m, t); return src ? `<img class="${cls}${t === (m.club_side || 'H') ? ' own' : ''}" src="${esc(src)}" alt="" loading="lazy" onerror="this.remove()">` : ''; };
@@ -20,6 +53,7 @@ const HALF = 45; // durée d'une mi-temps : toujours 45 min, non modifiable
 
 function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 const lsGet = (k, d) => { try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } };
+setEquipes(lsGet('asm-equipes', null));
 const lsSet = (k, v) => { try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} };
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() :
   'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random()*16|0; return (c==='x' ? r : (r&3|8)).toString(16); }));
@@ -351,7 +385,10 @@ async function homeView(){
   const poll = fallbackPoll(off, reload);
   cleanup = () => { off(); clearInterval(tick); clearInterval(poll); document.removeEventListener('visibilitychange', vis); };
 }
-let homeTeam = lsGet('asm-team', 0), showAllNext = false;
+// filtre de l'accueil (catégorie + équipe), mémorisé sur le téléphone
+const homeF = lsGet('asm-filtre', null) || { cat: '', team: lsGet('asm-team', 0) || 0 };
+if (homeF.team && !homeF.cat) homeF.cat = catOf(homeF.team);
+let showAllNext = false;
 function drawHome(matches, goalRows){
   const byMatch = {};
   goalRows.forEach(g => { (byMatch[g.match_id] ||= []).push({k:'goal', t:g.t}); });
@@ -365,20 +402,20 @@ function drawHome(matches, goalRows){
     else if (m.status==='termine'){ const r = resultOf(m, evs); badge = `<span class="badge ${r==='V'?'w':r==='D'?'l':''}">${r==='V'?'Victoire':r==='D'?'Défaite':'Nul'}</span>`; }
     const side = t => `<div class="mside${c===t?' club':''}">${logoOf(m,t) ? logoImg(m,t,'mlg') : '<span class="mlg ph"></span>'}<span>${esc(teamName(m,t))}</span></div>`;
     return `<a class="mcard${m.status==='direct' ? ' live' : ''}" href="#/match/${esc(m.id)}">
-      <div class="mtop"><span class="tchip" title="${esc(teamLabel(m.equipe))}">${teamLetter(m.equipe)}</span><span class="mcomp">${esc(m.competition || teamLabel(m.equipe))}</span>${canManage(m) ? `<span class="gerer" role="link" tabindex="0" data-href="#/gerer/${esc(m.id)}" aria-label="Gérer ce match">✎ Gérer</span>` : ''}${badge}</div>
+      <div class="mtop"><span class="tchip" title="${esc(teamLabel(m.equipe))}">${teamLetter(m.equipe)}</span><span class="mcomp">${CATS.length > 1 ? esc(catOf(m.equipe)) + (m.competition ? " · " : "") : ""}${esc(m.competition || (CATS.length > 1 ? "" : teamLabel(m.equipe)))}</span>${canManage(m) ? `<span class="gerer" role="link" tabindex="0" data-href="#/gerer/${esc(m.id)}" aria-label="Gérer ce match">✎ Gérer</span>` : ''}${badge}</div>
       <div class="mrow">${side('H')}<div class="mmid">${mid}</div>${side('A')}</div>
       ${m.delegue_nom ? `<div class="mdel">Délégué : ${esc(m.delegue_nom)}</div>` : ''}</a>`;
   };
   const byDay = list => { let h = '', last = ''; list.forEach(m => { const d = new Date(m.kickoff).toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'}); if (d !== last){ h += `<div class="day">${esc(d)}</div>`; last = d; } h += card(m); }); return h; };
   const all = matches;
-  matches = homeTeam ? matches.filter(m => (m.equipe||1) === homeTeam) : matches;
+  matches = matches.filter(m => inFilter(homeF, m.equipe));
   // même heure : les dernières équipes d'abord, la A en dernier
-  const byTeam = (a,b) => (b.equipe||1) - (a.equipe||1);
+  const byTeam = (a,b) => teamRank(b.equipe) - teamRank(a.equipe);
   const asc = (a,b) => a.kickoff.localeCompare(b.kickoff) || byTeam(a,b), desc = (a,b) => b.kickoff.localeCompare(a.kickoff) || byTeam(a,b);
   const live = matches.filter(m=>m.status==='direct').sort(asc);
   const next = matches.filter(m=>m.status==='prevu').sort(asc);
   const done = matches.filter(m=>m.status==='termine').sort(desc);
-  let html = `<div class="chipbar" role="group" aria-label="Équipe">${[0, ...TEAMS].map(n => `<button data-team="${n}" class="${homeTeam===n?'on':''}" aria-pressed="${homeTeam===n}">${n ? 'Seniors ' + teamLetter(n) : 'Toutes'}</button>`).join('')}</div>`;
+  let html = teamFilterHTML(homeF, true);
   const mine = myId() ? all.filter(m => m.delegue_id === myId() && m.status !== 'termine').sort(asc) : [];
   if (mine.length) html += `<div class="sec">Mes matchs (délégué)</div>` + byDay(mine);
   if (live.length) html += `<div class="sec">En direct</div>` + live.map(card).join('');
@@ -386,9 +423,9 @@ function drawHome(matches, goalRows){
   if (next.length) html += `<div class="sec">À venir</div>` + byDay(showAllNext ? next : next.slice(0, NEXT_MAX))
     + (next.length > NEXT_MAX && !showAllNext ? `<button class="fbtn" id="moreNext" style="width:100%">Voir les ${next.length} matchs à venir</button>` : '');
   if (done.length) html += `<div class="sec">Résultats</div>` + byDay(done);
-  if (!matches.length) html += `<div class="empty" style="margin-top:12px">Aucun match pour l'instant.${isStaff() ? '' : ' Reviens le jour du match pour le suivre en direct.'}</div>`;
+  if (!matches.length) html += `<div class="empty" style="margin-top:12px">Aucun match ${homeF.team ? 'des ' + esc(teamLabel(homeF.team)) + ' ' : homeF.cat ? 'en ' + esc(homeF.cat) + ' ' : ''}pour l'instant.${isStaff() ? '' : ' Reviens le jour du match pour le suivre en direct.'}</div>`;
   view.innerHTML = html;
-  view.querySelectorAll('[data-team]').forEach(b => b.onclick = () => { homeTeam = +b.dataset.team; lsSet('asm-team', homeTeam); showAllNext = false; drawHome(all, goalRows); });
+  bindTeamFilter(view, homeF, true, () => { lsSet('asm-filtre', homeF); showAllNext = false; drawHome(all, goalRows); });
   view.querySelectorAll('.gerer').forEach(g => {
     const go = e => { e.preventDefault(); e.stopPropagation(); location.hash = g.dataset.href; };
     g.onclick = go; g.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') go(e); };
@@ -512,11 +549,11 @@ async function newMatchView(){
   const TEAMS_OK = TEAMS.filter(n => isTeamManager(n));
   const d = new Date(); d.setMinutes(Math.ceil(d.getMinutes()/15)*15, 0, 0);
   const local = new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,16);
-  let side = 'H', equipe = TEAMS_OK.includes(homeTeam) ? homeTeam : TEAMS_OK[0];
+  let side = 'H', equipe = TEAMS_OK.includes(homeF.team) ? homeF.team : (TEAMS_OK.find(n => catOf(n) === homeF.cat) || TEAMS_OK[0]);
   view.innerHTML = `<form class="card" id="nf">
     <h1>Nouveau match</h1><p class="sub">Deux mi-temps de 45 min.</p>
     <label class="field"><span>Adversaire</span><input id="nfOpp" required autocomplete="off" placeholder="Nom de l'équipe adverse"></label>
-    <div class="field"><span>Équipe</span><div class="seg" id="nfTeam">${TEAMS_OK.map(n=>`<button type="button" data-e="${n}" class="${n===equipe?'on':''}">${teamLetter(n)}</button>`).join('')}</div></div>
+    <div class="field"><span>Équipe</span><div id="nfTeam">${CATS.map(c => { const l = catTeams(c).filter(n => TEAMS_OK.includes(n)); return l.length ? `<div class="segcat"><small>${esc(c)}</small><div class="seg">${l.map(n=>`<button type="button" data-e="${n}" class="${n===equipe?'on':''}" title="${esc(teamLabel(n))}">${esc(shortIn(n))}</button>`).join('')}</div></div>` : ''; }).join('')}</div></div>
     <div class="field"><span>Lieu</span><div class="seg" id="nfSide"><button type="button" data-s="H" class="on">Domicile</button><button type="button" data-s="A">Extérieur</button></div></div>
     <label class="field"><span>Date et heure du coup d'envoi</span><input id="nfDate" type="datetime-local" value="${local}" required></label>
     <label class="field"><span>Compétition</span><input id="nfComp" autocomplete="off" placeholder="Championnat, Coupe…" list="compList"><datalist id="compList"></datalist></label>
@@ -1125,7 +1162,7 @@ async function readSheetPhoto(file, stat, onFound){
 // ---------- Classements (recopiés depuis la FFF) ----------
 // Ligne : [rang, équipe, pts, joués, gagnés, nuls, perdus, buts pour, buts contre, diff, code club FFF]
 const CLUB_FFF = '516995';
-let clsTeam = 0;
+const clsF = { cat: '', team: 0 };
 async function classementsView(){
   let rows = lsGet('asm-cls', null), maj = null;
   if (!rows) view.innerHTML = '<div class="loading">Chargement…</div>';
@@ -1138,9 +1175,10 @@ async function classementsView(){
   const byTeam = {}; (rows || []).forEach(r => { byTeam[r.equipe] = r; });
   const rankOf = n => { const r = byTeam[n]; const l = r && r.lignes.find(x => x[10] === CLUB_FFF); return l ? l[0] : null; };
   const draw = () => {
-    const cur = clsTeam || homeTeam || 1, r = byTeam[cur];
-    const chips = `<div class="chipbar" role="group" aria-label="Équipe">${TEAMS.map(n => { const k = rankOf(n); return `<button data-cls="${n}" class="${n===cur?'on':''}" aria-pressed="${n===cur}">Seniors ${teamLetter(n)}${k ? ` · ${k}${k===1?'er':'e'}` : ''}</button>`; }).join('')}</div>`;
-    if (!r){ view.innerHTML = chips + '<div class="empty">Classement pas encore disponible pour cette équipe.</div>'; bind(); return; }
+    if (!clsF.team){ clsF.team = homeF.team || catTeams(homeF.cat || CATS[0])[0] || TEAMS[0]; clsF.cat = catOf(clsF.team); }
+    const cur = clsF.team, r = byTeam[cur];
+    const chips = teamFilterHTML(clsF, false, n => { const k = rankOf(n); return k ? ` · ${k}${k===1?'er':'e'}` : ''; });
+    if (!r){ view.innerHTML = chips + `<div class="empty">${teamOf(cur).fff_classement === null ? 'Pas de championnat suivi pour les ' + esc(teamLabel(cur)) + '.' : 'Classement pas encore disponible pour les ' + esc(teamLabel(cur)) + '.'}</div>` + majHTML(); bind(); return; }
     const d = new Date(r.updated_at).toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'});
     view.innerHTML = chips + `
       <div class="clshead"><h2>${esc(teamLabel(cur))}</h2><span>${esc(r.competition)}</span></div>
@@ -1164,7 +1202,7 @@ async function classementsView(){
       <button class="fbtn" id="majBtn" style="width:100%;margin-top:10px"${enAttente ? ' disabled' : ''}>${enAttente ? 'Mise à jour en attente…' : '↻ Mettre à jour les classements'}</button></div>`;
   };
   const bind = () => {
-    view.querySelectorAll('[data-cls]').forEach(b => b.onclick = () => { clsTeam = +b.dataset.cls; draw(); });
+    bindTeamFilter(view, clsF, false, draw);
     const mb = $('majBtn');
     if (mb) mb.onclick = async () => {
       mb.disabled = true;
@@ -1180,7 +1218,8 @@ async function classementsView(){
 }
 
 // ---------- Stats joueurs ----------
-let statSort = {key:'goals', dir:-1}, statSeason = null, statTeam = 0, statComp = '', statMode = 'joueurs';
+let statSort = {key:'goals', dir:-1}, statSeason = null, statComp = '', statMode = 'joueurs';
+const statF = { cat: '', team: 0 };
 const isCup = m => /coupe/i.test(m.competition || '');
 function playerKey(name){
   return name.normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[^A-Z ]/g,' ').split(/\s+/).filter(Boolean).sort().join(' ');
@@ -1195,7 +1234,7 @@ async function statsView(playerArg){
   const seasons = [...new Set(ms.map(m=>seasonOf(m.kickoff)))].sort().reverse();
   if (!statSeason || !seasons.includes(statSeason)) statSeason = seasons[0] || null;
   const draw = () => {
-    const list = ms.filter(m => seasonOf(m.kickoff)===statSeason && (!statTeam || (m.equipe||1)===statTeam)
+    const list = ms.filter(m => seasonOf(m.kickoff)===statSeason && inFilter(statF, m.equipe)
       && (!statComp || (statComp === 'coupe') === isCup(m)));
     const ids = new Set(list.map(m=>m.id));
     const byMatch = {}; evs.forEach(e => { if (ids.has(e.match_id)) (byMatch[e.match_id] ||= []).push(e); });
@@ -1252,7 +1291,7 @@ async function statsView(playerArg){
     };
     const modeBar = `<div class="seg statmode" role="group" aria-label="Affichage">${[['joueurs', 'Tous les joueurs'], ['buteurs', 'Buteurs par équipe']].map(([v, l]) => `<button type="button" data-mode="${v}" class="${statMode===v?'on':''}" aria-pressed="${statMode===v}">${l}</button>`).join('')}</div>`;
     view.innerHTML = modeBar + `
-      <div class="seasons">${seasons.length > 1 ? `<label>Saison <select id="season">${seasons.map(s=>`<option${s===statSeason?' selected':''}>${s}</option>`).join('')}</select></label> ` : (statSeason ? `<b>Saison ${statSeason}</b> ` : '')}<label>Équipe <select id="steam"><option value="0">Toutes</option>${TEAMS.map(n=>`<option value="${n}"${statTeam===n?' selected':''}>Seniors ${teamLetter(n)}</option>`).join('')}</select></label></div>
+      <div class="seasons">${seasons.length > 1 ? `<label>Saison <select id="season">${seasons.map(s=>`<option${s===statSeason?' selected':''}>${s}</option>`).join('')}</select></label> ` : (statSeason ? `<b>Saison ${statSeason}</b> ` : '')}<label>Équipe <select id="steam"><option value="">Tout le club</option>${CATS.map(c => `<optgroup label="${esc(c)}">${catTeams(c).length > 1 ? `<option value="c:${esc(c)}"${!statF.team && statF.cat===c?' selected':''}>Toutes les équipes ${esc(c)}</option>` : ''}${catTeams(c).map(n=>`<option value="${n}"${statF.team===n?' selected':''}>${esc(teamLabel(n))}</option>`).join('')}</optgroup>`).join('')}</select></label></div>
       <div class="chipbar compbar" role="group" aria-label="Compétition">${[['', 'Tout'], ['championnat', 'Championnat'], ['coupe', 'Coupes']].map(([v, l]) => `<button data-comp="${v}" class="${statComp===v?'on':''}" aria-pressed="${statComp===v}">${l}</button>`).join('')}</div>
       <div class="kpis">
         <div class="kpi"><b>${list.length}</b><span>Matchs</span></div>
@@ -1260,7 +1299,7 @@ async function statsView(playerArg){
         <div class="kpi"><b>${gf}</b><span>Buts marqués</span></div>
         <div class="kpi"><b>${ga}</b><span>Encaissés</span></div>
       </div>
-      ${statMode === 'buteurs' ? (TEAMS.map(boardHTML).join('') || '<div class="empty">Aucun match avec ce filtre.</div>') : rows.length ? `<div class="tblwrap"><table class="stats"><thead><tr>${COLS.map(([k,l])=>`<th class="${statSort.key===k?'on':''}" aria-sort="${statSort.key===k?(statSort.dir<0?'descending':'ascending'):'none'}"><button data-k="${k}">${l}${statSort.key===k?(statSort.dir<0?' ▾':' ▴'):''}</button></th>`).join('')}</tr></thead>
+      ${statMode === 'buteurs' ? (CATS.map(c => { const h = catTeams(c).map(boardHTML).join(''); return h ? `<div class="sec">${esc(c)}</div>` + h : ''; }).join('') || '<div class="empty">Aucun match avec ce filtre.</div>') : rows.length ? `<div class="tblwrap"><table class="stats"><thead><tr>${COLS.map(([k,l])=>`<th class="${statSort.key===k?'on':''}" aria-sort="${statSort.key===k?(statSort.dir<0?'descending':'ascending'):'none'}"><button data-k="${k}">${l}${statSort.key===k?(statSort.dir<0?' ▾':' ▴'):''}</button></th>`).join('')}</tr></thead>
         <tbody>${rows.map(p=>`<tr class="prow" data-pk="${esc(p.k)}" tabindex="0"><td>${esc(p.name)}</td>${cell(p.mj)}${cell(p.tit)}${cell(p.goals)}${cell(p.y)}${cell(p.r)}</tr>`).join('')}${cscGoals ? `<tr class="csc"><td>CSC <small>(contre son camp adverse)</small></td><td></td><td></td>${cell(cscGoals)}<td></td><td></td></tr>` : ''}</tbody></table></div>`
         : `<div class="empty">Les stats apparaîtront après le premier match dont la composition de l'${CLUB} a été saisie.</div>`}
       <p class="note">${statComp === 'coupe' ? 'Matchs de coupe uniquement. ' : statComp ? 'Matchs de championnat uniquement. ' : ''}Stats des joueurs de l'${CLUB}, calculées à partir des compositions et de la chronologie de chaque match.${unknownGoals ? ` ${unknownGoals} but${unknownGoals>1?'s':''} sans buteur identifié.` : ''}</p>`;
@@ -1268,7 +1307,7 @@ async function statsView(playerArg){
       const k = b.dataset.k; statSort = statSort.key===k ? {key:k, dir:-statSort.dir} : {key:k, dir: k==='name' ? 1 : -1}; draw();
     });
     const s = $('season'); if (s) s.onchange = () => { statSeason = s.value; draw(); };
-    $('steam').onchange = e => { statTeam = +e.target.value; draw(); };
+    $('steam').onchange = e => { const v = e.target.value; statF.team = /^\d+$/.test(v) ? +v : 0; statF.cat = v.startsWith('c:') ? v.slice(2) : statF.team ? catOf(statF.team) : ''; draw(); };
     view.querySelectorAll('[data-comp]').forEach(b => b.onclick = () => { statComp = b.dataset.comp; draw(); });
     view.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { statMode = b.dataset.mode; draw(); });
     view.querySelectorAll('.prow').forEach(r => { const go = () => { location.hash = '#/stats/joueur/' + encodeURIComponent(r.dataset.pk); }; r.onclick = go; r.onkeydown = e => { if (e.key === 'Enter') go(); }; });
@@ -1302,13 +1341,13 @@ async function statsView(playerArg){
     const W = pl.filter(h => h.res==='V').length, N = pl.filter(h => h.res==='N').length, L = pl.filter(h => h.res==='D').length;
     const multi = pl.filter(h => h.goals.length >= 2).length, scoring = pl.filter(h => h.goals.length).length;
     const best = pl.reduce((b, h) => !b || h.goals.length > b.goals.length ? h : b, null);
-    const teams = [...new Set(pl.map(h => h.m.equipe || 1))].sort().map(teamLetter).join(', ');
+    const teams = teamsText([...new Set(pl.map(h => h.m.equipe || 1))]);
     const fr = (v, d=1) => v.toLocaleString('fr-FR', {maximumFractionDigits: d});
     const kpi = (v, l) => `<div class="kpi"><b>${v}</b><span>${l}</span></div>`;
     const opp = m => teamName(m, m.club_side==='H' ? 'A' : 'H');
     view.innerHTML = `<a class="back" href="#/stats">← Stats joueurs</a>
       <div class="phero"><span class="pav big">${esc(name.trim().charAt(0).toUpperCase())}</span><div><h1>${esc(name)}</h1>
-        <p class="sub">${nb ? `${nb} match${nb>1?'s':''} joué${nb>1?'s':''}${teams ? ' · Seniors ' + teams : ''}` : 'Aucun match joué'} · saison ${esc(statSeason||'')}</p></div></div>
+        <p class="sub">${nb ? `${nb} match${nb>1?'s':''} joué${nb>1?'s':''}${teams ? ' · ' + esc(teams) : ''}` : 'Aucun match joué'} · saison ${esc(statSeason||'')}</p></div></div>
       <div class="chipbar compbar" role="group" aria-label="Compétition">${[['', 'Tout'], ['championnat', 'Championnat'], ['coupe', 'Coupes']].map(([v, l]) => `<button data-comp="${v}" class="${statComp===v?'on':''}" aria-pressed="${statComp===v}">${l}</button>`).join('')}</div>
       <div class="kpis">${kpi(g, 'Buts')}${kpi(nb, 'Matchs')}${kpi(nb ? fr(g/nb, 2) : '–', 'Buts / match')}${kpi(g ? fr(mins/g, 0) + '′' : '–', '1 but toutes les')}</div>
       <div class="kpis">${kpi(fr(mins, 0) + '′', 'Temps de jeu')}${kpi(tit, 'Titulaire')}${kpi(ent, 'Entrées')}${kpi(`${y}<i class="kc y"></i> ${r}<i class="kc r"></i>`, 'Cartons')}</div>
@@ -1407,7 +1446,7 @@ function accountView(){
     <p class="sub">${esc(session.user.email)} · ${ROLE[role]} · <button class="link" id="editNom" style="padding:0">Modifier mon nom</button></p>
     ${role==='pending' ? '<div class="msg">Ton compte doit être validé par un administrateur du club avant de pouvoir saisir les matchs.</div>' : ''}
     ${role==='joueur' || role==='dirigeant' ? '<div class="msg">Tu peux saisir uniquement les matchs où un responsable t’a désigné délégué. Ils apparaissent sur l’accueil avec la pastille « ✎ Gérer ».</div>' : ''}
-    ${role==='delegue' ? `<div class="msg">${myTeams().length ? 'Tu gères les matchs des ' + myTeams().slice().sort().map(teamLabel).join(', ') + '.' : 'Aucune équipe ne t’est encore confiée : tu peux saisir uniquement les matchs où tu es désigné délégué.'}</div>` : ''}
+    ${role==='delegue' ? `<div class="msg">${myTeams().length ? 'Tu gères les matchs des ' + esc(teamsText(myTeams())) + '.' : 'Aucune équipe ne t’est encore confiée : tu peux saisir uniquement les matchs où tu es désigné délégué.'}</div>` : ''}
     <div class="foot" style="margin-top:4px">
       ${canCreate() ? '<a class="fbtn club" href="#/nouveau">+ Nouveau match</a>' : ''}
       ${isAdmin() ? '<a class="fbtn" href="#/admin">Gérer les accès</a>' : ''}
@@ -1443,7 +1482,7 @@ async function adminView(){
   const initial = p => esc(nameOf(p).trim().charAt(0).toUpperCase());
   const teamsOf = p => p.role === 'delegue' ? (p.equipes || []) : [];
   const summary = p => p.role === 'admin' ? 'Admin · toutes les équipes'
-    : p.role === 'delegue' ? 'Responsable · ' + (teamsOf(p).length ? teamsOf(p).map(teamLetter).join(', ') : 'aucune équipe')
+    : p.role === 'delegue' ? 'Responsable · ' + (teamsOf(p).length ? teamsText(teamsOf(p)) : 'aucune équipe')
     : p.role === 'joueur' ? 'Joueur' : p.role === 'dirigeant' ? 'Dirigeant' : 'En attente';
 
   const row = p => `<div class="arow" data-uid="${esc(p.id)}">
@@ -1513,7 +1552,7 @@ async function adminView(){
           <div class="rseg" role="group" aria-label="Rôle">${ROLES.map(([v, l]) => `<button type="button" data-role="${v}" class="${role === v ? 'on' : ''}" aria-pressed="${role === v}"${me ? ' disabled' : ''}>${l}</button>`).join('')}</div>
           <small>${role === 'admin' ? 'Gère toutes les équipes, les accès et les classements.' : role === 'delegue' ? 'Crée et saisit les matchs des équipes cochées ci-dessous.' : role === 'joueur' || role === 'dirigeant' ? 'Aucun accès, sauf les matchs où il est désigné délégué.' : 'Ne peut rien modifier.'}${me ? ' Tu ne peux pas changer ton propre rôle.' : ''}</small></div>
         ${role === 'delegue' ? `<div class="field"><span>Équipes dont il est responsable</span>
-          <div class="eqpick">${TEAMS.map(n => `<button type="button" data-e="${n}" class="${eqs.has(n) ? 'on' : ''}" aria-pressed="${eqs.has(n)}"><b>${teamLetter(n)}</b><small>${esc(teamLabel(n))}</small></button>`).join('')}</div></div>` : ''}
+          ${CATS.map(c => `<div class="eqcat"><small>${esc(c)}</small><div class="eqpick">${catTeams(c).map(n => `<button type="button" data-e="${n}" class="${eqs.has(n) ? 'on' : ''}" aria-pressed="${eqs.has(n)}"><b>${esc(teamLetter(n))}</b><small>${esc(teamLabel(n))}</small></button>`).join('')}</div></div>`).join('')}</div>` : ''}
         <div class="foot" style="margin-top:6px"><button class="fbtn primary" id="edSave">Enregistrer</button><button class="fbtn" id="edNo">Annuler</button></div>
         ${me ? '' : '<button class="link danger-link" id="edDel" style="width:100%;margin-top:12px">Supprimer ce compte</button>'}`);
       $('shBody').querySelectorAll('[data-role]').forEach(b => b.onclick = () => { role = b.dataset.role; draw(); });
@@ -1576,7 +1615,7 @@ function openBell(preselect){
     <p>Reçois une notification à chaque but des équipes choisies, même appli fermée.</p>
     ${denied ? '<div class="msg err">Les notifications sont bloquées pour ce site. Autorise-les dans les réglages du téléphone (ou du navigateur), puis reviens ici.</div>' : ''}
     <div class="msg" id="bState">Vérification de ce téléphone…</div>
-    <div class="follow">${TEAMS.map(n => `<label class="fl"><input type="checkbox" value="${n}"${cur.has(n)?' checked':''}><span>${teamLabel(n)}</span></label>`).join('')}</div>
+    <div class="follow">${CATS.map(c => `<div class="fcat">${esc(c)}</div>` + catTeams(c).map(n => `<label class="fl"><input type="checkbox" value="${n}"${cur.has(n)?' checked':''}><span>${esc(teamLabel(n))}</span></label>`).join('')).join('')}</div>
     ${isAdmin() ? `<label class="fl fladmin"><input type="checkbox" id="bAdmin"${lsGet('asm-follow-admin', false) ? ' checked' : ''}><span>👤 Nouveaux comptes à valider <small>(admins)</small></span></label>` : ''}
     <div class="foot" style="margin-top:12px"><button class="fbtn primary" id="bSave">Enregistrer</button><button class="fbtn" id="bNo">Annuler</button></div>
     <button class="link" id="bTest" hidden style="width:100%">Envoyer une notification d’essai</button>`);
@@ -1585,7 +1624,7 @@ function openBell(preselect){
   pushState().then(st => {
     const el = $('bState'); if (!el) return;
     const parts = [];
-    if (st.teams.length) parts.push('les buts de : ' + st.teams.map(teamLabel).join(', '));
+    if (st.teams.length) parts.push('les buts de : ' + teamsText(st.teams));
     if (st.admin) parts.push('les nouveaux comptes à valider');
     el.textContent = parts.length ? 'Ce téléphone reçoit ' + parts.join(' et ') + '.' : 'Ce téléphone n’est pas encore abonné.';
     lsSet('asm-follow', st.teams); lsSet('asm-follow-admin', st.admin); renderBell();
@@ -1624,7 +1663,7 @@ async function sendTestPush(sub){
   }catch(e){ return false; }
 }
 function renderBell(){ const b = $('bell'); if (b) b.classList.toggle('on', lsGet('asm-follow', []).length > 0 || !!lsGet('asm-follow-admin', false)); }
-$('bell').onclick = () => openBell(homeTeam || 0);
+$('bell').onclick = () => openBell(homeF.team || 0);
 renderBell();
 
 // ---------- Présence : qui est sur le site en ce moment ----------
@@ -1710,6 +1749,11 @@ if (sb){
     if (ev === 'SIGNED_OUT'){ profile = null; lsSet('asm-profile', null); renderAcct(); }
   });
   loadProfile().catch(()=>{}).finally(() => { route(); flush(); });
+  // liste des équipes à jour (nouvelle catégorie ajoutée dans la base) : on réaffiche si elle a changé
+  sb.from('equipes').select('*').then(({ data }) => {
+    if (!data || !data.length || JSON.stringify(data) === JSON.stringify(lsGet('asm-equipes', null))) return;
+    lsSet('asm-equipes', data); setEquipes(data); if (!location.hash.startsWith('#/gerer')) route();
+  });
   startPresence();
 } else route();
 

@@ -6,7 +6,6 @@ const webpush = require('web-push');
 const SUPABASE_URL = 'https://xzzttulqlydcespgkpnx.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_VwLyp5ROGzidc4oHWehoLg_kIehYAcE';
 const VAPID_PUBLIC = 'BHA2nAZhD5cIT_AR11aLFpXaH9RZyg32nn5W088Es3meXzr0aBAfM6gCCW1lgR7ZTOoKIofXqjZml7s8Prmyh80';
-const LETTERS = 'ABCDE';
 
 async function rest(path, token, init = {}) {
   const res = await fetch(SUPABASE_URL + path, {
@@ -44,7 +43,7 @@ module.exports = async (req, res) => {
     body: `${name('H')} ${sc('H')} – ${sc('A')} ${name('A')} · ${ev.min}` + (ev.n === 'CSC' ? ' · contre son camp' : ev.n ? ` · n°${ev.n}${player ? ' ' + player : ''}` : ''),
     url: `/#/match/${m.id}`,
     tag: `but-${ev.id}`,
-    team: LETTERS[(m.equipe || 1) - 1]
+    team: m.equipe || 1
   });
 
   webpush.setVapidDetails('https://asm-live.vercel.app', VAPID_PUBLIC, process.env.VAPID_PRIVATE_KEY);
