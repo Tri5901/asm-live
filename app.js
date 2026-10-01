@@ -392,8 +392,10 @@ let showAllNext = false;
 function drawHome(matches, goalRows){
   const byMatch = {};
   goalRows.forEach(g => { (byMatch[g.match_id] ||= []).push({k:'goal', t:g.t}); });
+  const isMine = m => !!myId() && m.delegue_id === myId() && m.status !== 'termine';
   const card = m => {
     const evs = byMatch[m.id] || [];
+    const me = isMine(m);
     const c = clubSide(m);
     let badge = '', mid;
     if (m.status==='prevu') mid = `<span class="mtime">${esc(hhmm(m.kickoff))}</span>`;
@@ -401,14 +403,16 @@ function drawHome(matches, goalRows){
     if (m.status==='direct') badge = `<span class="badge live" data-live='${esc(JSON.stringify({status:m.status,period:m.period,half:m.half,running:m.running,started_at:m.started_at,acc:m.acc}))}'>Direct${m.period ? ' · ' + esc(currentMinute(m).label) : ''}</span>`;
     else if (m.status==='termine'){ const r = resultOf(m, evs); badge = `<span class="badge ${r==='V'?'w':r==='D'?'l':''}">${r==='V'?'Victoire':r==='D'?'Défaite':'Nul'}</span>`; }
     const side = t => `<div class="mside${c===t?' club':''}">${logoOf(m,t) ? logoImg(m,t,'mlg') : '<span class="mlg ph"></span>'}<span>${esc(teamName(m,t))}</span></div>`;
-    return `<a class="mcard${m.status==='direct' ? ' live' : ''}" href="#/match/${esc(m.id)}">
-      <div class="mtop"><span class="tchip" title="${esc(teamLabel(m.equipe))}">${teamLetter(m.equipe)}</span><span class="mcomp">${CATS.length > 1 ? esc(catOf(m.equipe)) + (m.competition ? " · " : "") : ""}${esc(m.competition || (CATS.length > 1 ? "" : teamLabel(m.equipe)))}</span>${canManage(m) ? `<span class="gerer" role="link" tabindex="0" data-href="#/gerer/${esc(m.id)}" aria-label="Gérer ce match">✎ Gérer</span>` : ''}${badge}</div>
+    return `<a class="mcard${m.status==='direct' ? ' live' : ''}${me ? ' mine' : ''}" href="#/match/${esc(m.id)}">
+      <div class="mtop"><span class="tchip" title="${esc(teamLabel(m.equipe))}">${teamLetter(m.equipe)}</span><span class="mcomp">${CATS.length > 1 ? esc(catOf(m.equipe)) + (m.competition ? " · " : "") : ""}${esc(m.competition || (CATS.length > 1 ? "" : teamLabel(m.equipe)))}</span>${canManage(m) && !me ? `<span class="gerer" role="link" tabindex="0" data-href="#/gerer/${esc(m.id)}" aria-label="Gérer ce match">✎ Gérer</span>` : ''}${badge}</div>
       <div class="mrow">${side('H')}<div class="mmid">${mid}</div>${side('A')}</div>
-      ${m.delegue_nom ? `<div class="mdel">Délégué : ${esc(m.delegue_nom)}</div>` : ''}</a>`;
+      ${me ? `<div class="mdeleg" role="link" tabindex="0" data-href="#/gerer/${esc(m.id)}"><span><b>Tu es le délégué de ce match</b><small>C’est toi qui saisis le score et les actions.</small></span><span class="mdgo">Gérer ›</span></div>`
+        : m.delegue_nom ? `<div class="mdel">Délégué : ${esc(m.delegue_nom)}</div>` : ''}</a>`;
   };
   const byDay = list => { let h = '', last = ''; list.forEach(m => { const d = new Date(m.kickoff).toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'}); if (d !== last){ h += `<div class="day">${esc(d)}</div>`; last = d; } h += card(m); }); return h; };
   const all = matches;
-  matches = matches.filter(m => inFilter(homeF, m.equipe));
+  // les matchs dont on est le délégué restent affichés, quel que soit le filtre d'équipe
+  matches = matches.filter(m => inFilter(homeF, m.equipe) || isMine(m));
   // même heure : les dernières équipes d'abord, la A en dernier
   const byTeam = (a,b) => teamRank(b.equipe) - teamRank(a.equipe);
   const asc = (a,b) => a.kickoff.localeCompare(b.kickoff) || byTeam(a,b), desc = (a,b) => b.kickoff.localeCompare(a.kickoff) || byTeam(a,b);
@@ -416,17 +420,15 @@ function drawHome(matches, goalRows){
   const next = matches.filter(m=>m.status==='prevu').sort(asc);
   const done = matches.filter(m=>m.status==='termine').sort(desc);
   let html = teamFilterHTML(homeF, true);
-  const mine = myId() ? all.filter(m => m.delegue_id === myId() && m.status !== 'termine').sort(asc) : [];
-  if (mine.length) html += `<div class="sec">Mes matchs (délégué)</div>` + byDay(mine);
   if (live.length) html += `<div class="sec">En direct</div>` + live.map(card).join('');
   const NEXT_MAX = 6;
-  if (next.length) html += `<div class="sec">À venir</div>` + byDay(showAllNext ? next : next.slice(0, NEXT_MAX))
+  if (next.length) html += `<div class="sec">À venir</div>` + byDay(showAllNext ? next : next.filter((m, i) => i < NEXT_MAX || isMine(m)))
     + (next.length > NEXT_MAX && !showAllNext ? `<button class="fbtn" id="moreNext" style="width:100%">Voir les ${next.length} matchs à venir</button>` : '');
   if (done.length) html += `<div class="sec">Résultats</div>` + byDay(done);
   if (!matches.length) html += `<div class="empty" style="margin-top:12px">Aucun match ${homeF.team ? 'des ' + esc(teamLabel(homeF.team)) + ' ' : homeF.cat ? 'en ' + esc(homeF.cat) + ' ' : ''}pour l'instant.${isStaff() ? '' : ' Reviens le jour du match pour le suivre en direct.'}</div>`;
   view.innerHTML = html;
   bindTeamFilter(view, homeF, true, () => { lsSet('asm-filtre', homeF); showAllNext = false; drawHome(all, goalRows); });
-  view.querySelectorAll('.gerer').forEach(g => {
+  view.querySelectorAll('.gerer, .mdeleg').forEach(g => {
     const go = e => { e.preventDefault(); e.stopPropagation(); location.hash = g.dataset.href; };
     g.onclick = go; g.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') go(e); };
   });

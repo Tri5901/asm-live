@@ -9,7 +9,7 @@ module.exports = {
     ['2026-11-08','15:00','D',6,'Laigné Loigné Athlé'],
     ['2026-11-15','15:00','E',7,'Les Sorinières Élan'],
     ['2026-11-29','15:00','D',8,'FC Sèvremont'],
-    ['2026-12-06','15:00','E',9,'Ancenis RCASG'],
+    ['2026-12-05','18:00','E',9,'Ancenis RCASG'], // affiche : dim. 6/12 15 h, FFF : sam. 5/12 18 h (corrigé le 01/10)
     ['2026-12-13','15:00','D',10,'FC du Craonnais'],
     ['2027-01-24','15:00','D',1,'FC St Julien Divatte 2'],
     ['2027-01-31','15:00','E',11,'FC Château-Gontier'],
@@ -57,7 +57,7 @@ module.exports = {
     ['2026-11-08','12:30','E',6,'Réveil St Géréon 3'],
     ['2026-11-15','12:30','D',7,'Les Coteaux de la Roche 2'],
     ['2026-11-29','12:30','E',8,'FC Vair Herblanetz 3'],
-    ['2026-12-06','12:00','D',9,'ES Joué-sur-Erdre 2'],
+    ['2026-12-06','12:30','D',9,'ES Joué-sur-Erdre 2'], // affiche : 12 h, FFF : 12 h 30 (corrigé le 01/10)
     ['2026-12-13','12:30','E',10,'FC Vallons Le Pin 3'],
     ['2027-01-24','15:00','E',1,'Freigné Espoirs 2'],
     ['2027-01-31','12:30','D',11,'FC Oudon Couffé 3'],
