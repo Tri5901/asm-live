@@ -3,7 +3,7 @@ alter table public.matches add column if not exists opp_logo text;
 insert into public.matches (kickoff, competition, equipe, club_side, home_name, away_name) values
 ('2026-10-04T15:00:00+02:00', 'Régional 3 · J3', 1, 'H', 'AS Mésanger', 'FC Ste Cécile St Martin'),
 ('2026-10-18T15:00:00+02:00', 'Régional 3 · J4', 1, 'H', 'AS Mésanger', 'FC St Sébastien 2'),
-('2026-11-01T19:00:00+01:00', 'Régional 3 · J5', 1, 'A', 'FC Boupère Mon Prouant', 'AS Mésanger'),
+('2026-11-01T15:00:00+01:00', 'Régional 3 · J5', 1, 'A', 'FC Boupère Mon Prouant', 'AS Mésanger'),
 ('2026-11-08T15:00:00+01:00', 'Régional 3 · J6', 1, 'H', 'AS Mésanger', 'Laigné Loigné Athlé'),
 ('2026-11-15T15:00:00+01:00', 'Régional 3 · J7', 1, 'A', 'Les Sorinières Élan', 'AS Mésanger'),
 ('2026-11-29T15:00:00+01:00', 'Régional 3 · J8', 1, 'H', 'AS Mésanger', 'FC Sèvremont'),

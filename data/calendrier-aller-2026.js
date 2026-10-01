@@ -5,7 +5,7 @@ module.exports = {
   1: { comp: 'Régional 3', matches: [
     ['2026-10-04','15:00','D',3,'FC Ste Cécile St Martin'],
     ['2026-10-18','15:00','D',4,'FC St Sébastien 2'],
-    ['2026-11-01','19:00','E',5,'FC Boupère Mon Prouant'],
+    ['2026-11-01','15:00','E',5,'FC Boupère Mon Prouant'], // affiche : 19 h, FFF : 15 h (corrigé le 01/10)
     ['2026-11-08','15:00','D',6,'Laigné Loigné Athlé'],
     ['2026-11-15','15:00','E',7,'Les Sorinières Élan'],
     ['2026-11-29','15:00','D',8,'FC Sèvremont'],
