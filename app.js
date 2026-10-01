@@ -1674,6 +1674,26 @@ async function sendTestPush(sub){
 }
 function renderBell(){ const b = $('bell'); if (b) b.classList.toggle('on', lsGet('asm-follow', []).length > 0 || !!lsGet('asm-follow-admin', false)); }
 $('bell').onclick = () => openBell(homeF.team || 0);
+// Thème : Auto (suit le téléphone) → Jour → Sombre
+const THEMES = {
+  auto: ['Auto (suit le téléphone)', '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/>'],
+  light: ['Jour', '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'],
+  dark: ['Sombre', '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'],
+};
+function applyTheme(t, say){
+  if (!THEMES[t]) t = 'auto';
+  if (t === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
+  const b = $('themeBtn');
+  b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${THEMES[t][1]}</svg>`;
+  b.title = b.ariaLabel = 'Thème : ' + THEMES[t][0];
+  if (say) toast('Thème : ' + THEMES[t][0]);
+}
+applyTheme(lsGet('asm-theme', 'auto'));
+$('themeBtn').onclick = () => {
+  const order = ['auto', 'light', 'dark'];
+  const t = order[(order.indexOf(lsGet('asm-theme', 'auto')) + 1) % 3];
+  lsSet('asm-theme', t); applyTheme(t, true);
+};
 renderBell();
 
 // ---------- Présence : qui est sur le site en ce moment ----------

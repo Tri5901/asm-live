@@ -6,6 +6,7 @@
 <title>AS Mésanger – Matchs en direct</title>
 <meta name="description" content="Suivez en direct les matchs de l'AS Mésanger : score, buts, remplacements, cartons et statistiques des joueurs.">
 <meta name="theme-color" content="#000000">
+<script>try{var t=JSON.parse(localStorage.getItem("asm-theme"));if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -480,12 +481,53 @@ table.stats tr.prow td:first-child{text-decoration:underline;text-decoration-col
 .tchip{width:auto;min-width:22px;padding:0 5px}
 .gonebtns{display:flex;gap:6px;flex:none}
 .amod.danger{color:var(--red);border-color:color-mix(in srgb,var(--red) 45%,transparent)}
+/* Style dégradés (noir → or, jaune → ambre) */
+:root{--gDark:linear-gradient(110deg,#000 0%,#1f1d12 45%,#6b5c00 100%);--gClub:linear-gradient(110deg,#F7E01A 0%,#F2B705 100%)}
+/* bandeau du haut */
+.top{background:var(--gDark);border-radius:16px;padding:10px 12px;margin-bottom:12px;color:#fff;box-shadow:0 6px 16px rgba(0,0,0,.18)}
+.top b{color:#fff}.top small{color:rgba(255,255,255,.75)}
+.top img{background:#fff;border-radius:50%;padding:2px}
+.top .acct,.top .bell{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.25);color:#fff}
+/* titres de page = bandeau dégradé comme « NOUS CONTACTER » */
+.card{border-radius:16px;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.08)}
+.card>h1:first-child{margin:-16px -16px 14px;padding:16px 18px;background:var(--gDark);color:#fff;text-transform:uppercase;letter-spacing:.5px;font-size:24px}
+.card>h1:first-child+p.sub{margin-top:-6px}
+/* onglets et choix actifs */
+.tabs{border:0;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.tabs a.on,.chipbar button.on,.seg button.on{background:var(--gDark);color:#fff;border-color:transparent}
+/* boutons principaux */
+.cbtn,.fab,.fbtn.club{background:var(--gClub);color:#000;border-color:transparent;box-shadow:0 4px 12px rgba(242,183,5,.35)}
+/* tableau d'affichage */
+.board{background:linear-gradient(135deg,#000 0%,#14130b 55%,#3d3500 100%);border-top:0;box-shadow:0 8px 22px rgba(0,0,0,.25)}
+.board::before{content:"";position:absolute;inset:0 0 auto;height:5px;background:var(--gClub)}
+/* titres de section avec petite barre dégradée */
+.sec{display:flex;align-items:center;gap:8px}
+.sec::before{content:"";width:4px;height:16px;border-radius:2px;background:var(--gClub);flex:none}
+/* cartes de match */
+.mcard{border-radius:16px;box-shadow:0 3px 10px rgba(0,0,0,.06)}
+.sboard{border-radius:16px;overflow:hidden}
+
+.appbar{background:linear-gradient(110deg,#000 0%,#1f1d12 50%,#6b5c00 100%);border-bottom:0;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.appbar::after{content:'';display:block;height:3px;background:var(--gClub)}
+.mcard{overflow:hidden;padding-top:0}
+.mcard .mtop{display:flex;align-items:center;gap:8px;margin:0 -12px 10px;padding:7px 12px;background:var(--gDark);color:rgba(255,255,255,.85)}
+.mcard .mtop .mcomp{color:#fff}
+.mcard .mtop .tchip{background:var(--club);color:#000}
+.mcard.live .mtop{background:linear-gradient(110deg,#7a0f12 0%,#D0262A 100%);color:#fff}
+.mcard.live{box-shadow:0 4px 14px rgba(208,38,42,.25)}
+.fbtn.primary{background:var(--gDark);color:#fff;border-color:transparent;box-shadow:0 4px 12px rgba(0,0,0,.2);text-transform:uppercase;letter-spacing:.5px}
+.day{display:inline-block;padding:3px 12px;border-radius:999px;background:var(--gClub);color:#000;font-size:16px}
+.themebtn{width:36px;height:36px}
+.themebtn svg{width:18px;height:18px}
+.appbar .brand>div{min-width:0;overflow:hidden}
+@media (max-width:380px){.appbar-in{gap:6px;padding:10px 10px}.appbar .crest{width:34px;height:34px}.appbar b{font-size:18px}.appbar .iconbtn{width:34px;height:34px}.appbar .acct{padding:7px 10px;font-size:13px}}
 </style>
 </head>
 <body>
 <header class="appbar"><div class="appbar-in">
   <a class="brand" href="#/"><img class="crest" src="icons/notif-192.png" alt=""><div><b>AS MÉSANGER</b><small>Matchs en direct</small></div></a>
   <button class="onpill" id="online" hidden aria-label="Personnes en ligne" title="Personnes en ligne"><i></i><span>…</span></button>
+  <button class="iconbtn themebtn" id="themeBtn" aria-label="Thème" title="Thème"></button>
   <button class="iconbtn bell" id="bell" aria-label="Notifications de buts" title="Notifications de buts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button>
   <a class="acct" id="acct" href="#/connexion">Connexion</a>
 </div></header>
