@@ -722,13 +722,13 @@
      "kind": "changement",
      "t": "H",
      "in": "JONA LAUNAY",
-     "out": "PAUL LETORD"
+     "out": "PAUL LETORT"
     },
     {
      "min": 29,
      "kind": "but",
      "t": "H",
-     "who": "PAUL LETORD"
+     "who": "PAUL LETORT"
     },
     {
      "min": 30,
@@ -850,7 +850,7 @@
      },
      {
       "n": "11",
-      "name": "PAUL LETORD",
+      "name": "PAUL LETORT",
       "sub": false
      },
      {
