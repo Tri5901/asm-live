@@ -1173,6 +1173,7 @@ async function classementsView(){
     if (isAdmin()){ const r2 = await sb.from('classements_maj').select('*').maybeSingle(); maj = r2.data; }
   }catch(e){ if (!rows) throw e; }
   const byTeam = {}; (rows || []).forEach(r => { byTeam[r.equipe] = r; });
+  let openClub = null;
   const rankOf = n => { const r = byTeam[n]; const l = r && r.lignes.find(x => x[10] === CLUB_FFF); return l ? l[0] : null; };
   const draw = () => {
     if (!clsF.team){ clsF.team = homeF.team || catTeams(homeF.cat || CATS[0])[0] || TEAMS[0]; clsF.cat = catOf(clsF.team); }
@@ -1180,17 +1181,38 @@ async function classementsView(){
     const chips = teamFilterHTML(clsF, false, n => { const k = rankOf(n); return k ? ` · ${k}${k===1?'er':'e'}` : ''; });
     if (!r){ view.innerHTML = chips + `<div class="empty">${teamOf(cur).fff_classement === null ? 'Pas de championnat suivi pour les ' + esc(teamLabel(cur)) + '.' : 'Classement pas encore disponible pour les ' + esc(teamLabel(cur)) + '.'}</div>` + majHTML(); bind(); return; }
     const d = new Date(r.updated_at).toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'});
+    const hasRes = Array.isArray(r.resultats) && r.resultats.length > 0;
     view.innerHTML = chips + `
       <div class="clshead"><h2>${esc(teamLabel(cur))}</h2><span>${esc(r.competition)}</span></div>
       <div class="tblwrap"><table class="cls">
         <thead><tr><th>#</th><th>Équipe</th><th>Pts</th><th>J</th><th>G</th><th>N</th><th>P</th><th>Diff</th></tr></thead>
-        <tbody>${r.lignes.map(l => `<tr class="${l[10]===CLUB_FFF ? 'me' : ''}">
+        <tbody>${r.lignes.map(l => `<tr class="${l[10]===CLUB_FFF ? 'me' : ''}${hasRes ? ' tap' : ''}${hasRes && l[10]===openClub ? ' open' : ''}"${hasRes ? ` data-club="${esc(l[10])}" tabindex="0" aria-expanded="${l[10]===openClub}"` : ''}>
           <td class="rk">${l[0]}</td>
           <td class="tm"><div class="tmi">${l[10] ? `<img src="https://cdn-transverse.azureedge.net/phlogos/BC${esc(l[10])}.jpg" alt="" loading="lazy" onerror="this.remove()">` : ''}<span>${esc(l[1])}</span></div></td>
-          <td class="pts">${l[2]}</td><td>${l[3]}</td><td>${l[4]}</td><td>${l[5]}</td><td>${l[6]}</td><td>${l[9] > 0 ? '+' + l[9] : l[9]}</td></tr>`).join('')}</tbody>
+          <td class="pts">${l[2]}</td><td>${l[3]}</td><td>${l[4]}</td><td>${l[5]}</td><td>${l[6]}</td><td>${l[9] > 0 ? '+' + l[9] : l[9]}</td></tr>${hasRes && l[10]===openClub ? `<tr class="clsdet"><td colspan="8">${histHTML(r, l)}</td></tr>` : ''}`).join('')}</tbody>
       </table></div>
+      ${hasRes ? '<p class="note">Touche une équipe pour voir ses résultats.</p>' : ''}
       <p class="note">Mis à jour le ${esc(d)}, d’après le site de la FFF (classement sous réserve de procédures en cours). ${r.source ? `<a href="${esc(r.source)}" target="_blank" rel="noopener">Voir le classement officiel ↗</a>` : ''}</p>` + majHTML();
     bind();
+  };
+  // Résultats d'une équipe de la poule : r.resultats = [[idFFF, 'AAAA-MM-JJTHH:MM', codeDom, nomDom, butsDom, butsExt, codeExt, nomExt], ...]
+  const histHTML = (r, l) => {
+    const club = l[10];
+    const list = r.resultats.filter(x => (x[2] === club || x[6] === club) && x[4] != null && x[5] != null)
+      .sort((a, b) => b[1].localeCompare(a[1]));
+    if (!list.length) return '<div class="hist"><p class="hnone">Pas encore de résultat enregistré.</p></div>';
+    const rows = list.map(x => {
+      const dom = x[2] === club, pour = dom ? x[4] : x[5], contre = dom ? x[5] : x[4];
+      const res = pour > contre ? 'V' : pour < contre ? 'D' : 'N';
+      const adv = dom ? x[7] : x[3], advCode = dom ? x[6] : x[2];
+      const dt = new Date(x[1]).toLocaleDateString('fr-FR', {day:'numeric', month:'short'});
+      return { res, html: `<li><span class="hres ${res}">${res}</span><span class="hdt">${esc(dt)}</span>
+        <span class="hadv">${advCode ? `<img src="https://cdn-transverse.azureedge.net/phlogos/BC${esc(advCode)}.jpg" alt="" loading="lazy" onerror="this.remove()">` : ''}<span>${dom ? 'contre' : 'à'} ${advCode === CLUB_FFF ? `<b>${esc(adv)}</b>` : esc(adv)}</span></span>
+        <b class="hsc">${pour}–${contre}</b></li>` };
+    });
+    const n = k => rows.filter(x => x.res === k).length;
+    return `<div class="hist"><div class="hsum"><span>Forme</span>${rows.slice(0, 5).map(x => `<i class="hres ${x.res}">${x.res}</i>`).join('')}
+      <small>${n('V')} V · ${n('N')} N · ${n('D')} D</small></div><ul>${rows.map(x => x.html).join('')}</ul></div>`;
   };
   // Bouton admin : la mise à jour est faite par la tâche programmée du PC du club (la FFF bloque les accès automatiques)
   const majHTML = () => {
@@ -1203,6 +1225,11 @@ async function classementsView(){
   };
   const bind = () => {
     bindTeamFilter(view, clsF, false, draw);
+    view.querySelectorAll('tr.tap').forEach(tr => {
+      const go = () => { openClub = openClub === tr.dataset.club ? null : tr.dataset.club; draw(); };
+      tr.onclick = go;
+      tr.onkeydown = e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); go(); } };
+    });
     const mb = $('majBtn');
     if (mb) mb.onclick = async () => {
       mb.disabled = true;

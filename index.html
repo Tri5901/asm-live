@@ -521,6 +521,27 @@ table.stats tr.prow td:first-child{text-decoration:underline;text-decoration-col
 .themebtn svg{width:18px;height:18px}
 .appbar .brand>div{min-width:0;overflow:hidden}
 @media (max-width:380px){.appbar-in{gap:6px;padding:10px 10px}.appbar .crest{width:34px;height:34px}.appbar b{font-size:18px}.appbar .iconbtn{width:34px;height:34px}.appbar .acct{padding:7px 10px;font-size:13px}}
+/* Classements : résultats d'une équipe de la poule */
+table.cls tr.tap{cursor:pointer}
+table.cls tr.tap td.tm span::after{content:" ▾";color:var(--muted);font-size:11px}
+table.cls tr.tap.open td.tm span::after{content:" ▴"}
+table.cls tr.open td{border-bottom:0}
+table.cls tr.clsdet td{padding:0 0 10px;text-align:left}
+.hist{margin:0 4px;padding:10px 12px;border-radius:12px;background:var(--bg);border:1px solid var(--line)}
+.hsum{display:flex;align-items:center;gap:5px;margin-bottom:6px;font-size:13px;font-weight:600;color:var(--muted)}
+.hsum>span{margin-right:2px}
+.hsum small{margin-left:auto;font-size:12px}
+.hist ul{list-style:none;margin:0;padding:0}
+.hist li{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:13.5px}
+.hist li:first-child{border-top:0}
+.hres{flex:none;width:22px;height:22px;border-radius:6px;display:grid;place-items:center;font-style:normal;font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:13px;color:#fff;background:var(--muted)}
+.hres.V{background:var(--ok)}.hres.D{background:var(--red)}.hres.N{background:#8A8880}
+.hdt{flex:none;width:52px;color:var(--muted);font-size:12.5px}
+.hadv{flex:1;min-width:0;display:flex;align-items:center;gap:6px}
+.hadv img{width:20px;height:20px;object-fit:contain;border-radius:4px;background:#fff;flex:none}
+.hadv span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hsc{flex:none;font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:17px;font-variant-numeric:tabular-nums}
+.hnone{margin:0;color:var(--muted);font-size:13px}
 </style>
 </head>
 <body>
