@@ -62,8 +62,11 @@ let tt;
 function toast(msg){ const el=$('toast'); el.textContent=msg; el.classList.add('show'); clearTimeout(tt); tt=setTimeout(()=>el.classList.remove('show'),1800); }
 
 // ---------- Feuille (bottom sheet) ----------
-function openSheet(html){ $('shBody').innerHTML = html; document.body.classList.add('open'); }
-function closeSheet(){ document.body.classList.remove('open'); }
+// tall : feuille en plein écran calée sur la partie visible (au-dessus du clavier du téléphone)
+const vvFit = () => { const v = window.visualViewport, r = document.documentElement.style; if (!v) return; r.setProperty('--vvh', v.height + 'px'); r.setProperty('--vvt', v.offsetTop + 'px'); };
+if (window.visualViewport){ visualViewport.addEventListener('resize', vvFit); visualViewport.addEventListener('scroll', vvFit); }
+function openSheet(html, mode){ $('shBody').innerHTML = html; document.body.classList.toggle('tall', mode === 'tall'); vvFit(); document.body.classList.add('open'); }
+function closeSheet(){ document.body.classList.remove('open', 'tall'); }
 $('scrim').onclick = closeSheet;
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
 function askConfirm(title, text, okLabel, cb){
@@ -187,16 +190,15 @@ function bindDelegPick(btn, curNom, onPick){
   btn.onclick = () => {
     const cur = btn.dataset.value || '';
     const all = [{ id: '', nom: 'Non défini (par défaut : responsable d’équipe)', tag: '' }, ...delegueList(cur, curNom).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))];
-    openSheet(`<h3 id="shTitle">Délégué du match</h3>
+    openSheet(`<div class="dphead"><h3 id="shTitle">Délégué du match</h3><button type="button" class="dpclose" id="dpNo">Annuler</button></div>
       <input id="dpQ" class="dpq" type="search" placeholder="Rechercher un nom…" autocomplete="off" enterkeyhint="search">
-      <div class="alist dplist" id="dpList"></div>
-      <button class="cancel" id="dpNo">Annuler</button>`);
+      <div class="alist dplist" id="dpList"></div>`, 'tall');
     const list = $('dpList'), q = $('dpQ');
     const draw = () => {
       const words = sansAccent(q.value).split(/\s+/).filter(Boolean);
-      const f = all.filter(o => !o.id || words.every(w => sansAccent(o.nom + ' ' + o.tag).includes(w)));
+      const f = all.filter(o => (!o.id && !words.length) || (o.id && words.every(w => sansAccent(o.nom + ' ' + o.tag).includes(w))));
       list.innerHTML = f.map(o => `<button type="button" class="arow dprow${o.id === cur ? ' on' : ''}" data-id="${esc(o.id)}"><div class="who"><b>${esc(o.nom)}</b>${o.tag ? `<small>${esc(o.tag)}</small>` : ''}</div>${o.id === cur ? '<span class="dpok">✓</span>' : ''}</button>`).join('')
-        + (f.length <= 1 && words.length ? '<div class="empty">Personne ne correspond à cette recherche.</div>' : '');
+        + (!f.length && words.length ? '<div class="empty">Personne ne correspond à cette recherche.</div>' : '');
       list.querySelectorAll('[data-id]').forEach(b => b.onclick = () => {
         const o = all.find(x => x.id === b.dataset.id);
         closeSheet();
@@ -1247,7 +1249,7 @@ async function classementsView(){
 }
 
 // ---------- Stats joueurs ----------
-let statSort = {key:'goals', dir:-1}, statSeason = null, statComp = '', statMode = 'joueurs';
+let statSort = {key:'goals', dir:-1}, statSeason = null, statComp = '', statMode = 'joueurs', statQ = '';
 const statF = { cat: '', team: 0 };
 const isCup = m => /coupe/i.test(m.competition || '');
 function playerKey(name){
@@ -1315,7 +1317,7 @@ async function statsView(playerArg){
       let rank = 0, prev = null;
       return `<section class="sboard"><div class="bhead"><span class="tchip">${teamLetter(eq)}</span><b>${esc(teamLabel(eq))}</b><span>${B.n} match${B.n>1?'s':''}</span></div>
         ${sc.length ? `<ol class="blist">${sc.map((p, i) => { if (p.goals !== prev){ rank = i + 1; prev = p.goals; }
-          return `<li class="prow" data-pk="${esc(p.k)}" tabindex="0"><span class="brk${rank<=3?' top'+rank:''}">${rank}</span><span class="bname">${esc(p.name)}<small>${p.mj} match${p.mj>1?'s':''} · ${(p.goals/Math.max(1,p.mj)).toLocaleString('fr-FR',{maximumFractionDigits:2})} / match</small></span><b>${p.goals}</b></li>`; }).join('')}</ol>` : '<div class="empty">Aucun buteur.</div>'}
+          return `<li class="prow" data-pk="${esc(p.k)}" data-nm="${esc(p.name)}" tabindex="0"><span class="brk${rank<=3?' top'+rank:''}">${rank}</span><span class="bname">${esc(p.name)}<small>${p.mj} match${p.mj>1?'s':''} · ${(p.goals/Math.max(1,p.mj)).toLocaleString('fr-FR',{maximumFractionDigits:2})} / match</small></span><b>${p.goals}</b></li>`; }).join('')}</ol>` : '<div class="empty">Aucun buteur.</div>'}
         ${B.csc ? `<p class="bcsc">+ ${B.csc} but${B.csc>1?'s':''} contre son camp adverse</p>` : ''}</section>`;
     };
     const modeBar = `<div class="seg statmode" role="group" aria-label="Affichage">${[['joueurs', 'Tous les joueurs'], ['buteurs', 'Buteurs par équipe']].map(([v, l]) => `<button type="button" data-mode="${v}" class="${statMode===v?'on':''}" aria-pressed="${statMode===v}">${l}</button>`).join('')}</div>`;
@@ -1328,8 +1330,10 @@ async function statsView(playerArg){
         <div class="kpi"><b>${gf}</b><span>Buts marqués</span></div>
         <div class="kpi"><b>${ga}</b><span>Encaissés</span></div>
       </div>
+      <input id="statQ" class="dpq statq" type="search" placeholder="🔍 Rechercher un joueur…" autocomplete="off" enterkeyhint="search" value="${esc(statQ)}" aria-label="Rechercher un joueur">
+      <div class="empty" id="statNone" hidden>Aucun joueur ne correspond à cette recherche.</div>
       ${statMode === 'buteurs' ? (CATS.map(c => { const h = catTeams(c).map(boardHTML).join(''); return h ? `<div class="sec">${esc(c)}</div>` + h : ''; }).join('') || '<div class="empty">Aucun match avec ce filtre.</div>') : rows.length ? `<div class="tblwrap"><table class="stats"><thead><tr>${COLS.map(([k,l])=>`<th class="${statSort.key===k?'on':''}" aria-sort="${statSort.key===k?(statSort.dir<0?'descending':'ascending'):'none'}"><button data-k="${k}">${l}${statSort.key===k?(statSort.dir<0?' ▾':' ▴'):''}</button></th>`).join('')}</tr></thead>
-        <tbody>${rows.map(p=>`<tr class="prow" data-pk="${esc(p.k)}" tabindex="0"><td>${esc(p.name)}</td>${cell(p.mj)}${cell(p.tit)}${cell(p.goals)}${cell(p.y)}${cell(p.r)}</tr>`).join('')}${cscGoals ? `<tr class="csc"><td>CSC <small>(contre son camp adverse)</small></td><td></td><td></td>${cell(cscGoals)}<td></td><td></td></tr>` : ''}</tbody></table></div>`
+        <tbody>${rows.map(p=>`<tr class="prow" data-pk="${esc(p.k)}" data-nm="${esc(p.name)}" tabindex="0"><td>${esc(p.name)}</td>${cell(p.mj)}${cell(p.tit)}${cell(p.goals)}${cell(p.y)}${cell(p.r)}</tr>`).join('')}${cscGoals ? `<tr class="csc"><td>CSC <small>(contre son camp adverse)</small></td><td></td><td></td>${cell(cscGoals)}<td></td><td></td></tr>` : ''}</tbody></table></div>`
         : `<div class="empty">Les stats apparaîtront après le premier match dont la composition de l'${CLUB} a été saisie.</div>`}
       <p class="note">${statComp === 'coupe' ? 'Matchs de coupe uniquement. ' : statComp ? 'Matchs de championnat uniquement. ' : ''}Stats des joueurs de l'${CLUB}, calculées à partir des compositions et de la chronologie de chaque match.${unknownGoals ? ` ${unknownGoals} but${unknownGoals>1?'s':''} sans buteur identifié.` : ''}</p>`;
     view.querySelectorAll('th button').forEach(b => b.onclick = () => {
@@ -1339,6 +1343,18 @@ async function statsView(playerArg){
     $('steam').onchange = e => { const v = e.target.value; statF.team = /^\d+$/.test(v) ? +v : 0; statF.cat = v.startsWith('c:') ? v.slice(2) : statF.team ? catOf(statF.team) : ''; draw(); };
     view.querySelectorAll('[data-comp]').forEach(b => b.onclick = () => { statComp = b.dataset.comp; draw(); });
     view.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { statMode = b.dataset.mode; draw(); });
+    // recherche : on masque les lignes sans redessiner (le clavier reste ouvert)
+    const sq = $('statQ');
+    const filtre = () => {
+      statQ = sq.value;
+      const words = sansAccent(statQ).split(/\s+/).filter(Boolean);
+      let vus = 0;
+      view.querySelectorAll('.prow').forEach(r => { const ok = words.every(w => sansAccent(r.dataset.nm).includes(w)); r.hidden = !ok; if (ok) vus++; });
+      view.querySelectorAll('tr.csc').forEach(r => r.hidden = words.length > 0);
+      view.querySelectorAll('.sboard').forEach(b => b.hidden = words.length > 0 && !b.querySelector('.prow:not([hidden])'));
+      $('statNone').hidden = !(words.length && !vus);
+    };
+    if (sq){ sq.oninput = filtre; if (statQ) filtre(); }
     view.querySelectorAll('.prow').forEach(r => { const go = () => { location.hash = '#/stats/joueur/' + encodeURIComponent(r.dataset.pk); }; r.onclick = go; r.onkeydown = e => { if (e.key === 'Enter') go(); }; });
   };
   const byMatchAll = {}; evs.forEach(e => { (byMatchAll[e.match_id] ||= []).push(e); });

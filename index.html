@@ -548,6 +548,16 @@ table.cls tr.clsdet td{padding:0 0 10px;text-align:left}
 .mdeleg b{display:block;font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:17px;line-height:1.1;text-transform:uppercase;letter-spacing:.3px}
 .mdeleg small{display:block;font-size:12.5px;opacity:.8}
 .mdgo{flex:none;background:#000;color:#F7E01A;font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:16px;padding:8px 14px;border-radius:999px}
+/* Stats : recherche d'un joueur */
+.statq{margin:2px 0 12px}
+/* Choix du délégué : plein écran, liste visible au-dessus du clavier */
+.tall .sheet{top:var(--vvt,0px);bottom:auto;height:var(--vvh,100dvh);max-height:none;border-radius:0;display:flex;flex-direction:column;overflow:hidden;
+  padding-top:calc(12px + env(safe-area-inset-top,0px));transform:translateY(8%);opacity:0;transition:transform .18s ease,opacity .18s ease,visibility .18s}
+.open.tall .sheet{transform:none;opacity:1}
+.tall #shBody{display:flex;flex-direction:column;min-height:0;flex:1}
+.tall .dplist{flex:1;max-height:none;min-height:0}
+.dphead{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.dpclose{font-weight:700;color:var(--muted);padding:8px 4px;font-size:15px}
 </style>
 </head>
 <body>
