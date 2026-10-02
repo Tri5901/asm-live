@@ -461,10 +461,10 @@ function niveauHTML(m){
   const notre = champ ? champ.replace(/ · J\d+$/, '').replace(/ · .*$/, '') : '';
   const a = NIV_ORDRE(notre), b = NIV_ORDRE(m.opp_niveau);
   const d = a != null && b != null ? a - b : null;
-  const ecart = d == null ? '' : d === 0 ? 'Même niveau' : `Adversaire ${Math.abs(d)} division${Math.abs(d) > 1 ? 's' : ''} ${d > 0 ? 'au-dessus' : 'en dessous'}`;
-  const opp = oppSide(m), club = clubSide(m);
-  return `<div class="nivbox"><div class="nivt">Niveau des équipes${ecart ? ` · <b class="${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${esc(ecart)}</b>` : ''}</div>
-    <div class="nivrow"><div><span>${esc(teamName(m, club))}</span><b>${esc(notre || '?')}</b></div><i>vs</i><div><span>${esc(teamName(m, opp))}</span><b>${esc(m.opp_niveau)}</b></div></div></div>`;
+  const ecart = d == null ? '' : d === 0 ? 'même niveau' : `adversaire ${Math.abs(d)} division${Math.abs(d) > 1 ? 's' : ''} ${d > 0 ? 'au-dessus' : 'en dessous'}`;
+  // une seule ligne : « Niveau D2 vs D3 · adversaire 1 division en dessous »
+  const court = t => String(t || '?').replace(/District\s*/i, 'D').replace(/Régional\s*/i, 'R').replace(/National\s*/i, 'N');
+  return `<div class="nivline">Niveau <b>${esc(court(notre))}</b> vs <b>${esc(court(m.opp_niveau))}</b>${ecart ? ` · <span class="${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${esc(ecart)}</span>` : ''}</div>`;
 }
 function boardHTML(m, evs, staff){
   const c = clubSide(m);
