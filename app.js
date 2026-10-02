@@ -84,7 +84,7 @@ const goals = (evs, t) => evs.filter(e=>e.k==='goal' && e.t===t).length;
 const rosterOf = (m, t) => ((m.rosters||{})[t]||[]);
 const nameOf = (m, t, n) => { const p = rosterOf(m,t).find(p=>p.n===String(n)); return p ? p.name : ''; };
 const who = (m, t, n, none) => n === 'CSC' ? 'Contre son camp (CSC)' : n ? `n°${n}${nameOf(m,t,n) ? ' ' + nameOf(m,t,n) : ''}` : none;
-const rosterSorted = (m, t) => [...rosterOf(m,t)].sort((a,b)=>(+a.n)-(+b.n));
+const rosterSorted = (m, t) => [...rosterOf(m,t)].sort((a,b)=>(+a.n || 999)-(+b.n || 999)); // sans numéro : à la fin
 
 function elapsedMs(m){ return (+m.acc||0) + (m.running ? Date.now() - (+m.started_at||0) : 0); }
 function currentMinute(m){
@@ -185,6 +185,15 @@ function delegPickHTML(id, cur, curNom, disabled){
   return `<button type="button" class="dpick" id="${id}" data-value="${esc(cur || '')}"${disabled ? ' disabled' : ''}><span>${esc(o ? o.nom : 'Non défini (par défaut : responsable d’équipe)')}</span>${disabled ? '' : '<i aria-hidden="true">🔍</i>'}</button>`;
 }
 const sansAccent = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+// distance entre deux mots (lettres \u00e0 changer / ajouter / retirer) : sert \u00e0 reconna\u00eetre un nom mal lu sur une photo
+function levenshtein(a, b){
+  const d = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++){
+    let prev = d[0]; d[0] = i;
+    for (let j = 1; j <= b.length; j++){ const t = d[j]; d[j] = Math.min(d[j] + 1, d[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = t; }
+  }
+  return d[b.length];
+}
 function bindDelegPick(btn, curNom, onPick){
   if (!btn || btn.disabled) return;
   btn.onclick = () => {
@@ -487,7 +496,7 @@ function boardHTML(m, evs, staff){
   </section>`;
 }
 function lineupsHTML(m){
-  const li = p => `<li><b>${esc(p.n)}</b><span>${esc(p.name)}</span></li>`;
+  const li = p => `<li><b>${esc(p.n || "–")}</b><span>${esc(p.name)}</span></li>`;
   const side = t => {
     const list = rosterSorted(m,t);
     if (!list.length) return `<div><h3>${esc(teamName(m,t))}</h3><p class="nolu">Pas encore saisie</p></div>`;
@@ -781,8 +790,8 @@ async function consoleView(id, openCompo){
 
   // Saisie d'un numéro de joueur
   function askNumber(title, sub, minLabel, cb, t, choices, csc){
-    let val = '';
-    const chips = (choices||[]).map(p=>`<button class="chip${p.bench?' bench':''}" data-c="${esc(p.n)}"><b>${esc(p.n)}</b><span>${esc(p.name)}</span></button>`).join('');
+    let val = '', pending = null; // pending : joueur de la compo sans numéro, dont on tape le numéro
+    const chips = (choices||[]).map(p=>`<button class="chip${p.bench?' bench':''}${p.n ? '' : ' nonum'}" data-c="${esc(p.n)}" data-nm="${esc(p.name)}"><b>${esc(p.n || '?')}</b><span>${esc(p.name)}</span></button>`).join('');
     openSheet(`
       <h3 id="shTitle">${esc(title)}</h3><p>${esc(sub)}${chips ? ' · touche un joueur ou tape son numéro' : ''}</p>
       ${chips ? `<div class="chips">${chips}</div>` : ''}
@@ -799,12 +808,29 @@ async function consoleView(id, openCompo){
       <button class="cancel" id="cancel">Annuler</button>`);
     const disp = $('disp');
     const done = v => { const m = $('minEdit').value.trim() || minLabel; closeSheet(); cb(v, m); };
-    const upd = () => { disp.textContent = val || 'Numéro du joueur'; disp.classList.toggle('empty-n', !val); $('pname').textContent = val ? nameOf(S,t,val) : ''; };
-    $('shBody').querySelectorAll('.chip').forEach(c => c.onclick = () => done(c.dataset.c));
+    const upd = () => {
+      disp.textContent = val || (pending ? 'Numéro de ' + pending : 'Numéro du joueur'); disp.classList.toggle('empty-n', !val);
+      $('pname').textContent = pending ? pending : val ? nameOf(S,t,val) : '';
+    };
+    // joueur sans numéro : on tape son numéro, il est enregistré dans la compo puis l'action est notée
+    const assign = () => {
+      const n = String(+val);
+      const r = rosterOf(S,t);
+      if (r.some(p => p.n === n)){ toast(`Le n°${n} est déjà pris par ${nameOf(S,t,n)}`); return; }
+      const i = r.findIndex(p => !p.n && p.name === pending);
+      if (i < 0){ done(n); return; }
+      const rosters = { ...(S.rosters || {}) }; rosters[t] = r.map((p, k) => k === i ? { ...p, n } : p);
+      patch({ rosters });
+      done(n);
+    };
+    $('shBody').querySelectorAll('.chip').forEach(c => c.onclick = () => {
+      if (c.dataset.c) return done(c.dataset.c);
+      pending = c.dataset.nm; val = ''; upd(); toast('Tape le numéro de ' + pending + ' puis Valider');
+    });
     $('shBody').querySelectorAll('.key').forEach(k => k.onclick = () => {
       const n = k.dataset.n;
       if (n==='back') val = val.slice(0,-1);
-      else if (n==='ok') { done(val ? String(+val) : ''); return; }
+      else if (n==='ok') { if (pending && val) return assign(); done(val ? String(+val) : ''); return; }
       else if (val.length < 3) val += n;
       upd();
     });
@@ -902,11 +928,43 @@ async function consoleView(id, openCompo){
     let cur = order[0], paste = false, errs = new Set(), msg = '';
     const counts = t => { const tit = ed[t].filter(p=>!p.sub).length; return {tit, rem: ed[t].length - tit}; };
     const nextNum = t => { const used = new Set(ed[t].map(p=>+p.n).filter(Boolean)); let n = 1; while (used.has(n)) n++; return String(n); };
+    // sans numéro connu, la case reste vide (« n° à venir ») : la photo de la feuille la complétera
     const addPlayer = (t, p) => ed[t].push({
-      n: p.n && !ed[t].some(x => x.n === String(p.n)) ? String(p.n) : nextNum(t),
+      n: !p.n ? '' : !ed[t].some(x => x.n === String(p.n)) ? String(p.n) : nextNum(t),
       name: p.name || '',
       sub: p.sub !== undefined ? p.sub : counts(t).tit >= 11
     });
+    // Photo sur une compo déjà préparée : on reconnaît chaque joueur par son nom (même mal lu, ou « NOM Prénom »),
+    // on complète son numéro et titulaire / remplaçant en gardant l'orthographe saisie ; les inconnus sont ajoutés
+    const memeJoueur = (a, b) => {
+      const mots = s => sansAccent(s).replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean);
+      const A = mots(a), B = mots(b);
+      if (!A.length || !B.length) return false;
+      const proche = (x, y) => x === y || (x.length >= 4 && y.length >= 4 && levenshtein(x, y) <= (Math.min(x.length, y.length) >= 7 ? 2 : 1));
+      // un mot long (nom de famille) en commun, et les autres mots compatibles (même initiale)
+      for (const x of A) for (const y of B) {
+        if (x.length < 3 || y.length < 3 || !proche(x, y)) continue;
+        const ra = A.filter(w => w !== x), rb = B.filter(w => w !== y);
+        if (!ra.length || !rb.length || ra.some(u => rb.some(v => u[0] === v[0]))) return true;
+      }
+      return false;
+    };
+    function mergePhoto(t, lus){
+      const deja = ed[t], vus = new Set();
+      let num = 0, ajout = 0;
+      const lien = lus.map(p => { const i = deja.findIndex((q, k) => !vus.has(k) && memeJoueur(q.name, p.name)); if (i >= 0) vus.add(i); return i; });
+      // les numéros de la photo font foi : on libère ceux déjà pris par un autre joueur
+      const pris = new Set(lus.map(p => String(p.n)));
+      deja.forEach((q, k) => { if (!vus.has(k) && pris.has(String(q.n))) q.n = ''; });
+      lus.forEach((p, j) => {
+        const i = lien[j];
+        if (i >= 0){ const q = deja[i]; if (q.n !== String(p.n)) num++; q.n = String(p.n); if (p.sub !== undefined) q.sub = p.sub; }
+        else { addPlayer(t, p); ajout++; }
+      });
+      const absents = deja.filter((q, k) => k < deja.length - ajout && !vus.has(k)).map(q => q.name);
+      deja.forEach(q => { q.absent = absents.includes(q.name); });
+      return { num, ajout, absents };
+    }
     const plural = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
 
     function draw(focusLast){
@@ -921,8 +979,8 @@ async function consoleView(id, openCompo){
         <div class="ocrstat" id="luStat"></div>
         ${paste ? `<textarea id="luText" placeholder="10 DUPONT Lucas&#10;7 MARTIN Hugo&#10;14 BERNARD Léo R"></textarea>
           <button type="button" class="fbtn" id="luParse" style="width:100%;margin:6px 0 10px">Ajouter ces joueurs</button>` : ''}
-        <div class="lurows">${ed[cur].map((p, i) => `<div class="lrow${p.sub ? ' sub' : ''}${errs.has(cur + i) ? ' err' : ''}" data-i="${i}">
-            <input class="ln" inputmode="numeric" pattern="[0-9]*" maxlength="3" value="${esc(p.n)}" aria-label="Numéro">
+        <div class="lurows">${ed[cur].map((p, i) => `<div class="lrow${p.sub ? ' sub' : ''}${errs.has(cur + i) ? ' err' : ''}${p.absent ? ' absent' : ''}" data-i="${i}"${p.absent ? ' title="Pas trouvé sur la photo"' : ''}>
+            <input class="ln" inputmode="numeric" pattern="[0-9]*" maxlength="3" value="${esc(p.n)}" placeholder="n°" aria-label="Numéro">
             <input class="lname" value="${esc(p.name)}" placeholder="Nom Prénom" autocomplete="off" enterkeyhint="next" list="luNames" aria-label="Nom du joueur">
             <button type="button" class="ltog" aria-label="Titulaire ou remplaçant">${p.sub ? 'Remp.' : 'Titul.'}</button>
             <button type="button" class="ldel" aria-label="Retirer ce joueur">×</button></div>`).join('')
@@ -957,13 +1015,17 @@ async function consoleView(id, openCompo){
       $('luFile').onchange = async ev => {
         const file = ev.target.files[0]; ev.target.value = '';
         if (file) await readSheetPhoto(file, $('luStat'), teams => {
-          let txt;
-          if (teams.length === 2){
-            // tablette FFF : équipe recevante à gauche, visiteuse à droite ; remplace les listes
-            ed.H = []; ed.A = []; teams[0].forEach(p => addPlayer('H', p)); teams[1].forEach(p => addPlayer('A', p));
-            txt = `${plural(teams[0].length, 'joueur')} pour ${teamName(S,'H')} et ${teams[1].length} pour ${teamName(S,'A')}, lus sur la photo.`;
-          } else { const t = cur; teams[0].forEach(p => addPlayer(t, p)); txt = `${plural(teams[0].length, 'joueur')} ajouté${teams[0].length > 1 ? 's' : ''} depuis la photo.`; }
-          draw(); $('luStat').textContent = txt + ' Vérifie les noms et les remplaçants.';
+          // compo déjà préparée : fusion (numéros complétés) ; sinon on remplit avec ce qui est lu
+          const remplir = (t, lus) => {
+            if (!ed[t].length){ lus.forEach(p => addPlayer(t, p)); return `${plural(lus.length, 'joueur')} lu${lus.length > 1 ? 's' : ''} pour ${teamName(S,t)}`; }
+            const r = mergePhoto(t, lus);
+            return `${teamName(S,t)} : ${plural(r.num, 'numéro')} complété${r.num > 1 ? 's' : ''}`
+              + (r.ajout ? `, ${plural(r.ajout, 'joueur')} ajouté${r.ajout > 1 ? 's' : ''}` : '')
+              + (r.absents.length ? `, ${plural(r.absents.length, 'joueur')} pas trouvé${r.absents.length > 1 ? 's' : ''} sur la photo (${r.absents.join(', ')})` : '');
+          };
+          // tablette FFF : équipe recevante à gauche, visiteuse à droite
+          const txt = teams.length === 2 ? remplir('H', teams[0]) + ' · ' + remplir('A', teams[1]) : remplir(cur, teams[0]);
+          draw(); $('luStat').textContent = txt + '. Vérifie les noms et les remplaçants.';
         });
       };
       $('luSave').onclick = save;
@@ -979,14 +1041,18 @@ async function consoleView(id, openCompo){
         const seen = {};
         ed[t].forEach((p, i) => {
           p.name = (p.name || '').trim();
-          if (!p.n || !p.name){ errs.add(t + i); msg = msg || `${teamName(S,t)} : il manque un numéro ou un nom.`; }
+          // le numéro peut rester vide (compo préparée avant le match), pas le nom
+          if (!p.name){ errs.add(t + i); msg = msg || `${teamName(S,t)} : il manque un nom.`; }
+          else if (!p.n) return;
           else if (seen[p.n] !== undefined){ errs.add(t + i); errs.add(t + seen[p.n]); msg = msg || `${teamName(S,t)} : le n°${p.n} est utilisé deux fois.`; }
           else seen[p.n] = i;
         });
         out[t] = [...ed[t].filter(p=>!p.sub), ...ed[t].filter(p=>p.sub)].map(p => ({n:p.n, name:p.name, sub:!!p.sub}));
       }
       if (errs.size){ cur = [...errs][0][0]; draw(); return; }
-      patch({rosters: out}); closeSheet(); render(); toast('Compositions enregistrées');
+      const sansNum = order.reduce((s, t) => s + out[t].filter(p => !p.n).length, 0);
+      patch({rosters: out}); closeSheet(); render();
+      toast(sansNum ? `Compositions enregistrées · ${plural(sansNum, 'joueur')} sans numéro` : 'Compositions enregistrées');
     }
 
     draw();
