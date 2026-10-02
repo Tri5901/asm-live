@@ -941,13 +941,32 @@ async function consoleView(id, openCompo){
       const A = mots(a), B = mots(b);
       if (!A.length || !B.length) return false;
       const proche = (x, y) => x === y || (x.length >= 4 && y.length >= 4 && levenshtein(x, y) <= (Math.min(x.length, y.length) >= 7 ? 2 : 1));
-      // un mot long (nom de famille) en commun, et les autres mots compatibles (même initiale)
-      for (const x of A) for (const y of B) {
-        if (x.length < 3 || y.length < 3 || !proche(x, y)) continue;
-        const ra = A.filter(w => w !== x), rb = B.filter(w => w !== y);
-        if (!ra.length || !rb.length || ra.some(u => rb.some(v => u[0] === v[0]))) return true;
+      // chaque mot du nom le plus court doit correspondre à un mot de l'autre : mot proche (faute de lecture ou de frappe)
+      // ou initiale (« Lucas G. », « LESEIGNEUR A. ») ; au moins un mot complet en commun.
+      // « Thomas Besson » ≠ « Thomas Blandin » : Besson et Blandin ne sont ni proches ni des initiales.
+      const [C, L] = A.length <= B.length ? [A, B] : [B, A];
+      const pris = new Set();
+      let complet = false;
+      for (const x of C){
+        let j = L.findIndex((y, k) => !pris.has(k) && x.length >= 2 && y.length >= 2 && proche(x, y));
+        if (j >= 0) complet = true;
+        else j = L.findIndex((y, k) => !pris.has(k) && (x.length === 1 || y.length === 1) && x[0] === y[0]);
+        if (j < 0) return false;
+        pris.add(j);
       }
-      return false;
+      return complet;
+    };
+    // joueur déjà venu dont le nom ressemble (faute de frappe, « NOM Prénom », « Lucas G. »…) ; un seul candidat, sinon rien
+    const connu = name => {
+      if (!name || !pastPlayers) return null;
+      const c = pastPlayers.filter(k => memeJoueur(k.name, name));
+      return c.length === 1 ? c[0] : (c.find(k => playerKey(k.name) === playerKey(name)) || null);
+    };
+    // pour « Voulais-tu dire… ? » : seulement si le nom n'est pas déjà exactement celui d'un joueur connu
+    const sosie = (name, i) => {
+      if (!name || !pastPlayers || pastPlayers.some(k => playerKey(k.name) === playerKey(name))) return null;
+      const k = connu(name);
+      return k && !ed[cur].some((x, j) => j !== i && playerKey(x.name) === playerKey(k.name)) ? k : null;
     };
     function mergePhoto(t, lus){
       const deja = ed[t], vus = new Set();
@@ -983,7 +1002,10 @@ async function consoleView(id, openCompo){
             <input class="ln" inputmode="numeric" pattern="[0-9]*" maxlength="3" value="${esc(p.n)}" placeholder="n°" aria-label="Numéro">
             <input class="lname" value="${esc(p.name)}" placeholder="Nom Prénom" autocomplete="off" enterkeyhint="next" list="luNames" aria-label="Nom du joueur">
             <button type="button" class="ltog" aria-label="Titulaire ou remplaçant">${p.sub ? 'Remp.' : 'Titul.'}</button>
-            <button type="button" class="ldel" aria-label="Retirer ce joueur">×</button></div>`).join('')
+            <button type="button" class="ldel" aria-label="Retirer ce joueur">×</button></div>${(() => {
+              const k = cur === clubSide(S) && sosie(p.name, i);
+              return k ? `<button type="button" class="lsosie" data-i="${i}">Voulais-tu dire <b>${esc(k.name)}</b>${k.n ? ` (n°${esc(k.n)})` : ''} ?</button>` : '';
+            })()}`).join('')
           || '<div class="empty">Aucun joueur. Ajoute-les un par un, ou utilise la photo de la feuille.</div>'}</div>
         <button type="button" class="fbtn" id="luAdd" style="width:100%">+ Ajouter un joueur</button>
         ${sugg.length ? `<div class="lusug-t">Joueurs déjà venus · touche pour ajouter</div>
@@ -1003,9 +1025,17 @@ async function consoleView(id, openCompo){
           const known = (pastPlayers || []).find(x => x.name === nm.value);
           if (known && !ed[cur].some((x, k) => k !== i && x.n === known.n)) { p.n = known.n; num.value = known.n; }
         };
+        nm.onchange = () => { if (cur === clubSide(S) && sosie(p.name, i)) draw(); }; // nom proche d'un joueur connu : propose-le
         nm.onkeydown = e => { if (e.key === 'Enter'){ e.preventDefault(); addPlayer(cur, {}); draw(true); } };
         row.querySelector('.ltog').onclick = () => { p.sub = !p.sub; draw(); };
         row.querySelector('.ldel').onclick = () => { ed[cur].splice(i, 1); errs.clear(); draw(); };
+      });
+      body.querySelectorAll('.lsosie').forEach(b => b.onclick = () => {
+        const i = +b.dataset.i, p = ed[cur][i], k = sosie(p.name, i);
+        if (!k) return;
+        p.name = k.name;
+        if (k.n && !ed[cur].some((x, j) => j !== i && x.n === String(k.n))) p.n = String(k.n);
+        draw();
       });
       $('luAdd').onclick = () => { addPlayer(cur, {}); draw(true); };
       body.querySelectorAll('.lusug button').forEach(b => b.onclick = () => { addPlayer(cur, sugg[+b.dataset.j]); draw(); });
@@ -1017,9 +1047,13 @@ async function consoleView(id, openCompo){
         if (file) await readSheetPhoto(file, $('luStat'), teams => {
           // compo déjà préparée : fusion (numéros complétés) ; sinon on remplit avec ce qui est lu
           const remplir = (t, lus) => {
-            if (!ed[t].length){ lus.forEach(p => addPlayer(t, p)); return `${plural(lus.length, 'joueur')} lu${lus.length > 1 ? 's' : ''} pour ${teamName(S,t)}`; }
+            // notre équipe : un nom lu qui ressemble à un joueur déjà venu prend son orthographe habituelle
+            let rec = 0;
+            if (t === clubSide(S)) lus = lus.map(p => { const k = connu(p.name); if (k && k.name !== p.name){ rec++; return { ...p, name: k.name }; } return p; });
+            const recTxt = rec ? ` (${plural(rec, 'nom')} rattaché${rec > 1 ? 's' : ''} aux joueurs déjà venus)` : '';
+            if (!ed[t].length){ lus.forEach(p => addPlayer(t, p)); return `${plural(lus.length, 'joueur')} lu${lus.length > 1 ? 's' : ''} pour ${teamName(S,t)}${recTxt}`; }
             const r = mergePhoto(t, lus);
-            return `${teamName(S,t)} : ${plural(r.num, 'numéro')} complété${r.num > 1 ? 's' : ''}`
+            return `${teamName(S,t)} : ${plural(r.num, 'numéro')} complété${r.num > 1 ? 's' : ''}${recTxt}`
               + (r.ajout ? `, ${plural(r.ajout, 'joueur')} ajouté${r.ajout > 1 ? 's' : ''}` : '')
               + (r.absents.length ? `, ${plural(r.absents.length, 'joueur')} pas trouvé${r.absents.length > 1 ? 's' : ''} sur la photo (${r.absents.join(', ')})` : '');
           };
@@ -1550,6 +1584,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
         ${multi ? `<div><span>Doublés ou mieux</span><b>${multi}</b></div>` : ''}
         ${best && best.goals.length ? `<div><span>Meilleur match</span><b>${best.goals.length} but${best.goals.length>1?'s':''} contre ${esc(opp(best.m))}</b></div>` : ''}
       </div>
+      ${isStaff() ? `<button type="button" class="fbtn" id="pMerge" style="width:100%;margin-top:12px">Fusionner avec un autre joueur (doublon)…</button>` : ''}
       <div class="sec">Historique des matchs</div>
       ${hist.map(h => {
         const m = h.m, role = !h.played ? 'Sur le banc, pas entré' : h.p.sub ? `Entré à la ${h.start}e` : 'Titulaire';
@@ -1563,7 +1598,44 @@ async function statsViewFrom(playerArg, { ms, evs }){
       }).join('') || '<div class="empty">Aucun match avec ce filtre.</div>'}
       <p class="note">Temps de jeu calculé sur 90 minutes à partir des remplacements et cartons rouges saisis (temps additionnel non compté).</p>`;
     view.querySelectorAll('[data-comp]').forEach(b => b.onclick = () => { statComp = b.dataset.comp; drawPlayer(key); });
+    if ($('pMerge')) $('pMerge').onclick = () => fusionJoueur(key, name);
     document.title = name + ' · Stats · AS Mésanger';
+  }
+  // Doublon (faute de frappe, nom abrégé…) : tous les matchs de ce joueur passent sous le nom choisi
+  function fusionJoueur(key, name){
+    const noms = new Map(), variantes = new Set();
+    ms.forEach(m => ['H', 'A'].forEach(s => (((m.rosters || {})[s]) || []).forEach(p => {
+      if (!p.name || s !== m.club_side) return;
+      const k = playerKey(p.name);
+      if (k === key){ variantes.add(p.name); return; }
+      const e = noms.get(k) || { k, name: p.name, nb: 0 }; e.nb++; noms.set(k, e);
+    })));
+    const all = [...noms.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    openSheet(`<div class="dphead"><h3 id="shTitle">Fusionner « ${esc(name)} »</h3><button type="button" class="dpclose" id="fjNo">Annuler</button></div>
+      <p>Choisis le bon joueur : tous les matchs de « ${esc(name)} » passeront sous son nom.</p>
+      <input id="fjQ" class="dpq" type="search" placeholder="Rechercher un nom…" autocomplete="off" enterkeyhint="search">
+      <div class="alist dplist" id="fjList"></div>`, 'tall');
+    const list = $('fjList'), q = $('fjQ');
+    const drawList = () => {
+      const words = sansAccent(q.value).split(/\s+/).filter(Boolean);
+      const f = all.filter(o => words.every(w => sansAccent(o.name).includes(w)));
+      list.innerHTML = f.map(o => `<button type="button" class="arow dprow" data-k="${esc(o.k)}"><div class="who"><b>${esc(o.name)}</b><small>${o.nb} match${o.nb > 1 ? 's' : ''}</small></div></button>`).join('')
+        || '<div class="empty">Personne ne correspond à cette recherche.</div>';
+      list.querySelectorAll('[data-k]').forEach(b => b.onclick = () => {
+        const cible = noms.get(b.dataset.k);
+        askConfirm(`Fusionner « ${name} » avec « ${cible.name} » ?`,
+          `Dans toutes les compos, « ${[...variantes].join(' », « ')} » sera remplacé par « ${cible.name} ». Les stats des deux seront regroupées.`,
+          'Fusionner', async () => {
+            const { data, error } = await sb.rpc('fusionner_joueur', { p_anciens: [...variantes], p_nouveau: cible.name });
+            if (error){ toast(isNetErr(error) ? 'Pas de réseau' : 'Fusion refusée'); return; }
+            lsSet('asm-stats', null);
+            toast(`Fusion faite (${data} match${data > 1 ? 's' : ''})`);
+            location.hash = '#/stats/joueur/' + encodeURIComponent(cible.k);
+          });
+      });
+    };
+    q.oninput = drawList; drawList();
+    $('fjNo').onclick = closeSheet;
   }
 }
 
