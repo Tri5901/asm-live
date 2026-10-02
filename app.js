@@ -299,6 +299,7 @@ setInterval(flush, 15000);
 // ---------- Routeur ----------
 let cleanup = null;
 async function route(){
+  route.cur = (route.cur || 0) + 1;
   if (cleanup){ try{ cleanup(); }catch(e){} cleanup = null; }
   closeSheet();
   const parts = (location.hash.replace(/^#\/?/, '') || '').split('/');
@@ -377,6 +378,7 @@ async function homeView(){
     drawHome(matches, g||[]);
   };
   await load();
+  prefetch();
   const reload = debounce(load, 400);
   const off = liveChannel('home', reload, [{event:'*', table:'matches'}, {event:'*', table:'events'}]);
   const tick = setInterval(() => document.querySelectorAll('[data-live]').forEach(el => {
@@ -489,11 +491,46 @@ function lineupsHTML(m){
     + (has ? `<div class="lineups">${side('H')}${side('A')}</div>` : '<div class="empty">Compo pas encore saisie.</div>')
     + '</section>';
 }
+// Préchargement discret (une fois par ouverture de l'appli) : Classements et Stats s'affichent ensuite tout de suite
+let prefetched = false;
+function prefetch(){
+  if (prefetched) return; prefetched = true;
+  setTimeout(async () => {
+    try{ const { data } = await sb.from('classements').select('*').order('equipe'); if (data) lsSet('asm-cls', data); }catch(e){}
+    try{
+      const [{ data: ms }, { data: evs }] = await Promise.all([
+        sb.from('matches').select('id,kickoff,equipe,club_side,rosters,status,competition,home_name,away_name,opp_logo').neq('status','prevu'),
+        sb.from('events').select('match_id,t,k,n,in_n,out_n,min,sort')
+      ]);
+      if (ms && evs) lsSet('asm-stats', { ms, evs });
+    }catch(e){}
+  }, 2500);
+}
+// dernière version vue de chaque match, gardée sur le téléphone (affichage immédiat si le réseau est lent)
+const matchCache = {
+  get: id => lsGet('asm-m-' + id, null),
+  set: (id, r) => {
+    lsSet('asm-m-' + id, r);
+    const ids = lsGet('asm-m-ids', []).filter(x => x !== id); ids.unshift(id);
+    ids.slice(30).forEach(x => { try{ localStorage.removeItem('asm-m-' + x); }catch(e){} });
+    lsSet('asm-m-ids', ids.slice(0, 30));
+  }
+};
 async function matchView(id){
-  view.innerHTML = '<div class="loading">Chargement…</div>';
-  if (isStaff()) await loadDelegues().catch(()=>{});
-  if (isAdmin()) await loadPeople().catch(()=>{});
-  let { m, evs } = await fetchMatch(id);
+  const here = () => location.hash.includes(id);
+  const fresh = (async () => {
+    if (isStaff()) await loadDelegues().catch(()=>{});
+    if (isAdmin()) await loadPeople().catch(()=>{});
+    const r = await fetchMatch(id);
+    if (r.m) matchCache.set(id, r);
+    return r;
+  })();
+  // pas encore ouvert sur ce téléphone : tableau d'affichage tout de suite avec les infos de l'accueil
+  const fromHome = () => { const c = lsGet('asm-home', null), hm = c && (c.matches || []).find(x => x.id === id); return hm ? { m: { ...hm, _partiel: true }, evs: (c.goals || []).filter(g => g.match_id === id).map(g => ({ k: 'goal', t: g.t })) } : null; };
+  const cached = matchCache.get(id) || fromHome();
+  if (!cached) view.innerHTML = '<div class="loading">Chargement…</div>';
+  let { m, evs } = cached || await fresh;
+  if (!here()) return;
   if (!m){ view.innerHTML = '<div class="empty">Ce match n\'existe plus.</div>'; return; }
   const draw = () => {
     view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false)
@@ -501,9 +538,9 @@ async function matchView(id){
       + (canManage(m) ? `<a class="fbtn primary big" href="#/gerer/${esc(m.id)}">Gérer ce match</a>` : '')
       + (isStaff() || m.delegue_nom ? `<div class="field deleg"><span>Délégué du match</span>${delegPickHTML('delSel', m.delegue_id, m.delegue_nom, !isTeamManager(m.equipe))}${canManage(m) && !isTeamManager(m.equipe) ? '<small>Seul le responsable de l’équipe (ou un admin) peut changer le délégué.</small>' : isStaff() && !canManage(m) ? '<small>Seuls le responsable de l’équipe, le délégué désigné ou un admin peuvent modifier ce match.</small>' : ''}</div>` : '')
       + (isAdmin() && people ? `<div class="audit">Match créé par ${esc(personName(m.created_by))}${m.rosters_at ? ` · Compo saisie par ${esc(personName(m.rosters_by))} le ${esc(fmtDate(m.rosters_at))}` : ''}</div>` : '')
-      + (m.status==='prevu' ? lineupsHTML(m) : '')
+      + (m._partiel ? '<div class="loading">Chargement des détails…</div>' : (m.status==='prevu' ? lineupsHTML(m) : '')
       + `<section class="log"><div class="loghead"><h2>Chronologie</h2></div><div id="events">${timelineHTML(m, evs, false)}</div></section>`
-      + (m.status!=='prevu' ? lineupsHTML(m) : '');
+      + (m.status!=='prevu' ? lineupsHTML(m) : ''));
     $('btnShareLive').onclick = () => shareLink(m);
     $('btnBell').onclick = () => openBell(m.equipe || 1);
     if ($('compoVis')) $('compoVis').onclick = async () => {
@@ -523,7 +560,12 @@ async function matchView(id){
     document.title = `${teamName(m,'H')} ${goals(evs,'H')}–${goals(evs,'A')} ${teamName(m,'A')} · AS Mésanger`;
   };
   draw();
-  const reload = debounce(async () => { try{ const r = await fetchMatch(id); if (r.m){ m = r.m; evs = r.evs; draw(); } }catch(e){} }, 300);
+  if (cached) fresh.then(r => {
+    if (!here()) return;
+    if (!r.m){ view.innerHTML = '<div class="empty">Ce match n\'existe plus.</div>'; return; }
+    m = r.m; evs = r.evs; draw();
+  }).catch(() => { const l = m._partiel && here() && view.querySelector('.loading'); if (l) l.textContent = 'Pas de réseau pour l’instant : les détails s’afficheront dès qu’il revient.'; });
+  const reload = debounce(async () => { try{ const r = await fetchMatch(id); if (r.m){ matchCache.set(id, r); if (!here()) return; m = r.m; evs = r.evs; draw(); } }catch(e){} }, 300);
   const off = liveChannel('match', reload, [
     {event:'*', table:'matches', filter:`id=eq.${id}`},
     {event:'*', table:'events', filter:`match_id=eq.${id}`},
@@ -1169,14 +1211,18 @@ const CLUB_FFF = '516995';
 const clsF = { cat: '', team: 0 };
 async function classementsView(){
   let rows = lsGet('asm-cls', null), maj = null;
-  if (!rows) view.innerHTML = '<div class="loading">Chargement…</div>';
-  try{
+  const tok = route.cur, cachedFirst = !!rows;
+  const fetchCls = async () => {
     const { data, error } = await sb.from('classements').select('*').order('equipe');
     if (error) throw error;
     rows = data; lsSet('asm-cls', data);
     if (isAdmin()){ const r2 = await sb.from('classements_maj').select('*').maybeSingle(); maj = r2.data; }
-  }catch(e){ if (!rows) throw e; }
-  const byTeam = {}; (rows || []).forEach(r => { byTeam[r.equipe] = r; });
+  };
+  // avec une copie sur le téléphone : affichage immédiat, mise à jour quand le réseau répond
+  if (!rows){ view.innerHTML = '<div class="loading">Chargement…</div>'; await fetchCls(); }
+  const byTeam = {};
+  const index = () => { Object.keys(byTeam).forEach(k => delete byTeam[k]); (rows || []).forEach(r => { byTeam[r.equipe] = r; }); };
+  index();
   let openClub = null;
   const rankOf = n => { const r = byTeam[n]; const l = r && r.lignes.find(x => x[10] === CLUB_FFF); return l ? l[0] : null; };
   const draw = () => {
@@ -1246,6 +1292,7 @@ async function classementsView(){
     };
   };
   draw();
+  if (cachedFirst) fetchCls().then(() => { if (route.cur === tok && location.hash.startsWith('#/classements')){ index(); draw(); } }).catch(() => {});
 }
 
 // ---------- Stats joueurs ----------
@@ -1256,12 +1303,27 @@ function playerKey(name){
   return name.normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[^A-Z ]/g,' ').split(/\s+/).filter(Boolean).sort().join(' ');
 }
 async function statsView(playerArg){
-  view.innerHTML = '<div class="loading">Chargement…</div>';
-  const [{ data: ms, error }, { data: evs, error: e2 }] = await Promise.all([
-    sb.from('matches').select('id,kickoff,equipe,club_side,rosters,status,competition,home_name,away_name,opp_logo').neq('status','prevu'),
-    sb.from('events').select('match_id,t,k,n,in_n,out_n,min,sort')
-  ]);
-  if (error || e2) throw (error || e2);
+  const load = async () => {
+    const [{ data: ms, error }, { data: evs, error: e2 }] = await Promise.all([
+      sb.from('matches').select('id,kickoff,equipe,club_side,rosters,status,competition,home_name,away_name,opp_logo').neq('status','prevu'),
+      sb.from('events').select('match_id,t,k,n,in_n,out_n,min,sort')
+    ]);
+    if (error || e2) throw (error || e2);
+    const r = { ms, evs }; lsSet('asm-stats', r); return r;
+  };
+  // affichage immédiat avec la dernière copie, puis mise à jour quand le réseau répond
+  const cached = lsGet('asm-stats', null);
+  if (!cached) view.innerHTML = '<div class="loading">Chargement…</div>';
+  const fresh = load();
+  // (pas pendant une recherche, pour ne pas fermer le clavier)
+  if (cached) fresh.then(() => { if (location.hash.startsWith('#/stats') && route.cur === statsView.tok && document.activeElement?.id !== 'statQ') statsView.redo(); }).catch(() => {});
+  const { ms, evs } = cached || await fresh;
+  if (!location.hash.startsWith('#/stats')) return;
+  statsView.tok = route.cur;
+  statsView.redo = () => { statsViewFrom(playerArg, lsGet('asm-stats', null)); };
+  return statsViewFrom(playerArg, { ms, evs });
+}
+async function statsViewFrom(playerArg, { ms, evs }){
   const seasons = [...new Set(ms.map(m=>seasonOf(m.kickoff)))].sort().reverse();
   if (!statSeason || !seasons.includes(statSeason)) statSeason = seasons[0] || null;
   const draw = () => {

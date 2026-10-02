@@ -1,6 +1,6 @@
 // Service worker AS Mésanger – Feuille de match
 // Incrémente VERSION à chaque mise en ligne pour que les téléphones récupèrent la nouvelle version.
-const VERSION = 'asm-v64';
+const VERSION = 'asm-v69';
 const APP_SHELL = [
   './',
   './index.html',
@@ -17,7 +17,8 @@ const APP_SHELL = [
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(VERSION).then(c => c.addAll(APP_SHELL)).then(() => self.skipWaiting()));
+  // cache: 'reload' : toujours les fichiers frais du serveur (jamais une vieille copie du navigateur)
+  event.waitUntil(caches.open(VERSION).then(c => c.addAll(APP_SHELL.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', event => {
@@ -33,14 +34,13 @@ self.addEventListener('fetch', event => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // Page : réseau d'abord (pour avoir la dernière version), cache si pas de réseau
+  // Page : copie du téléphone d'abord (ouverture immédiate même avec peu de réseau).
+  // Les fichiers en cache sont ceux de cette VERSION : une mise en ligne installe un nouveau service worker
+  // avec les nouveaux fichiers, et l'appli propose de relancer.
   if (req.mode === 'navigate') {
     event.respondWith(
-      fetch(req).then(res => {
-        const copy = res.clone();
-        caches.open(VERSION).then(c => c.put('./index.html', copy));
-        return res;
-      }).catch(() => caches.match('./index.html'))
+      caches.open(VERSION).then(c => c.match('./index.html')).then(hit => hit || fetch(req))
+        .catch(() => caches.match('./index.html'))
     );
     return;
   }
@@ -49,14 +49,14 @@ self.addEventListener('fetch', event => {
   const sameOrigin = url.origin === self.location.origin;
   if (sameOrigin && url.pathname.startsWith('/api/')) return;
 
-  // Fichiers de l'appli : réseau d'abord (toujours la dernière version),
-  // copie locale si pas de réseau ou réseau trop lent (bord du terrain)
+  // Fichiers de l'appli : copie de cette VERSION d'abord (pas d'attente du réseau), sinon réseau
   if (sameOrigin) {
-    event.respondWith(caches.open(VERSION).then(cache => {
-      const net = fetch(req).then(res => { if (res && res.ok) cache.put(req, res.clone()); return res; });
-      const slow = new Promise(r => setTimeout(r, 4000)).then(() => cache.match(req).then(hit => hit || net));
-      return Promise.race([net, slow]).catch(() => cache.match(req).then(hit => hit || Response.error()));
-    }));
+    event.respondWith(caches.open(VERSION).then(cache =>
+      cache.match(req, { ignoreSearch: true }).then(hit => hit || fetch(req).then(res => {
+        if (res && res.ok) cache.put(req, res.clone());
+        return res;
+      }))
+    ));
     return;
   }
 
