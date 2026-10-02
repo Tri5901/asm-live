@@ -454,26 +454,31 @@ async function fetchMatch(id){
 }
 // Matchs de coupe : niveau des deux équipes (le nôtre = championnat de l'équipe, celui de l'adversaire est relevé sur la FFF)
 const NIV_ORDRE = t => { const m = String(t || '').match(/(National|Régional|District)\s*(\d+)/i); if (!m) return null; return ({ national: 0, 'régional': 3, district: 6 })[m[1].toLowerCase()] + (+m[2]); };
-function niveauHTML(m){
-  if (!m.opp_niveau || !/coupe|challenge|troph/i.test(m.competition || '')) return '';
+// { H: 'District 2', A: 'District 3', d } (d > 0 : adversaire au-dessus) ou null hors coupe / niveau inconnu
+function niveaux(m){
+  if (!m.opp_niveau || !/coupe|challenge|troph/i.test(m.competition || '')) return null;
   const home = lsGet('asm-home', null);
   const champ = ((home && home.matches || []).find(x => x.equipe === m.equipe && / · J\d+$/.test(x.competition)) || {}).competition;
   const notre = champ ? champ.replace(/ · J\d+$/, '').replace(/ · .*$/, '') : '';
   const a = NIV_ORDRE(notre), b = NIV_ORDRE(m.opp_niveau);
-  const d = a != null && b != null ? a - b : null;
-  const ecart = d == null ? '' : d === 0 ? 'même niveau' : `adversaire ${Math.abs(d)} division${Math.abs(d) > 1 ? 's' : ''} ${d > 0 ? 'au-dessus' : 'en dessous'}`;
-  // une seule ligne : « Niveau D2 vs D3 · adversaire 1 division en dessous »
-  const court = t => String(t || '?').replace(/District\s*/i, 'D').replace(/Régional\s*/i, 'R').replace(/National\s*/i, 'N');
-  return `<div class="nivline">Niveau <b>${esc(court(notre))}</b> vs <b>${esc(court(m.opp_niveau))}</b>${ecart ? ` · <span class="${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${esc(ecart)}</span>` : ''}</div>`;
+  return { [clubSide(m)]: notre, [oppSide(m)]: m.opp_niveau, d: a != null && b != null ? a - b : null };
+}
+// sous le tableau d'affichage : l'écart de divisions (les niveaux sont sous le nom de chaque équipe)
+function niveauHTML(m){
+  const n = niveaux(m);
+  if (!n || n.d == null) return '';
+  const ecart = n.d === 0 ? 'Même niveau' : `Adversaire ${Math.abs(n.d)} division${Math.abs(n.d) > 1 ? 's' : ''} ${n.d > 0 ? 'au-dessus' : 'en dessous'}`;
+  return `<div class="nivline"><span class="${n.d > 0 ? 'up' : n.d < 0 ? 'down' : ''}">${esc(ecart)}</span></div>`;
 }
 function boardHTML(m, evs, staff){
-  const c = clubSide(m);
+  const c = clubSide(m), niv = niveaux(m);
+  const tniv = t => niv && niv[t] ? `<span class="tniv">${esc(niv[t])}</span>` : '';
   return `<section class="board" aria-label="Tableau d'affichage">
     <div class="bmeta"><span>${esc(teamLabel(m.equipe))} · ${esc(fmtDate(m.kickoff))}${m.competition ? ' · ' + esc(m.competition) : ''}</span>${m.status==='direct' ? '<span class="badge live">Direct</span>' : ''}</div>
     <div class="teams">
-      <div class="team">${logoImg(m,'H','blg')}<span class="tname${c==='H'?' club':''}">${esc(teamName(m,'H'))}</span></div>
+      <div class="team">${logoImg(m,'H','blg')}<span class="tname${c==='H'?' club':''}">${esc(teamName(m,'H'))}</span>${tniv('H')}</div>
       <div class="score" aria-live="polite"><span id="scH">${goals(evs,'H')}</span><span class="sep">–</span><span id="scA">${goals(evs,'A')}</span></div>
-      <div class="team">${logoImg(m,'A','blg')}<span class="tname${c==='A'?' club':''}">${esc(teamName(m,'A'))}</span></div>
+      <div class="team">${logoImg(m,'A','blg')}<span class="tname${c==='A'?' club':''}">${esc(teamName(m,'A'))}</span>${tniv('A')}</div>
     </div>
     <div class="clockrow">
       <div>${staff ? `<button class="clock" id="clock" aria-label="Régler le chrono">${clockText(m)}</button>` : `<div class="clock" id="clock">${m.status==='prevu' ? '--:--' : clockText(m)}</div>`}<div class="period" id="period">${esc(periodText(m))}</div></div>
