@@ -6,7 +6,7 @@ import { SUPABASE_URL, SUPABASE_KEY, VAPID_PUBLIC } from './config.js';
 const CLUB = 'AS Mésanger';
 // Équipes du club, rangées par catégorie (table « equipes » de la base ; liste de secours ci-dessous).
 // Ajouter une catégorie = ajouter des lignes dans la base : tout le site s'adapte.
-const EQUIPES_DEFAUT = ['A', 'B', 'C', 'D', 'E'].map((c, i) => ({ id: i + 1, categorie: 'Seniors', cat_ordre: 1, ordre: i + 1, nom: 'Seniors ' + c, court: c, nom_club: i ? CLUB + ' ' + c : CLUB }));
+const EQUIPES_DEFAUT = ['A', 'B', 'C', 'D', 'E'].map((c, i) => ({ id: i + 1, categorie: 'Seniors', cat_ordre: 1, ordre: i + 1, nom: 'Seniors ' + c, court: c, nom_club: CLUB + ' ' + c }));
 let EQUIPES = [], TEAMS = [], CATS = [];
 function setEquipes(list){
   EQUIPES = (Array.isArray(list) && list.length ? list : EQUIPES_DEFAUT).filter(e => e.actif !== false)
@@ -452,6 +452,20 @@ async function fetchMatch(id){
   }
   return { m, evs: evs || [] };
 }
+// Matchs de coupe : niveau des deux équipes (le nôtre = championnat de l'équipe, celui de l'adversaire est relevé sur la FFF)
+const NIV_ORDRE = t => { const m = String(t || '').match(/(National|Régional|District)\s*(\d+)/i); if (!m) return null; return ({ national: 0, 'régional': 3, district: 6 })[m[1].toLowerCase()] + (+m[2]); };
+function niveauHTML(m){
+  if (!m.opp_niveau || !/coupe|challenge|troph/i.test(m.competition || '')) return '';
+  const home = lsGet('asm-home', null);
+  const champ = ((home && home.matches || []).find(x => x.equipe === m.equipe && / · J\d+$/.test(x.competition)) || {}).competition;
+  const notre = champ ? champ.replace(/ · J\d+$/, '').replace(/ · .*$/, '') : '';
+  const a = NIV_ORDRE(notre), b = NIV_ORDRE(m.opp_niveau);
+  const d = a != null && b != null ? a - b : null;
+  const ecart = d == null ? '' : d === 0 ? 'Même niveau' : `Adversaire ${Math.abs(d)} division${Math.abs(d) > 1 ? 's' : ''} ${d > 0 ? 'au-dessus' : 'en dessous'}`;
+  const opp = oppSide(m), club = clubSide(m);
+  return `<div class="nivbox"><div class="nivt">Niveau des équipes${ecart ? ` · <b class="${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${esc(ecart)}</b>` : ''}</div>
+    <div class="nivrow"><div><span>${esc(teamName(m, club))}</span><b>${esc(notre || '?')}</b></div><i>vs</i><div><span>${esc(teamName(m, opp))}</span><b>${esc(m.opp_niveau)}</b></div></div></div>`;
+}
 function boardHTML(m, evs, staff){
   const c = clubSide(m);
   return `<section class="board" aria-label="Tableau d'affichage">
@@ -533,7 +547,7 @@ async function matchView(id){
   if (!here()) return;
   if (!m){ view.innerHTML = '<div class="empty">Ce match n\'existe plus.</div>'; return; }
   const draw = () => {
-    view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false)
+    view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false) + niveauHTML(m)
       + `<div class="mactions"><button class="pill" id="btnBell">🔔 Buts des ${esc(teamLabel(m.equipe))}</button><button class="pill" id="btnShareLive">↗ Partager</button></div>`
       + (canManage(m) ? `<a class="fbtn primary big" href="#/gerer/${esc(m.id)}">Gérer ce match</a>` : '')
       + (isStaff() || m.delegue_nom ? `<div class="field deleg"><span>Délégué du match</span>${delegPickHTML('delSel', m.delegue_id, m.delegue_nom, !isTeamManager(m.equipe))}${canManage(m) && !isTeamManager(m.equipe) ? '<small>Seul le responsable de l’équipe (ou un admin) peut changer le délégué.</small>' : isStaff() && !canManage(m) ? '<small>Seuls le responsable de l’équipe, le délégué désigné ou un admin peuvent modifier ce match.</small>' : ''}</div>` : '')
