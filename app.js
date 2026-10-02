@@ -1298,7 +1298,7 @@ async function classementsView(){
 // ---------- Stats joueurs ----------
 let statSort = {key:'goals', dir:-1}, statSeason = null, statComp = '', statMode = 'joueurs', statQ = '';
 const statF = { cat: '', team: 0 };
-const isCup = m => /coupe/i.test(m.competition || '');
+const isCup = m => /coupe|challenge|troph/i.test(m.competition || '');
 function playerKey(name){
   return name.normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[^A-Z ]/g,' ').split(/\s+/).filter(Boolean).sort().join(' ');
 }
