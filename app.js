@@ -1518,6 +1518,7 @@ async function classementsView(){
 
 // ---------- Stats joueurs ----------
 let statSort = {key:'goals', dir:-1}, statSeason = null, statComp = '', statMode = 'joueurs', statQ = '';
+const statOuverts = new Set(); // buteurs par équipe : équipes dépliées (« Voir plus »)
 const statF = { cat: '', team: 0 };
 const isCup = m => /coupe|challenge|troph/i.test(m.competition || '');
 function playerKey(name){
@@ -1598,9 +1599,10 @@ async function statsViewFrom(playerArg, { ms, evs }){
       const B = boards[eq]; if (!B) return '';
       const sc = Object.values(B.players).filter(p => p.goals).sort((a, b) => b.goals - a.goals || a.mj - b.mj || a.name.localeCompare(b.name, 'fr'));
       let rank = 0, prev = null;
-      return `<section class="sboard"><div class="bhead"><span class="tchip">${teamLetter(eq)}</span><b>${esc(teamLabel(eq))}</b><span>${B.n} match${B.n>1?'s':''}</span></div>
+      // les 3 premiers, le reste derrière « Voir plus »
+      return `<section class="sboard${statOuverts.has(eq) ? ' open' : ''}" data-eq="${eq}"><div class="bhead"><span class="tchip">${teamLetter(eq)}</span><b>${esc(teamLabel(eq))}</b><span>${B.n} match${B.n>1?'s':''}</span></div>
         ${sc.length ? `<ol class="blist">${sc.map((p, i) => { if (p.goals !== prev){ rank = i + 1; prev = p.goals; }
-          return `<li class="prow" data-pk="${esc(p.k)}" data-nm="${esc(p.name)}" tabindex="0"><span class="brk${rank<=3?' top'+rank:''}">${rank}</span><span class="bname">${esc(p.name)}<small>${p.mj} match${p.mj>1?'s':''} · ${(p.goals/Math.max(1,p.mj)).toLocaleString('fr-FR',{maximumFractionDigits:2})} / match</small></span><b>${p.goals}</b></li>`; }).join('')}</ol>` : '<div class="empty">Aucun buteur.</div>'}
+          return `<li class="prow${i >= 3 ? ' bmore' : ''}" data-pk="${esc(p.k)}" data-nm="${esc(p.name)}" tabindex="0"><span class="brk${rank<=3?' top'+rank:''}">${rank}</span><span class="bname">${esc(p.name)}<small>${p.mj} match${p.mj>1?'s':''} · ${(p.goals/Math.max(1,p.mj)).toLocaleString('fr-FR',{maximumFractionDigits:2})} / match</small></span><b>${p.goals}</b></li>`; }).join('')}</ol>${sc.length > 3 ? `<button type="button" class="bvoir" data-voir="${eq}">${statOuverts.has(eq) ? 'Voir moins' : `Voir plus (${sc.length - 3})`}</button>` : ''}` : '<div class="empty">Aucun buteur.</div>'}
         ${B.csc ? `<p class="bcsc">+ ${B.csc} but${B.csc>1?'s':''} contre son camp adverse</p>` : ''}</section>`;
     };
     const modeBar = `<div class="seg statmode" role="group" aria-label="Affichage">${[['joueurs', 'Tous les joueurs'], ['buteurs', 'Buteurs par équipe']].map(([v, l]) => `<button type="button" data-mode="${v}" class="${statMode===v?'on':''}" aria-pressed="${statMode===v}">${l}</button>`).join('')}</div>`;
@@ -1626,6 +1628,11 @@ async function statsViewFrom(playerArg, { ms, evs }){
     $('steam').onchange = e => { const v = e.target.value; statF.team = /^\d+$/.test(v) ? +v : 0; statF.cat = v.startsWith('c:') ? v.slice(2) : statF.team ? catOf(statF.team) : ''; draw(); };
     view.querySelectorAll('[data-comp]').forEach(b => b.onclick = () => { statComp = b.dataset.comp; draw(); });
     view.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { statMode = b.dataset.mode; draw(); });
+    view.querySelectorAll('[data-voir]').forEach(b => b.onclick = () => {
+      const eq = +b.dataset.voir, sec = b.closest('.sboard'), n = sec.querySelectorAll('.bmore').length;
+      statOuverts.has(eq) ? statOuverts.delete(eq) : statOuverts.add(eq);
+      sec.classList.toggle('open', statOuverts.has(eq)); b.textContent = statOuverts.has(eq) ? 'Voir moins' : `Voir plus (${n})`;
+    });
     // recherche : on masque les lignes sans redessiner (le clavier reste ouvert)
     const sq = $('statQ');
     const filtre = () => {
@@ -1635,6 +1642,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
       view.querySelectorAll('.prow').forEach(r => { const ok = words.every(w => sansAccent(r.dataset.nm).includes(w)); r.hidden = !ok; if (ok) vus++; });
       view.querySelectorAll('tr.csc').forEach(r => r.hidden = words.length > 0);
       view.querySelectorAll('.sboard').forEach(b => b.hidden = words.length > 0 && !b.querySelector('.prow:not([hidden])'));
+      view.classList.toggle('scherche', words.length > 0); // pendant une recherche, tous les joueurs trouvés sont visibles
       $('statNone').hidden = !(words.length && !vus);
     };
     if (sq){ sq.oninput = filtre; if (statQ) filtre(); }

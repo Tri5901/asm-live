@@ -590,6 +590,12 @@ table.cls tr.clsdet td{padding:0 0 10px;text-align:left}
 .undobar span{flex:1}
 .undobar b{color:#F7E01A}
 .undobar button{flex:none;padding:9px 14px;border-radius:999px;background:var(--gClub);color:#000;font-weight:800}
+/* Buteurs par équipe : 3 premiers + « Voir plus » */
+.sboard:not(.open) .bmore{display:none}
+.scherche .sboard .bmore:not([hidden]){display:flex}
+.scherche .bvoir{display:none}
+.sboard:not(.open) .blist li:nth-child(3){border-bottom:0}
+.bvoir{display:block;width:100%;margin-top:6px;padding:8px;border-radius:10px;font-weight:600;font-size:13.5px;color:var(--muted);background:var(--bg);border:1px dashed var(--line)}
 </style>
 </head>
 <body>
