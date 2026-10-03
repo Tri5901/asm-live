@@ -59,8 +59,12 @@ module.exports = async (req, res) => {
     const eq = equipes.find(e => e.court === court && e.categorie === 'Seniors');
     const date = dateRow[c];
     if (!eq || !/^\d{2}\/\d{2}\/\d{4}$/.test(date || '')) continue;
-    const m = matchs.find(x => x.equipe === eq.id && jourParis(x.kickoff) === date);
-    if (!m) { detail.push(court + ' : pas de match le ' + date); continue; }
+    // le vendredi soir, la feuille peut encore montrer la convocation de la semaine passée :
+    // on ne prend qu'un match à venir (dans les 3 jours) dont la date est exactement celle de la convocation
+    const maintenant = Date.now();
+    const m = matchs.find(x => x.equipe === eq.id && jourParis(x.kickoff) === date
+      && new Date(x.kickoff).getTime() > maintenant && new Date(x.kickoff).getTime() < maintenant + 3 * 86400000);
+    if (!m) { detail.push(court + ' : pas de match à venir le ' + date + ' (convocation ancienne ou autre date)'); continue; }
     const joueurs = rows.filter(r => /^\d+$/.test(r[c] || '') && (r[c + 1] || '').length > 1).map(r => nomConnu(r[c + 1]));
     if (joueurs.length) { data.push({ match_id: m.id, joueurs }); detail.push(court + ' : ' + joueurs.length + ' joueurs'); }
   }
