@@ -1875,8 +1875,8 @@ async function adminView(){
       <p class="note" style="margin:0 0 6px">Ils sont <b>joueurs</b> dès leur inscription (ils peuvent demander à être responsable score). <b>Confirmer</b> les garde joueurs ; <b>Modifier</b> pour changer le rôle ou supprimer le compte.</p>
       <div class="alist">${nouveaux.map(row).join('')}</div>` : ''}
     ${GROUPS.map(([r, t]) => {
-      // responsables : dans l'ordre des équipes (A, B, C…), sans équipe à la fin ; les autres par nom
-      const rangEq = p => { const i = teamsOf(p).map(n => EQUIPES.findIndex(e => e.id === n)).filter(x => x >= 0); return i.length ? Math.min(...i) : 999; };
+      // responsables : dernières équipes d'abord, la A en dernier (comme l'accueil), sans équipe à la fin ; les autres par nom
+      const rangEq = p => { const i = teamsOf(p).map(n => EQUIPES.findIndex(e => e.id === n)).filter(x => x >= 0); return i.length ? -Math.max(...i) : 999; };
       const l = data.filter(p => p.role === r && !p.a_confirmer)
         .sort((a, b) => (r === 'delegue' ? rangEq(a) - rangEq(b) : 0) || nameOf(a).localeCompare(nameOf(b), 'fr'));
       return l.length ? `<div class="sec${r === 'pending' ? ' secwarn' : ''}">${t} · ${l.length}</div><div class="alist">${l.map(row).join('')}</div>` : '';
@@ -2183,14 +2183,24 @@ if ('serviceWorker' in navigator) {
     if (location.hash !== h) location.hash = h; else route();
   });
   navigator.serviceWorker.startMessages();
+  // nouvelle version installée : l'appli se recharge toute seule (sauf pendant la saisie d'un match)
+  const avaitControleur = !!navigator.serviceWorker.controller;
+  let recharge = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!avaitControleur || recharge) return;
+    if (location.hash.startsWith('#/gerer')) return toast('Mise à jour prête : relance l\'appli après le match');
+    recharge = true; location.reload();
+  });
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').then(reg => {
       reg.addEventListener('updatefound', () => {
         const nw = reg.installing;
         nw && nw.addEventListener('statechange', () => {
-          if (nw.state === 'installed' && navigator.serviceWorker.controller) toast('Mise à jour prête : relance l\'appli');
+          if (nw.state === 'installed' && navigator.serviceWorker.controller && location.hash.startsWith('#/gerer')) toast('Mise à jour prête : relance l\'appli');
         });
       });
+      // appli restée ouverte en arrière-plan : vérifie s'il y a une nouvelle version quand on revient dessus
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
     }).catch(()=>{});
   });
 }
