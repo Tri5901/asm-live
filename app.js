@@ -822,13 +822,35 @@ async function consoleView(id, openCompo){
     el.className = 'sync' + (n ? (navigator.onLine ? ' wait' : ' off') : '');
     el.textContent = n ? `${n} envoi${n>1?'s':''} en attente${navigator.onLine ? '…' : ' (hors ligne)'}` : 'Envoyé · les spectateurs suivent en direct';
   }
+  // 30 s pour annuler un coup d'envoi lancé par erreur : la notification « C'est parti » n'est envoyée qu'après
+  let undoTimer = null;
+  function annulerCoupEnvoi(){
+    const fin = Date.now() + 30000;
+    document.querySelector('.undobar')?.remove();
+    const bar = document.createElement('div');
+    bar.className = 'undobar';
+    bar.innerHTML = '<span>Coup d’envoi lancé · notification dans <b id="undoN">30</b> s</span><button type="button" id="undoGo">Annuler</button>';
+    document.body.appendChild(bar);
+    const stop = () => { clearInterval(undoTimer); undoTimer = null; bar.remove(); };
+    clearInterval(undoTimer);
+    undoTimer = setInterval(() => { const s = Math.ceil((fin - Date.now()) / 1000); if (s <= 0 || !document.body.contains(bar)) return stop(); $('undoN').textContent = s; }, 250);
+    $('undoGo').onclick = () => {
+      stop();
+      if (S.events.length) return toast('Des actions sont déjà notées : supprime-les d’abord');
+      patch({ status: 'prevu', period: 0, running: false, acc: 0, started_at: 0 }); render();
+      toast('Coup d’envoi annulé · aucune notification envoyée');
+    };
+    const prev = cleanup;
+    cleanup = () => { stop(); if (prev) prev(); };
+  }
   function bindClock(){
     $('btnClock').onclick = () => {
-      const f = {};
+      const f = {}, coupEnvoi = S.period===0 && S.status==='prevu';
       if (S.period===0){ f.period = 1; f.status = 'direct'; }
       if (S.running){ f.acc = (+S.acc) + Date.now() - (+S.started_at); f.running = false; }
       else { f.started_at = Date.now(); f.running = true; }
       patch(f); renderClock();
+      if (coupEnvoi) annulerCoupEnvoi();
     };
     $('btnPeriod').onclick = () => {
       if (S.status==='termine') return askConfirm('Rouvrir le match', 'Le match repasse en direct pour corriger ou reprendre.', 'Rouvrir', () => { patch({status:'direct'}); render(); });
