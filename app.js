@@ -425,7 +425,8 @@ function drawHome(matches, goalRows){
       <div class="mtop"><span class="tchip" title="${esc(teamLabel(m.equipe))}">${teamLetter(m.equipe)}</span><span class="mcomp">${CATS.length > 1 ? esc(catOf(m.equipe)) + (m.competition ? " · " : "") : ""}${esc(m.competition || (CATS.length > 1 ? "" : teamLabel(m.equipe)))}</span>${canManage(m) && !me ? `<span class="gerer" role="link" tabindex="0" data-href="#/gerer/${esc(m.id)}" aria-label="Gérer ce match">✎ Gérer</span>` : ''}${badge}</div>
       <div class="mrow">${side('H')}<div class="mmid">${mid}</div>${side('A')}</div>
       ${me ? `<div class="mdeleg" role="link" tabindex="0" data-href="#/gerer/${esc(m.id)}"><span><b>Tu es responsable score de ce match</b><small>C’est toi qui saisis le score et les actions.</small></span><span class="mdgo">Gérer ›</span></div>`
-        : m.delegue_nom ? `<div class="mdel">Responsable score : ${esc(m.delegue_nom)}</div>` : ''}</a>`;
+        : m.delegue_nom ? `<div class="mdel">Responsable score : ${esc(m.delegue_nom)}</div>`
+        : demAtt.some(d => d.match_id === m.id) ? `<div class="mdem">🙋 Demande de ${esc(demAtt.filter(d => d.match_id === m.id).map(d => d.nom).join(', '))} à valider</div>` : ''}</a>`;
   };
   const byDay = list => { let h = '', last = ''; list.forEach(m => { const d = new Date(m.kickoff).toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'}); if (d !== last){ h += `<div class="day">${esc(d)}</div>`; last = d; } h += card(m); }); return h; };
   const all = matches;
@@ -437,7 +438,15 @@ function drawHome(matches, goalRows){
   const live = matches.filter(m=>m.status==='direct').sort(asc);
   const next = matches.filter(m=>m.status==='prevu').sort(asc);
   const done = matches.filter(m=>m.status==='termine').sort(desc);
-  let html = (demAtt.length ? `<a class="dembar" href="#/match/${esc(demAtt[0].match_id)}">🙋 <b>${demAtt.length > 1 ? demAtt.length + ' demandes' : '1 demande'}</b> pour être responsable score à valider${demAtt.length === 1 ? ` (${esc(demAtt[0].nom)})` : ''} ›</a>` : '')
+  // demandes à valider : une ligne par match (équipe, adversaire, date, qui demande)
+  const demParMatch = {};
+  demAtt.forEach(d => { (demParMatch[d.match_id] ||= []).push(d.nom); });
+  const demHtml = Object.entries(demParMatch).map(([mid, noms]) => {
+    const m = all.find(x => x.id === mid);
+    const quoi = m ? `${esc(teamLetter(m.equipe))} · ${esc(teamName(m, oppSide(m)))} · ${esc(fmtDate(m.kickoff))}` : "Match";
+    return `<a class="demitem" href="#/match/${esc(mid)}"><span><b>${quoi}</b><small>${esc(noms.join(', '))}</small></span><i>Voir ›</i></a>`;
+  }).join('');
+  let html = (demHtml ? `<div class="dembar"><div class="demtitle">🙋 Demande${demAtt.length > 1 ? 's' : ''} pour être responsable score à valider</div>${demHtml}</div>` : '')
     + teamFilterHTML(homeF, true);
   if (live.length) html += `<div class="sec">En direct</div>` + live.map(card).join('');
   const NEXT_MAX = 6;
