@@ -579,11 +579,24 @@ async function matchView(id){
   let dem = [];
   const loadDem = async () => {
     if (!session || !isMember()) return;
+    // demande faite avant de se connecter / créer son compte : on l'envoie maintenant
+    const apres = lsGet('asm-apres-connexion', null);
+    if (apres && apres.demande === id){
+      lsSet('asm-apres-connexion', null);
+      if (!m.delegue_id && m.status !== 'termine' && !isTeamManager(m.equipe)){
+        const { data, error } = await sb.rpc('demander_score', { p_match: m.id });
+        if (!error){ notifDem(data); toast('Demande envoyée aux responsables de l’équipe'); }
+      }
+    }
     const { data } = await sb.from('demandes_score').select('*').eq('match_id', id).order('created_at');
     dem = data || []; if (here()) draw();
   };
   const demHTML = () => {
-    if (!session || !isMember() || m.delegue_id || m.status === 'termine' || m._partiel) return '';
+    if (m.delegue_id || m.status === 'termine' || m._partiel) return '';
+    // pas connecté : le bouton est là aussi, il mène à la création de compte (ou à la connexion)
+    if (!session) return `<div class="demcard"><b>Pas encore de responsable score pour ce match</b><small>Tu es au match ? Propose de saisir le score : il faut juste un compte (10 secondes).</small>
+      <button type="button" class="fbtn primary" id="demLogin" style="width:100%;margin-top:8px">🙋 Je veux être responsable score</button></div>`;
+    if (!isMember()) return '';
     const att = dem.filter(d => d.statut === 'attente');
     if (isTeamManager(m.equipe)){
       if (!att.length) return '';
@@ -599,6 +612,11 @@ async function matchView(id){
   };
   const notifDem = id2 => { if (session) fetch('api/notify-demande', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token }, body: JSON.stringify({ id: id2 }) }).catch(() => {}); };
   const bindDem = () => {
+    if ($('demLogin')) $('demLogin').onclick = () => {
+      lsSet('asm-apres-connexion', { demande: m.id, titre: teamName(m, 'H') + ' – ' + teamName(m, 'A') });
+      lsSet('asm-login-mode', 'up');
+      location.hash = '#/connexion';
+    };
     if ($('demAsk')) $('demAsk').onclick = async () => {
       $('demAsk').disabled = true;
       const { data, error } = await sb.rpc('demander_score', { p_match: m.id });
@@ -1704,11 +1722,14 @@ async function statsViewFrom(playerArg, { ms, evs }){
 // ---------- Connexion / compte ----------
 function loginView(){
   if (session){ location.hash = '#/compte'; return; }
-  let mode = 'in';
+  // venu du bouton « Je veux être responsable score » : création de compte proposée d'abord
+  let mode = lsGet('asm-login-mode', null) === 'up' ? 'up' : 'in';
+  lsSet('asm-login-mode', null);
+  const apres = lsGet('asm-apres-connexion', null);
   const draw = (msg='') => {
     view.innerHTML = `<form class="card" id="lf">
       <h1>${mode==='in' ? 'Connexion' : 'Créer un compte'}</h1>
-      <p class="sub">Réservé aux membres du club pour saisir les matchs. Pas besoin de compte pour suivre les matchs.</p>
+      <p class="sub">${apres && apres.demande ? `Pour être responsable score de <b>${esc(apres.titre || 'ce match')}</b>, ${mode==='in' ? 'connecte-toi' : 'crée ton compte (10 secondes)'} : ta demande partira toute seule.` : 'Réservé aux membres du club pour saisir les matchs. Pas besoin de compte pour suivre les matchs.'}</p>
       ${msg}
       ${mode==='up' ? `<div class="frow2"><label class="field"><span>Prénom</span><input id="lfPrenom" required minlength="2" autocomplete="given-name" autocapitalize="words"></label><label class="field"><span>Nom</span><input id="lfNom" required minlength="2" autocomplete="family-name" autocapitalize="words"></label></div>` : ''}
       <label class="field"><span>Email</span><input id="lfMail" type="email" required autocomplete="email"></label>
@@ -1728,13 +1749,15 @@ function loginView(){
         const m = /invalid login/i.test(res.error.message) ? 'Email ou mot de passe incorrect.' : /already registered/i.test(res.error.message) ? 'Un compte existe déjà avec cet email.' : res.error.message;
         return draw(`<div class="msg err">${esc(m)}</div>`);
       }
-      if (!res.data.session) return draw('<div class="msg">Compte créé. Confirme ton adresse avec le lien reçu par email, puis connecte-toi.</div>');
+      if (!res.data.session){ mode = 'in'; return draw('<div class="msg">Compte créé. Confirme ton adresse avec le lien reçu par email, puis connecte-toi.' + (apres && apres.demande ? ' Ta demande pour être responsable score partira à ce moment-là.' : '') + '</div>'); }
       if (mode === 'up'){
         // prévient les admins (une seule fois par compte, contrôlé par la base)
         fetch('api/notify-signup', { method: 'POST', keepalive: true, headers: { Authorization: 'Bearer ' + res.data.session.access_token } }).catch(() => {});
       }
       await loadProfile();
-      location.hash = isStaff() ? '#/' : '#/compte';
+      // retour sur le match : la demande « responsable score » y est envoyée automatiquement
+      const ap = lsGet('asm-apres-connexion', null);
+      location.hash = ap && ap.demande ? '#/match/' + ap.demande : isStaff() ? '#/' : '#/compte';
     };
   };
   draw();
@@ -1813,18 +1836,24 @@ async function adminView(){
 
   const row = p => `<div class="arow" data-uid="${esc(p.id)}">
       <span class="pav">${initial(p)}</span>
-      <div class="who"><b>${esc(nameOf(p))}${p.id === session.user.id ? ' <small>(toi)</small>' : ''}</b><small>${esc(p.email || '')}</small>
+      <div class="who"><b>${esc(nameOf(p))}${p.id === session.user.id ? ' <small>(toi)</small>' : ''}</b><small>${esc(p.email || '')}${p.a_confirmer && p.created_at ? ' · inscrit le ' + esc(new Date(p.created_at).toLocaleDateString('fr-FR')) : ''}</small>
         <span class="rbadge r-${p.role}">${esc(summary(p))}</span><span class="onstate"></span></div>
-      <button type="button" class="amod" data-edit="${esc(p.id)}">Modifier</button>
+      ${p.a_confirmer ? `<div class="gonebtns"><button type="button" class="amod ok" data-ok="${esc(p.id)}">Confirmer</button><button type="button" class="amod" data-edit="${esc(p.id)}">Modifier</button></div>`
+        : `<button type="button" class="amod" data-edit="${esc(p.id)}">Modifier</button>`}
     </div>`;
+  // nouveaux comptes (joueurs d'office) : à confirmer, ou rôle à changer, ou compte à supprimer
+  const nouveaux = data.filter(p => p.a_confirmer).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
   const pendingN = data.filter(p => p.role === 'pending').length;
   view.innerHTML = `<div class="acc">
     <div class="acctop"><h1>Accès</h1><a class="link" href="#/compte">← Mon compte</a></div>
     <div class="acctotal"><b>${data.length}</b><span>compte${data.length>1?'s':''} créé${data.length>1?'s':''}<small>${[['admin','admin'],['delegue','responsable'],['dirigeant','dirigeant'],['joueur','joueur'],['pending','en attente']].map(([r,l])=>{const n=data.filter(p=>p.role===r).length; return n ? n+' '+l+(n>1&&r!=='pending'?'s':'') : '';}).filter(Boolean).join(' · ')}</small></span></div>
     <p class="accon" id="accOnline"></p>
     <p class="note" style="margin-top:4px">Un <b>responsable</b> crée et saisit les matchs de ses équipes. Un <b>joueur</b> ou un <b>dirigeant</b> ne peut saisir que les matchs où il est responsable score. Un <b>admin</b> gère tout.</p>
+    ${nouveaux.length ? `<div class="sec secwarn">Nouveaux comptes à confirmer · ${nouveaux.length}</div>
+      <p class="note" style="margin:0 0 6px">Ils sont <b>joueurs</b> dès leur inscription (ils peuvent demander à être responsable score). <b>Confirmer</b> les garde joueurs ; <b>Modifier</b> pour changer le rôle ou supprimer le compte.</p>
+      <div class="alist">${nouveaux.map(row).join('')}</div>` : ''}
     ${GROUPS.map(([r, t]) => {
-      const l = data.filter(p => p.role === r).sort((a, b) => nameOf(a).localeCompare(nameOf(b), 'fr'));
+      const l = data.filter(p => p.role === r && !p.a_confirmer).sort((a, b) => nameOf(a).localeCompare(nameOf(b), 'fr'));
       return l.length ? `<div class="sec${r === 'pending' ? ' secwarn' : ''}">${t} · ${l.length}</div><div class="alist">${l.map(row).join('')}</div>` : '';
     }).join('')}
     ${supprimes ? `<div class="sec">Comptes supprimés · ${supprimes}</div>
@@ -1833,6 +1862,13 @@ async function adminView(){
   </div>`;
 
   view.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editPerson(data.find(p => p.id === b.dataset.edit)));
+  view.querySelectorAll('[data-ok]').forEach(b => b.onclick = async () => {
+    const p = data.find(x => x.id === b.dataset.ok);
+    b.disabled = true;
+    const { data: upd, error } = await sb.from('profiles').update({ a_confirmer: false }).eq('id', p.id).select('id');
+    if (error || !upd || !upd.length){ b.disabled = false; toast('Modification refusée'); return; }
+    people = null; toast(nameOf(p) + ' confirmé comme joueur'); adminView();
+  });
   view.querySelectorAll('[data-link]').forEach(b => b.onclick = () => linkAccount(deleted.find(p => p.id === b.dataset.link)));
   view.querySelectorAll('[data-wipe]').forEach(b => b.onclick = () => {
     const old = deleted.find(p => p.id === b.dataset.wipe);
@@ -1897,7 +1933,7 @@ async function adminView(){
       $('edNo').onclick = closeSheet;
       $('edSave').onclick = async () => {
         if (!nomOk(pre + ' ' + nm) || fmtNom(pre).length < 2 || fmtNom(nm).length < 2){ toast('Prénom et nom obligatoires'); return; }
-        const fields = { role, equipes: role === 'delegue' ? [...eqs].sort() : (p.equipes || []), nom: fmtNom(pre) + ' ' + fmtNom(nm) };
+        const fields = { role, equipes: role === 'delegue' ? [...eqs].sort() : (p.equipes || []), nom: fmtNom(pre) + ' ' + fmtNom(nm), a_confirmer: false };
         $('edSave').disabled = true;
         const { data: upd, error } = await sb.from('profiles').update(fields).eq('id', p.id).select('id');
         if (error || !upd || !upd.length){ $('edSave').disabled = false; toast('Modification refusée'); return; }

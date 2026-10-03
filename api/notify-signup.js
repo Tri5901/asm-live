@@ -25,8 +25,8 @@ module.exports = async (req, res) => {
   webpush.setVapidDetails('https://asm-live.vercel.app', VAPID_PUBLIC, process.env.VAPID_PRIVATE_KEY);
   const { nom, email } = targets[0];
   const payload = JSON.stringify({
-    title: '👤 Nouveau compte à valider',
-    body: `${nom}${nom !== email ? ' (' + email + ')' : ''} attend ta validation.`,
+    title: '👤 Nouveau compte',
+    body: `${nom}${nom !== email ? ' (' + email + ')' : ''} s’est inscrit : il est joueur. Confirme-le ou change son rôle dans Accès.`,
     url: '/#/admin',
     tag: 'compte-' + email
   });
