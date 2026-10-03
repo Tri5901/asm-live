@@ -26,7 +26,7 @@ end $$;
 revoke all on function public.convocations_compos(text, jsonb) from public;
 grant execute on function public.convocations_compos(text, jsonb) to anon, authenticated;
 
--- minuteur : samedi 10 h et 18 h (heure de Paris en été ; pg_cron est en UTC)
+-- minuteurs : vendredi 23 h (« convocations-vendredi », 0 21 * * 5) puis samedi 10 h et 18 h (heure de Paris en été ; pg_cron est en UTC)
 -- select cron.schedule('convocations', '0 8,16 * * 6', $c$ select net.http_post(url := 'https://asm-live.vercel.app/api/convocations',
 --   body := '{"cle":"<CLE>"}'::jsonb, headers := '{"Content-Type":"application/json"}'::jsonb) $c$);
 select 'ok' as convocations;
