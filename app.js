@@ -177,7 +177,7 @@ function delegueList(cur, curNom){
   const opts = [];
   if (canCreate()) (delegues||[]).forEach(d => opts.push({ id: d.id, nom: d.nom, tag: ROLE_TAG[d.role] || '' }));
   else if (myId()) opts.push({ id: myId(), nom: 'Moi', tag: '' });
-  if (cur && !opts.some(o => o.id === cur)) opts.push({ id: cur, nom: curNom || 'Autre délégué', tag: '' });
+  if (cur && !opts.some(o => o.id === cur)) opts.push({ id: cur, nom: curNom || 'Autre responsable score', tag: '' });
   return opts;
 }
 function delegPickHTML(id, cur, curNom, disabled){
@@ -199,7 +199,7 @@ function bindDelegPick(btn, curNom, onPick){
   btn.onclick = () => {
     const cur = btn.dataset.value || '';
     const all = [{ id: '', nom: 'Non défini (par défaut : responsable d’équipe)', tag: '' }, ...delegueList(cur, curNom).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))];
-    openSheet(`<div class="dphead"><h3 id="shTitle">Délégué du match</h3><button type="button" class="dpclose" id="dpNo">Annuler</button></div>
+    openSheet(`<div class="dphead"><h3 id="shTitle">Responsable score du match</h3><button type="button" class="dpclose" id="dpNo">Annuler</button></div>
       <input id="dpQ" class="dpq" type="search" placeholder="Rechercher un nom…" autocomplete="off" enterkeyhint="search">
       <div class="alist dplist" id="dpList"></div>`, 'tall');
     const list = $('dpList'), q = $('dpQ');
@@ -291,10 +291,10 @@ async function flush(){
       }
       if (res && res.error){
         if (isNetErr(res.error)) break;
-        toast(/row-level security|42501/i.test(res.error.message + res.error.code) ? 'Refusé : seuls les délégués et admins peuvent modifier ce match' : 'Envoi refusé : ' + (res.error.message || 'erreur'));
+        toast(/row-level security|42501/i.test(res.error.message + res.error.code) ? 'Refusé : seuls le responsable score, les responsables d’équipe et les admins peuvent modifier ce match' : 'Envoi refusé : ' + (res.error.message || 'erreur'));
       } else if (op.kind==='match' && res && Array.isArray(res.data) && !res.data.length){
         // la base a ignoré la modification : pas les droits sur ce match (ou match supprimé)
-        toast('Refusé : seuls les délégués et admins peuvent modifier ce match');
+        toast('Refusé : seuls le responsable score, les responsables d’équipe et les admins peuvent modifier ce match');
       }
       outbox.shift(); saveOutbox();
     }
@@ -384,6 +384,11 @@ async function homeView(){
     ]);
     if (error) { if (!cache) throw error; return; }
     lsSet('asm-home', {matches, goals:g||[]});
+    // responsables et admins : demandes « responsable score » à valider (la base ne montre que celles de leurs équipes)
+    if (isStaff()){
+      const { data: d } = await sb.from('demandes_score').select('id,match_id,nom').eq('statut', 'attente').neq('user_id', myId()).order('created_at');
+      demAtt = d || [];
+    } else demAtt = [];
     drawHome(matches, g||[]);
   };
   await load();
@@ -401,7 +406,7 @@ async function homeView(){
 // filtre de l'accueil (catégorie + équipe), mémorisé sur le téléphone
 const homeF = lsGet('asm-filtre', null) || { cat: '', team: lsGet('asm-team', 0) || 0 };
 if (homeF.team && !homeF.cat) homeF.cat = catOf(homeF.team);
-let showAllNext = false;
+let showAllNext = false, demAtt = [];
 function drawHome(matches, goalRows){
   const byMatch = {};
   goalRows.forEach(g => { (byMatch[g.match_id] ||= []).push({k:'goal', t:g.t}); });
@@ -432,7 +437,8 @@ function drawHome(matches, goalRows){
   const live = matches.filter(m=>m.status==='direct').sort(asc);
   const next = matches.filter(m=>m.status==='prevu').sort(asc);
   const done = matches.filter(m=>m.status==='termine').sort(desc);
-  let html = teamFilterHTML(homeF, true);
+  let html = (demAtt.length ? `<a class="dembar" href="#/match/${esc(demAtt[0].match_id)}">🙋 <b>${demAtt.length > 1 ? demAtt.length + ' demandes' : '1 demande'}</b> pour être responsable score à valider${demAtt.length === 1 ? ` (${esc(demAtt[0].nom)})` : ''} ›</a>` : '')
+    + teamFilterHTML(homeF, true);
   if (live.length) html += `<div class="sec">En direct</div>` + live.map(card).join('');
   const NEXT_MAX = 6;
   if (next.length) html += `<div class="sec">À venir</div>` + byDay(showAllNext ? next : next.filter((m, i) => i < NEXT_MAX || isMine(m)))
@@ -515,7 +521,7 @@ function lineupsHTML(m){
     ? `<button type="button" class="vistog${m.compo_cachee ? ' off' : ''}" id="compoVis" aria-pressed="${!m.compo_cachee}"><i></i>${m.compo_cachee ? 'Cachée au public' : 'Visible par tous'}</button>`
     : m.compo_cachee ? '<span class="vistog off static"><i></i>Cachée au public</span>' : '';
   return `<section class="log"><div class="loghead"><h2>Compositions</h2>${canManage(m) ? `<a class="link" href="#/gerer/${esc(m.id)}/compo">${has ? 'Modifier' : '📋 Saisir la compo'}</a>` : ''}</div>`
-    + (vis ? `<div class="visrow">${vis}<small>${m.compo_cachee ? 'Seuls les responsables, les admins et le délégué du match la voient.' : 'Tout le monde peut la voir sur la page du match.'}</small></div>` : '')
+    + (vis ? `<div class="visrow">${vis}<small>${m.compo_cachee ? 'Seuls les responsables d’équipe, les admins et le responsable score du match la voient.' : 'Tout le monde peut la voir sur la page du match.'}</small></div>` : '')
     + (has ? `<div class="lineups">${side('H')}${side('A')}</div>` : '<div class="empty">Compo pas encore saisie.</div>')
     + '</section>';
 }
@@ -560,11 +566,56 @@ async function matchView(id){
   let { m, evs } = cached || await fresh;
   if (!here()) return;
   if (!m){ view.innerHTML = '<div class="empty">Ce match n\'existe plus.</div>'; return; }
+  // Demandes pour être responsable score (match sans responsable) : visibles par le demandeur et par les responsables de l'équipe
+  let dem = [];
+  const loadDem = async () => {
+    if (!session || !isMember()) return;
+    const { data } = await sb.from('demandes_score').select('*').eq('match_id', id).order('created_at');
+    dem = data || []; if (here()) draw();
+  };
+  const demHTML = () => {
+    if (!session || !isMember() || m.delegue_id || m.status === 'termine' || m._partiel) return '';
+    const att = dem.filter(d => d.statut === 'attente');
+    if (isTeamManager(m.equipe)){
+      if (!att.length) return '';
+      return `<div class="demcard"><b>🙋 ${att.length > 1 ? att.length + ' demandes' : 'Demande'} pour être responsable score</b>${att.map(d => `<div class="demrow"><span>${esc(d.nom)}</span>
+        <button type="button" class="pill ok" data-dok="${esc(d.id)}">Accepter</button><button type="button" class="pill" data-dno="${esc(d.id)}">Refuser</button></div>`).join('')}</div>`;
+    }
+    const mine = dem.filter(d => d.user_id === myId()).pop();
+    if (mine && mine.statut === 'attente')
+      return `<div class="demcard"><b>⏳ Ta demande pour être responsable score est en attente</b><small>Un responsable de l’équipe ou un admin va l’accepter ou la refuser.</small>
+        <button type="button" class="link" data-dann="${esc(mine.id)}">Retirer ma demande</button></div>`;
+    return `<div class="demcard"><b>Pas encore de responsable score pour ce match</b>${mine && mine.statut === 'refusee' ? '<small>Ta précédente demande a été refusée.</small>' : '<small>Tu peux proposer de saisir le score et les actions.</small>'}
+      <button type="button" class="fbtn primary" id="demAsk" style="width:100%;margin-top:8px">🙋 Je veux être responsable score</button></div>`;
+  };
+  const notifDem = id2 => { if (session) fetch('api/notify-demande', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token }, body: JSON.stringify({ id: id2 }) }).catch(() => {}); };
+  const bindDem = () => {
+    if ($('demAsk')) $('demAsk').onclick = async () => {
+      $('demAsk').disabled = true;
+      const { data, error } = await sb.rpc('demander_score', { p_match: m.id });
+      if (error){ toast(isNetErr(error) ? 'Pas de réseau' : /déjà un responsable/.test(error.message) ? 'Ce match a déjà un responsable score' : 'Demande refusée'); loadDem(); return; }
+      notifDem(data); toast('Demande envoyée aux responsables de l’équipe'); loadDem();
+    };
+    view.querySelectorAll('[data-dann]').forEach(b => b.onclick = async () => {
+      await sb.rpc('annuler_demande_score', { p_id: b.dataset.dann }); toast('Demande retirée'); loadDem();
+    });
+    view.querySelectorAll('[data-dok], [data-dno]').forEach(b => b.onclick = async () => {
+      const ok = !!b.dataset.dok, did = b.dataset.dok || b.dataset.dno, d = dem.find(x => x.id === did);
+      b.disabled = true;
+      const { error } = await sb.rpc('decider_score', { p_id: did, p_ok: ok });
+      if (error){ toast(isNetErr(error) ? 'Pas de réseau' : /déjà un responsable/.test(error.message) ? 'Ce match a déjà un responsable score' : 'Action refusée'); loadDem(); return; }
+      notifDem(did);
+      toast(ok ? `${d ? d.nom : 'Le demandeur'} est responsable score` : 'Demande refusée');
+      if (ok){ delegues = null; try{ const r = await fetchMatch(m.id); if (r.m){ m = r.m; evs = r.evs; matchCache.set(id, r); } }catch(e){} }
+      loadDem();
+    });
+  };
   const draw = () => {
     view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false) + niveauHTML(m)
       + `<div class="mactions"><button class="pill" id="btnBell">🔔 Buts des ${esc(teamLabel(m.equipe))}</button><button class="pill" id="btnShareLive">↗ Partager</button></div>`
+      + demHTML()
       + (canManage(m) ? `<a class="fbtn primary big" href="#/gerer/${esc(m.id)}">Gérer ce match</a>` : '')
-      + (isStaff() || m.delegue_nom ? `<div class="field deleg"><span>Délégué du match</span>${delegPickHTML('delSel', m.delegue_id, m.delegue_nom, !isTeamManager(m.equipe))}${canManage(m) && !isTeamManager(m.equipe) ? '<small>Seul le responsable de l’équipe (ou un admin) peut changer le délégué.</small>' : isStaff() && !canManage(m) ? '<small>Seuls le responsable de l’équipe, le délégué désigné ou un admin peuvent modifier ce match.</small>' : ''}</div>` : '')
+      + (isStaff() || m.delegue_nom ? `<div class="field deleg"><span>Responsable score</span>${delegPickHTML('delSel', m.delegue_id, m.delegue_nom, !isTeamManager(m.equipe))}${canManage(m) && !isTeamManager(m.equipe) ? '<small>Seul le responsable de l’équipe (ou un admin) peut changer le responsable score.</small>' : isStaff() && !canManage(m) ? '<small>Seuls le responsable de l’équipe, le responsable score ou un admin peuvent modifier ce match.</small>' : ''}</div>` : '')
       + (isAdmin() && people ? `<div class="audit">Match créé par ${esc(personName(m.created_by))}${m.rosters_at ? ` · Compo saisie par ${esc(personName(m.rosters_by))} le ${esc(fmtDate(m.rosters_at))}` : ''}</div>` : '')
       + (m._partiel ? '<div class="loading">Chargement des détails…</div>' : (m.status==='prevu' ? lineupsHTML(m) : '')
       + `<section class="log"><div class="loghead"><h2>Chronologie</h2></div><div id="events">${timelineHTML(m, evs, false)}</div></section>`
@@ -583,17 +634,19 @@ async function matchView(id){
     bindDelegPick($('delSel'), m.delegue_nom, async id => {
       const { data: upd, error } = await sb.from('matches').update({delegue_id: id, delegue_nom: delegueNom(id)}).eq('id', m.id).select('id');
       if (error || !upd || !upd.length){ toast(isNetErr(error) ? 'Pas de réseau' : 'Modification refusée'); draw(); return; }
-      m.delegue_id = id; m.delegue_nom = delegueNom(id); toast(id ? 'Délégué : ' + m.delegue_nom : 'Délégué non défini : le responsable d’équipe gère le match'); draw();
+      m.delegue_id = id; m.delegue_nom = delegueNom(id); toast(id ? 'Responsable score : ' + m.delegue_nom : 'Responsable score non défini : le responsable d’équipe gère le match'); draw();
     });
+    bindDem();
     document.title = `${teamName(m,'H')} ${goals(evs,'H')}–${goals(evs,'A')} ${teamName(m,'A')} · AS Mésanger`;
   };
   draw();
+  loadDem();
   if (cached) fresh.then(r => {
     if (!here()) return;
     if (!r.m){ view.innerHTML = '<div class="empty">Ce match n\'existe plus.</div>'; return; }
     m = r.m; evs = r.evs; draw();
   }).catch(() => { const l = m._partiel && here() && view.querySelector('.loading'); if (l) l.textContent = 'Pas de réseau pour l’instant : les détails s’afficheront dès qu’il revient.'; });
-  const reload = debounce(async () => { try{ const r = await fetchMatch(id); if (r.m){ matchCache.set(id, r); if (!here()) return; m = r.m; evs = r.evs; draw(); } }catch(e){} }, 300);
+  const reload = debounce(async () => { try{ const r = await fetchMatch(id); if (r.m){ matchCache.set(id, r); if (!here()) return; m = r.m; evs = r.evs; draw(); loadDem(); } }catch(e){} }, 300);
   const off = liveChannel('match', reload, [
     {event:'*', table:'matches', filter:`id=eq.${id}`},
     {event:'*', table:'events', filter:`match_id=eq.${id}`},
@@ -631,7 +684,7 @@ async function newMatchView(){
     <div class="field"><span>Lieu</span><div class="seg" id="nfSide"><button type="button" data-s="H" class="on">Domicile</button><button type="button" data-s="A">Extérieur</button></div></div>
     <label class="field"><span>Date et heure du coup d'envoi</span><input id="nfDate" type="datetime-local" value="${local}" required></label>
     <label class="field"><span>Compétition</span><input id="nfComp" autocomplete="off" placeholder="Championnat, Coupe…" list="compList"><datalist id="compList"></datalist></label>
-    <div class="field"><span>Délégué du match</span>${delegPickHTML('nfDel', isAdmin() ? '' : myId())}<small>Si un délégué est choisi, lui seul (et les admins) pourra saisir le match.</small></div>
+    <div class="field"><span>Responsable score</span>${delegPickHTML('nfDel', isAdmin() ? '' : myId())}<small>Si un responsable score est choisi, lui seul (avec les responsables d’équipe et les admins) pourra saisir le match.</small></div>
     <div id="nfMsg"></div>
     <div class="foot" style="margin-top:4px"><button class="fbtn primary" id="nfGo">Créer le match</button><a class="fbtn" href="#/">Annuler</a></div>
   </form>`;
@@ -675,7 +728,7 @@ async function consoleView(id, openCompo){
   }
   if (!S){ view.innerHTML = '<div class="empty">Ce match n\'existe plus.</div>'; return; }
   if (!canManage(S)){
-    view.innerHTML = `<div class="card"><h1>Tu ne gères pas ce match</h1><p class="sub">Ce match des ${esc(teamLabel(S.equipe))} peut être saisi par le responsable de l’équipe${S.delegue_nom ? `, par ${esc(S.delegue_nom)} (délégué désigné)` : ''} ou par un admin.</p><a class="fbtn" href="#/match/${esc(id)}" style="width:100%">Voir le direct</a></div>`;
+    view.innerHTML = `<div class="card"><h1>Tu ne gères pas ce match</h1><p class="sub">Ce match des ${esc(teamLabel(S.equipe))} peut être saisi par le responsable de l’équipe${S.delegue_nom ? `, par ${esc(S.delegue_nom)} (responsable score)` : ''} ou par un admin.</p><a class="fbtn" href="#/match/${esc(id)}" style="width:100%">Voir le direct</a></div>`;
     return;
   }
   S.rosters = S.rosters || {H:[],A:[]};
@@ -1646,7 +1699,7 @@ function loginView(){
   const draw = (msg='') => {
     view.innerHTML = `<form class="card" id="lf">
       <h1>${mode==='in' ? 'Connexion' : 'Créer un compte'}</h1>
-      <p class="sub">Réservé aux délégués du club pour saisir les matchs. Pas besoin de compte pour suivre les matchs.</p>
+      <p class="sub">Réservé aux membres du club pour saisir les matchs. Pas besoin de compte pour suivre les matchs.</p>
       ${msg}
       ${mode==='up' ? `<div class="frow2"><label class="field"><span>Prénom</span><input id="lfPrenom" required minlength="2" autocomplete="given-name" autocapitalize="words"></label><label class="field"><span>Nom</span><input id="lfNom" required minlength="2" autocomplete="family-name" autocapitalize="words"></label></div>` : ''}
       <label class="field"><span>Email</span><input id="lfMail" type="email" required autocomplete="email"></label>
@@ -1681,7 +1734,7 @@ function nameView(force){
   const [p0, n0] = splitNom(profile && profile.nom);
   view.innerHTML = `<form class="card" id="nmf">
     <h1>${force ? 'Ton prénom et ton nom' : 'Modifier mon nom'}</h1>
-    <p class="sub">${force ? 'Pour que les responsables sachent qui saisit les matchs, indique ton prénom et ton nom.' : 'Il apparaît dans l’historique des matchs et dans la liste des délégués.'}</p>
+    <p class="sub">${force ? 'Pour que les responsables sachent qui saisit les matchs, indique ton prénom et ton nom.' : 'Il apparaît dans l’historique des matchs et dans la liste des responsables score.'}</p>
     <div class="frow2"><label class="field"><span>Prénom</span><input id="nmPrenom" required minlength="2" autocomplete="given-name" autocapitalize="words" value="${esc(p0)}"></label>
     <label class="field"><span>Nom</span><input id="nmNom" required minlength="2" autocomplete="family-name" autocapitalize="words" value="${esc(n0)}"></label></div>
     <p class="note" id="nmPrev"></p>
@@ -1709,8 +1762,8 @@ function accountView(){
     <h1>${esc(profile && profile.nom || 'Mon compte')}</h1>
     <p class="sub">${esc(session.user.email)} · ${ROLE[role]} · <button class="link" id="editNom" style="padding:0">Modifier mon nom</button></p>
     ${role==='pending' ? '<div class="msg">Ton compte doit être validé par un administrateur du club avant de pouvoir saisir les matchs.</div>' : ''}
-    ${role==='joueur' || role==='dirigeant' ? '<div class="msg">Tu peux saisir uniquement les matchs où un responsable t’a désigné délégué. Ils apparaissent sur l’accueil avec la pastille « ✎ Gérer ».</div>' : ''}
-    ${role==='delegue' ? `<div class="msg">${myTeams().length ? 'Tu gères les matchs des ' + esc(teamsText(myTeams())) + '.' : 'Aucune équipe ne t’est encore confiée : tu peux saisir uniquement les matchs où tu es désigné délégué.'}</div>` : ''}
+    ${role==='joueur' || role==='dirigeant' ? '<div class="msg">Tu peux saisir uniquement les matchs où tu es responsable score (choisi par un responsable, ou en faisant la demande sur la page du match). Ils apparaissent sur l’accueil avec la pastille « ✎ Gérer ».</div>' : ''}
+    ${role==='delegue' ? `<div class="msg">${myTeams().length ? 'Tu gères les matchs des ' + esc(teamsText(myTeams())) + '.' : 'Aucune équipe ne t’est encore confiée : tu peux saisir uniquement les matchs où tu es responsable score.'}</div>` : ''}
     <div class="foot" style="margin-top:4px">
       ${canCreate() ? '<a class="fbtn club" href="#/nouveau">+ Nouveau match</a>' : ''}
       ${isAdmin() ? '<a class="fbtn" href="#/admin">Gérer les accès</a>' : ''}
@@ -1760,7 +1813,7 @@ async function adminView(){
     <div class="acctop"><h1>Accès</h1><a class="link" href="#/compte">← Mon compte</a></div>
     <div class="acctotal"><b>${data.length}</b><span>compte${data.length>1?'s':''} créé${data.length>1?'s':''}<small>${[['admin','admin'],['delegue','responsable'],['dirigeant','dirigeant'],['joueur','joueur'],['pending','en attente']].map(([r,l])=>{const n=data.filter(p=>p.role===r).length; return n ? n+' '+l+(n>1&&r!=='pending'?'s':'') : '';}).filter(Boolean).join(' · ')}</small></span></div>
     <p class="accon" id="accOnline"></p>
-    <p class="note" style="margin-top:4px">Un <b>responsable</b> crée et saisit les matchs de ses équipes. Un <b>joueur</b> ou un <b>dirigeant</b> ne peut saisir que les matchs où il est désigné délégué. Un <b>admin</b> gère tout.</p>
+    <p class="note" style="margin-top:4px">Un <b>responsable</b> crée et saisit les matchs de ses équipes. Un <b>joueur</b> ou un <b>dirigeant</b> ne peut saisir que les matchs où il est responsable score. Un <b>admin</b> gère tout.</p>
     ${GROUPS.map(([r, t]) => {
       const l = data.filter(p => p.role === r).sort((a, b) => nameOf(a).localeCompare(nameOf(b), 'fr'));
       return l.length ? `<div class="sec${r === 'pending' ? ' secwarn' : ''}">${t} · ${l.length}</div><div class="alist">${l.map(row).join('')}</div>` : '';
@@ -1824,7 +1877,7 @@ async function adminView(){
         <div class="frow2" style="margin-top:14px"><label class="field"><span>Prénom</span><input id="edPre" value="${esc(pre)}" autocapitalize="words"></label><label class="field"><span>Nom</span><input id="edNom" value="${esc(nm)}" autocapitalize="words"></label></div>
         <div class="field"><span>Rôle</span>
           <div class="rseg" role="group" aria-label="Rôle">${ROLES.map(([v, l]) => `<button type="button" data-role="${v}" class="${role === v ? 'on' : ''}" aria-pressed="${role === v}"${me ? ' disabled' : ''}>${l}</button>`).join('')}</div>
-          <small>${role === 'admin' ? 'Gère toutes les équipes, les accès et les classements.' : role === 'delegue' ? 'Crée et saisit les matchs des équipes cochées ci-dessous.' : role === 'joueur' || role === 'dirigeant' ? 'Aucun accès, sauf les matchs où il est désigné délégué.' : 'Ne peut rien modifier.'}${me ? ' Tu ne peux pas changer ton propre rôle.' : ''}</small></div>
+          <small>${role === 'admin' ? 'Gère toutes les équipes, les accès et les classements.' : role === 'delegue' ? 'Crée et saisit les matchs des équipes cochées ci-dessous.' : role === 'joueur' || role === 'dirigeant' ? 'Aucun accès, sauf les matchs où il est responsable score.' : 'Ne peut rien modifier.'}${me ? ' Tu ne peux pas changer ton propre rôle.' : ''}</small></div>
         ${role === 'delegue' ? `<div class="field"><span>Équipes dont il est responsable</span>
           ${CATS.map(c => `<div class="eqcat"><small>${esc(c)}</small><div class="eqpick">${catTeams(c).map(n => `<button type="button" data-e="${n}" class="${eqs.has(n) ? 'on' : ''}" aria-pressed="${eqs.has(n)}"><b>${esc(teamLetter(n))}</b><small>${esc(teamLabel(n))}</small></button>`).join('')}</div></div>`).join('')}</div>` : ''}
         <div class="foot" style="margin-top:6px"><button class="fbtn primary" id="edSave">Enregistrer</button><button class="fbtn" id="edNo">Annuler</button></div>

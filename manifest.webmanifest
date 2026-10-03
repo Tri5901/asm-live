@@ -1,7 +1,7 @@
 {
   "name": "AS Mésanger – Matchs en direct",
   "short_name": "ASM Live",
-  "description": "Matchs de l'AS Mésanger en direct, feuille du délégué et stats des joueurs.",
+  "description": "Matchs de l'AS Mésanger en direct, saisie du score et stats des joueurs.",
   "lang": "fr",
   "start_url": "./",
   "scope": "./",
