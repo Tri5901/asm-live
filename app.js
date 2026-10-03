@@ -1875,7 +1875,10 @@ async function adminView(){
       <p class="note" style="margin:0 0 6px">Ils sont <b>joueurs</b> dès leur inscription (ils peuvent demander à être responsable score). <b>Confirmer</b> les garde joueurs ; <b>Modifier</b> pour changer le rôle ou supprimer le compte.</p>
       <div class="alist">${nouveaux.map(row).join('')}</div>` : ''}
     ${GROUPS.map(([r, t]) => {
-      const l = data.filter(p => p.role === r && !p.a_confirmer).sort((a, b) => nameOf(a).localeCompare(nameOf(b), 'fr'));
+      // responsables : dans l'ordre des équipes (A, B, C…), sans équipe à la fin ; les autres par nom
+      const rangEq = p => { const i = teamsOf(p).map(n => EQUIPES.findIndex(e => e.id === n)).filter(x => x >= 0); return i.length ? Math.min(...i) : 999; };
+      const l = data.filter(p => p.role === r && !p.a_confirmer)
+        .sort((a, b) => (r === 'delegue' ? rangEq(a) - rangEq(b) : 0) || nameOf(a).localeCompare(nameOf(b), 'fr'));
       return l.length ? `<div class="sec${r === 'pending' ? ' secwarn' : ''}">${t} · ${l.length}</div><div class="alist">${l.map(row).join('')}</div>` : '';
     }).join('')}
     ${supprimes ? `<div class="sec">Comptes supprimés · ${supprimes}</div>
