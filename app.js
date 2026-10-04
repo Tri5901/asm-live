@@ -683,7 +683,7 @@ async function adversaireRemplir(m, box){
 // ---------- Homme du match (vote des comptes, jusqu'à 30 h après le coup d'envoi) ----------
 const hdmFin = m => { const d = new Date(new Date(m.kickoff).getTime() + 24 * 3600e3); return d.toLocaleDateString('fr-FR', { weekday: 'long', timeZone: 'Europe/Paris' }) + ' ' + d.toLocaleTimeString('fr-FR', { hour: 'numeric', timeZone: 'Europe/Paris' }).replace(/\s*h.*$/, '') + ' h'; };
 const hdmOuvert = m => m.status === 'termine' && Date.now() < new Date(m.kickoff).getTime() + 24 * 3600e3;
-async function hdmRemplir(m, evs, box){
+async function hdmRemplir(m, evs, box, changer = false){
   if (!box) return;
   const c = clubSide(m), roster = rosterOf(m, c).filter(p => p.name);
   const entres = new Set(evs.filter(e => e.t === c && e.k === 'sub' && e.in_n).map(e => e.in_n));
@@ -706,16 +706,21 @@ async function hdmRemplir(m, evs, box){
     return;
   }
   const peut = !!(myId() && profile && !['pending', 'supprime'].includes(profile.role));
+  const replie = peut && mien && !changer;   // déjà voté : on replie sur son choix
+  const fin = esc(hdmFin(m));
   box.innerHTML = `<section class="hdm"><h3>🏆 Homme du match</h3>
-    <p class="note">${peut ? (mien ? 'Ton vote : <b>' + esc(mien) + '</b>. Tu peux le changer jusqu’à ' + hdmFin(m) + '.' : 'Vote pour le meilleur joueur du match, jusqu’à ' + hdmFin(m) + '.') : myId() ? 'Vote en cours jusqu’à ' + hdmFin(m) + '. Ton compte doit d’abord être validé pour voter.' : 'Vote en cours jusqu’à ' + hdmFin(m) + '. Il faut un compte pour voter.'}</p>
-    <div class="hdmlist">${joueurs.map(p => `<button type="button" class="hdmrow${mien === p.name ? ' on' : ''}" data-hdm="${esc(p.name)}"${peut ? '' : ' disabled'}><span class="hdmnom">${esc(p.name)}</span><b>${mien === p.name ? '✓' : ''}</b></button>`).join('')}</div>
-    <p class="note" style="margin:8px 0 0">Les votes restent secrets : le résultat sera affiché ${esc(hdmFin(m))}.</p>
-    ${avecVoix ? `<p class="note" style="margin:12px 0 6px">Votes en cours (${total}), visible seulement par les admins :</p>${detail()}` : ''}
-    ${!myId() ? '<a class="fbtn" href="#/connexion" style="width:100%;margin-top:8px">Se connecter pour voter</a>' : ''}</section>`;
+    ${replie ? `<div class="hdmmien"><span>Ton vote : <b>${esc(mien)}</b></span><button type="button" class="amod" id="hdmChanger">Changer</button></div>
+      <p class="note" style="margin:8px 0 0">Tu peux le changer jusqu’à ${fin}. Les votes restent secrets : le résultat sera affiché ${fin}.</p>`
+    : peut ? `<p class="note">Touche le meilleur joueur du match. Vote ouvert jusqu’à ${fin}, résultat affiché à ce moment-là.</p>
+      <div class="hdmgrid">${joueurs.map(p => `<button type="button" class="hdmrow${mien === p.name ? ' on' : ''}" data-hdm="${esc(p.name)}"><span class="hdmnom">${esc(p.name)}</span>${mien === p.name ? '<b>✓</b>' : ''}</button>`).join('')}</div>`
+    : `<p class="note">Vote en cours jusqu’à ${fin}, résultat affiché à ce moment-là. ${myId() ? 'Ton compte doit d’abord être validé pour voter.' : 'Il faut un compte pour voter.'}</p>
+      ${!myId() ? '<a class="fbtn" href="#/connexion" style="width:100%;margin-top:8px">Se connecter pour voter</a>' : ''}`}
+    ${avecVoix ? `<details class="hdmadm"><summary>Votes en cours (${total}), visible seulement par les admins</summary>${detail()}</details>` : ''}</section>`;
+  if ($('hdmChanger')) $('hdmChanger').onclick = () => hdmRemplir(m, evs, box, true);
   box.querySelectorAll('[data-hdm]').forEach(b => b.onclick = async () => {
-    b.disabled = true;
+    box.querySelectorAll('[data-hdm]').forEach(x => x.disabled = true);
     const { error } = await sb.rpc('voter_hdm', { p_match: m.id, p_joueur: b.dataset.hdm });
-    if (error){ b.disabled = false; toast(/fermé/.test(error.message) ? 'Le vote est fermé' : /compte/.test(error.message) ? 'Ton compte doit être validé pour voter' : isNetErr(error) ? 'Pas de réseau' : 'Vote refusé'); return; }
+    if (error){ box.querySelectorAll('[data-hdm]').forEach(x => x.disabled = false); toast(/fermé/.test(error.message) ? 'Le vote est fermé' : /compte/.test(error.message) ? 'Ton compte doit être validé pour voter' : isNetErr(error) ? 'Pas de réseau' : 'Vote refusé'); return; }
     toast('Vote enregistré : ' + b.dataset.hdm); hdmRemplir(m, evs, box);
   });
 }
@@ -1068,16 +1073,19 @@ async function matchView(id){
   };
   let advCache = '', hdmCache = '';
   const draw = () => {
+    // match terminé : l'homme du match prend la place du responsable score, qui passe tout en bas
+    const fini = m.status === 'termine';
+    const delegHTML = isStaff() || m.delegue_nom ? `<div class="field deleg"><span>Responsable score</span>${delegPickHTML('delSel', m.delegue_id, m.delegue_nom, !isTeamManager(m.equipe))}${canManage(m) && !isTeamManager(m.equipe) ? '<small>Seul le responsable de l’équipe (ou un admin) peut changer le responsable score.</small>' : isStaff() && !canManage(m) ? '<small>Seuls le responsable de l’équipe, le responsable score ou un admin peuvent modifier ce match.</small>' : ''}</div>` : '';
     view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false) + niveauHTML(m) + lieuHTML(m)
       + `<div class="mactions"><button class="pill" id="btnBell">🔔 Buts des ${esc(teamLabel(m.equipe))}</button><button class="pill" id="btnShareLive">↗ Partager</button>${m.status==='termine' && !m._partiel ? '<button class="pill" id="btnResume">📸 Résumé</button>' : ''}</div>`
       + demHTML()
       + (canManage(m) ? `<a class="fbtn primary big" href="#/gerer/${esc(m.id)}">Gérer ce match</a>` : '')
-      + (isStaff() || m.delegue_nom ? `<div class="field deleg"><span>Responsable score</span>${delegPickHTML('delSel', m.delegue_id, m.delegue_nom, !isTeamManager(m.equipe))}${canManage(m) && !isTeamManager(m.equipe) ? '<small>Seul le responsable de l’équipe (ou un admin) peut changer le responsable score.</small>' : isStaff() && !canManage(m) ? '<small>Seuls le responsable de l’équipe, le responsable score ou un admin peuvent modifier ce match.</small>' : ''}</div>` : '')
+      + (fini ? `<div id="hdmBox">${hdmCache}</div>` : delegHTML)
       + (isAdmin() && people ? `<div class="audit">Match créé par ${esc(personName(m.created_by))}${m.rosters_at ? ` · Compo saisie par ${esc(personName(m.rosters_by))} le ${esc(fmtDate(m.rosters_at))}` : ''}</div>` : '')
       + (m._partiel ? '<div class="loading">Chargement des détails…</div>' : (m.status==='prevu' ? rdvHTML(m) + `<div id="advBox">${advCache}</div>` + lineupsHTML(m, evs) : '')
       + `<section class="log"><div class="loghead"><h2>Chronologie</h2></div><div id="events">${timelineHTML(m, evs, false)}</div></section>`
-      + (m.status==='termine' ? `<div id="hdmBox">${hdmCache}</div>` : '')
       + (m.status!=='prevu' ? lineupsHTML(m, evs) : '')
+      + (fini ? delegHTML : '')
       + (isStaff() || canManage(m) ? '<details class="histobox" id="histoBox"><summary>🕓 Historique des modifications</summary><div id="histoList"></div></details>' : ''));
     $('btnShareLive').onclick = () => shareLink(m);
     if ($('btnResume')) $('btnResume').onclick = () => partagerResume(m, evs).catch(() => toast('Image impossible à créer'));
