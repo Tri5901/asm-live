@@ -386,6 +386,7 @@ async function route(){
     if (page==='classements') return await classementsView();
     if (page==='connexion') return loginView();
     if (page==='compte') return accountView();
+    if (page==='cgu') return cguView();
     if (page==='admin') return await adminView();
     location.hash = '#/';
   }catch(e){
@@ -2034,6 +2035,33 @@ async function statsViewFrom(playerArg, { ms, evs }){
   }
 }
 
+// ---------- Conditions générales d'utilisation ----------
+const CGU_VERSION = '2026-10-04';
+function cguHTML(){
+  return `<h2>Conditions générales d’utilisation</h2>
+  <p class="note">Version du 4 octobre 2026</p>
+  <h3>1. L’appli</h3>
+  <p>« AS Mésanger – Matchs en direct » (asm-live.vercel.app) est l’appli de l’AS Mésanger pour suivre les matchs des équipes du club en direct : scores, buteurs, cartons, remplacements, compositions, classements et statistiques des joueurs. Elle est proposée gratuitement par des bénévoles du club, sans garantie de disponibilité ni d’exactitude : les informations officielles restent celles de la FFF.</p>
+  <h3>2. Utilisation sans compte</h3>
+  <p>Tout le monde peut suivre les matchs, les classements et les stats sans compte. Les notifications (buts, cartons, début de match) sont facultatives : tu les actives et les désactives toi-même depuis la cloche 🔔.</p>
+  <h3>3. Compte</h3>
+  <p>Un compte sert à aider le club : saisir le score d’un match (responsable score), gérer les matchs d’une équipe, voir ses propres stats. Tu crées ton compte avec ton prénom, ton nom et ton email, et tu choisis un mot de passe que tu gardes secret. Un nouveau compte est validé par un administrateur du club, qui choisit son rôle (supporter, joueur, dirigeant, responsable d’équipe, admin). Le club peut modifier un rôle ou supprimer un compte en cas d’usage abusif.</p>
+  <h3>4. Bon usage</h3>
+  <p>Tu t’engages à saisir des informations exactes (scores, buteurs, cartons, compositions), à ne pas noter d’actions en double avec une autre personne, et à respecter les joueurs, les adversaires et les arbitres. Chaque modification d’un match est enregistrée avec son auteur et son heure (historique visible par les responsables du club).</p>
+  <h3>5. Données personnelles</h3>
+  <p><b>Ce qui est enregistré :</b> pour un compte, ton prénom, ton nom, ton email, ton rôle, les équipes que tu gères, le joueur auquel tu as lié ton compte, la date d’acceptation de ces conditions et les saisies que tu fais sur les matchs. Pour tous les visiteurs : l’abonnement aux notifications si tu l’actives, et, pendant que l’appli est ouverte, la page consultée et le fait d’être connecté ou non (sans nom ni adresse, pour compter les personnes en ligne). Les noms des joueurs apparaissent dans les compositions, la chronologie et les stats des matchs du club ; les compos et résultats des adversaires viennent de la feuille de match publique de la FFF.</p>
+  <p><b>Photos de feuille de match :</b> la lecture d’une photo de compo se fait sur ton téléphone ; la photo n’est pas envoyée ni conservée.</p>
+  <p><b>À quoi elles servent :</b> uniquement au fonctionnement de l’appli et à la vie sportive du club. Elles ne sont ni vendues, ni utilisées pour de la publicité.</p>
+  <p><b>Où elles sont :</b> chez les hébergeurs de l’appli (Supabase pour la base de données, Vercel pour le site et l’envoi des notifications).</p>
+  <p><b>Combien de temps :</b> tant que ton compte existe. Si tu supprimes ton compte, ton accès et ton email sont effacés et tu ne peux plus te connecter ; ton prénom et ton nom restent dans l’historique des matchs et actions que tu as saisis (et dans les compos où tu as joué).</p>
+  <p><b>Tes droits :</b> tu peux consulter, corriger ton nom (« Mon compte »), supprimer ton compte (« Mon compte » → « Supprimer mon compte ») ou demander à un administrateur du club de corriger ou retirer ton nom d’une composition ou de l’historique. Tu peux aussi saisir la CNIL (cnil.fr).</p>
+  <h3>6. Évolutions</h3>
+  <p>Ces conditions peuvent évoluer ; la date de version ci-dessus change alors.</p>`;
+}
+function cguView(){
+  view.innerHTML = `<a class="back" href="#/compte">← Retour</a><div class="card cgu">${cguHTML()}</div>`;
+}
+
 // ---------- Connexion / compte ----------
 function loginView(){
   if (session){ location.hash = '#/compte'; return; }
@@ -2049,17 +2077,22 @@ function loginView(){
       ${mode==='up' ? `<div class="frow2"><label class="field"><span>Prénom</span><input id="lfPrenom" required minlength="2" autocomplete="given-name" autocapitalize="words"></label><label class="field"><span>Nom</span><input id="lfNom" required minlength="2" autocomplete="family-name" autocapitalize="words"></label></div>` : ''}
       <label class="field"><span>Email</span><input id="lfMail" type="email" required autocomplete="email"></label>
       <label class="field"><span>Mot de passe</span><input id="lfPw" type="password" required minlength="6" autocomplete="${mode==='in'?'current-password':'new-password'}">${mode==='up' ? '<small>6 caractères minimum.</small>' : ''}</label>
+      ${mode==='up' ? '<label class="cgucase"><input type="checkbox" id="lfCgu" required><span>J’ai lu et j’accepte les <button type="button" class="link" id="lfCguVoir">conditions d’utilisation</button>, y compris l’utilisation de mes données.</span></label>' : ''}
       <div class="foot" style="margin-top:4px"><button class="fbtn primary" id="lfGo">${mode==='in' ? 'Se connecter' : 'Créer mon compte'}</button></div>
       <button type="button" class="link" id="lfSwitch">${mode==='in' ? 'Pas encore de compte ? Créer un compte' : 'Déjà un compte ? Se connecter'}</button>
     </form>`;
     $('lfSwitch').onclick = () => { mode = mode==='in' ? 'up' : 'in'; draw(); };
+    if ($('lfCguVoir')) $('lfCguVoir').onclick = e => { e.preventDefault(); openSheet(`<div class="cgu">${cguHTML()}</div><button class="fbtn primary" id="cguOk" style="width:100%;margin-top:12px">J’ai compris</button>`, 'tall'); $('cguOk').onclick = () => { closeSheet(); if ($('lfCgu')) $('lfCgu').checked = true; }; };
     $('lf').onsubmit = async ev => {
       ev.preventDefault();
       $('lfGo').disabled = true;
       const email = $('lfMail').value.trim(), password = $('lfPw').value;
       let res;
       if (mode==='in') res = await sb.auth.signInWithPassword({email, password});
-      else res = await sb.auth.signUp({email, password, options:{data:{nom: fmtNom($('lfPrenom').value) + ' ' + fmtNom($('lfNom').value)}}});
+      else {
+        if (!$('lfCgu').checked){ $('lfGo').disabled = false; toast('Coche la case des conditions d’utilisation'); return; }
+        res = await sb.auth.signUp({email, password, options:{data:{nom: fmtNom($('lfPrenom').value) + ' ' + fmtNom($('lfNom').value), cgu: CGU_VERSION}}});
+      }
       if (res.error){
         const m = /invalid login/i.test(res.error.message) ? 'Email ou mot de passe incorrect.' : /already registered/i.test(res.error.message) ? 'Un compte existe déjà avec cet email.' : res.error.message;
         return draw(`<div class="msg err">${esc(m)}</div>`);
@@ -2116,7 +2149,8 @@ function accountView(){
       ${isAdmin() ? '<a class="fbtn" href="#/admin">Gérer les accès</a>' : ''}
     </div>
     <div class="foot" style="margin-top:10px"><button class="fbtn" id="logout">Se déconnecter</button></div>
-    <button class="link danger-link" id="delMe" style="width:100%;margin-top:14px">Supprimer mon compte</button>
+    <a class="link" href="#/cgu" style="display:block;text-align:center;margin-top:14px">Conditions d’utilisation</a>
+    <button class="link danger-link" id="delMe" style="width:100%;margin-top:8px">Supprimer mon compte</button>
   </div>
   <div class="card monjoueur" id="monJoueur"><div class="loading">Chargement de tes stats…</div></div>`;
   monJoueurBloc();
