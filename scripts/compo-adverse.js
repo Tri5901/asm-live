@@ -1,6 +1,6 @@
-// Compos de l'équipe adverse relevées sur la feuille de match FFF (tâche programmée du mardi).
-//   node scripts/compo-adverse.js liste                 → matchs terminés des 9 derniers jours dont la compo adverse n'a pas de noms
-//                                                         (« id adresse-FFF (équipe – adversaire) »)
+// Compos de l'équipe adverse relevées sur la feuille de match FFF (tâche programmée du lundi).
+//   node scripts/compo-adverse.js liste                 → matchs terminés des 8 derniers jours avec leur page FFF
+//                                                         (« id adresse-FFF (match) [compo adverse à remplir | compo adverse déjà remplie] »)
 //   node scripts/compo-adverse.js envoyer <id> <json>   → enregistre la compo adverse : [{"n":"7","name":"Hugo Martin","sub":false}, ...]
 // La base ne remplit que la compo adverse, et seulement si elle est vide ou sans noms : une compo saisie n'est jamais écrasée.
 // Clé lue dans C:\Users\Utilisateur\.asm-live\classements.key (jamais affichée).
@@ -13,12 +13,12 @@ const KEY = 'sb_publishable_VwLyp5ROGzidc4oHWehoLg_kIehYAcE';
 const H = { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' };
 
 async function liste() {
-  const depuis = new Date(Date.now() - 9 * 864e5).toISOString();
+  const depuis = new Date(Date.now() - 8 * 864e5).toISOString();
   const r = await fetch(URL_ + `/rest/v1/matches?select=id,equipe,club_side,home_name,away_name,rosters,fff_match&status=eq.termine&kickoff=gte.${depuis}&fff_match=not.is.null&order=kickoff`, { headers: H });
   const ms = await r.json();
-  const a_faire = ms.filter(m => { const adv = m.club_side === 'A' ? 'H' : 'A'; return !((m.rosters || {})[adv] || []).some(p => (p.name || '').trim()); });
-  if (!a_faire.length) return console.log('RIEN toutes les compos adverses sont déjà remplies');
-  a_faire.forEach(m => console.log(`${m.id} https://epreuves.fff.fr${m.fff_match}   (${m.home_name} – ${m.away_name}, adversaire : ${m.club_side === 'A' ? m.home_name : m.away_name})`));
+  if (!ms.length) return console.log('RIEN aucun match terminé cette semaine');
+  ms.forEach(m => { const adv = m.club_side === 'A' ? 'H' : 'A'; const vide = !((m.rosters || {})[adv] || []).some(p => (p.name || '').trim());
+    console.log(`${m.id} https://epreuves.fff.fr${m.fff_match}   (${m.home_name} – ${m.away_name}, adversaire : ${m.club_side === 'A' ? m.home_name : m.away_name}) [${vide ? 'compo adverse à remplir' : 'compo adverse déjà remplie'}]`); });
 }
 
 async function envoyer(id, file) {
