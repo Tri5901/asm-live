@@ -48,7 +48,7 @@ const sb = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KE
 
 const $ = id => document.getElementById(id);
 const view = $('view');
-const LABEL = {goal:'But', sub:'Remplacement', yellow:'Carton jaune', red:'Carton rouge'};
+const LABEL = {goal:'But', sub:'Remplacement', yellow:'Carton jaune', white:'Carton blanc', red:'Carton rouge'};
 const HALF = 45; // durée d'une mi-temps : toujours 45 min, non modifiable
 
 function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -146,7 +146,7 @@ function timelineHTML(m, evs, editable){
   }
   if (!evs.length) return `<div class="empty">${editable ? 'Lance le chrono puis touche une action : la minute est notée toute seule.' : 'Aucune action pour le moment.'}</div>`;
   const list = [...evs].sort((a,b)=> b.sort - a.sort || String(b.created_at||'').localeCompare(String(a.created_at||'')));
-  const ICON = {goal:'<span class="evi goal">⚽</span>', yellow:'<span class="evi"><i class="kc y"></i></span>', red:'<span class="evi"><i class="kc r"></i></span>', sub:'<span class="evi sub">⇄</span>'};
+  const ICON = {goal:'<span class="evi goal">⚽</span>', yellow:'<span class="evi"><i class="kc y"></i></span>', white:'<span class="evi"><i class="kc w"></i></span>', red:'<span class="evi"><i class="kc r"></i></span>', sub:'<span class="evi sub">⇄</span>'};
   let lastP = null, html = '';
   for (const e of list){
     if (lastP !== null && e.p !== lastP) html += '<div class="period-mark">Mi-temps</div>';
@@ -154,7 +154,7 @@ function timelineHTML(m, evs, editable){
     let detail = '';
     if (e.k==='goal') detail = who(m,e.t,e.n,'Buteur non précisé');
     if (e.k==='sub') detail = `Sort ${who(m,e.t,e.out_n,'?')} · Entre ${who(m,e.t,e.in_n,'?')}`;
-    if (e.k==='yellow'||e.k==='red') detail = who(m,e.t,e.n,'Joueur non précisé');
+    if (e.k==='yellow'||e.k==='white'||e.k==='red') detail = who(m,e.t,e.n,'Joueur non précisé');
     const by = isAdmin() && people ? `<div class="evby">Saisi par ${esc(personName(e.created_by))}${e.created_at ? ' à ' + hhmm(e.created_at) : ''}</div>` : '';
     html += `<div class="ev ${editable ? 'edit' : 'ro'}${e.t===clubSide(m) ? ' club' : ''}" data-id="${esc(e.id)}"><div class="min">${esc(e.min)}</div>${ICON[e.k]}
       <div class="txt"><b>${LABEL[e.k]}</b> <span class="evteam">${esc(teamName(m,e.t))}</span><div>${esc(detail)}</div>${by}</div>
@@ -813,6 +813,7 @@ async function consoleView(id, openCompo){
         <button class="act goal" data-t="${t}" data-k="goal">But</button>
         <button class="act" data-t="${t}" data-k="sub"><span class="ic sub">⇄</span>Remplacement</button>
         <button class="act" data-t="${t}" data-k="yellow"><span class="ic y"></span>Carton jaune</button>
+        <button class="act" data-t="${t}" data-k="white"><span class="ic w"></span>Carton blanc</button>
         <button class="act" data-t="${t}" data-k="red"><span class="ic r"></span>Carton rouge</button>
       </div>`).join('')}
     </section>
@@ -1255,8 +1256,8 @@ async function consoleView(id, openCompo){
   // Récapitulatif (WhatsApp, feuille officielle)
   function recapText(){
     const ev = [...S.events].sort((a,b)=>a.sort-b.sort);
-    const ICON = {goal:'⚽', sub:'🔄', yellow:'🟨', red:'🟥'};
-    const TITLE = {goal:'Buts', sub:'Remplacements', yellow:'Cartons jaunes', red:'Cartons rouges'};
+    const ICON = {goal:'⚽', sub:'🔄', yellow:'🟨', white:'⬜', red:'🟥'};
+    const TITLE = {goal:'Buts', sub:'Remplacements', yellow:'Cartons jaunes', white:'Cartons blancs', red:'Cartons rouges'};
     const num = e => who(S, e.t, e.n, 'joueur non précisé');
     const sec = (k, fmt) => {
       const l = ev.filter(e=>e.k===k); if(!l.length) return '';
@@ -1267,6 +1268,7 @@ async function consoleView(id, openCompo){
       + sec('goal', num)
       + sec('sub', e=>`sort ${who(S,e.t,e.out_n,'?')}, entre ${who(S,e.t,e.in_n,'?')}`)
       + sec('yellow', num)
+      + sec('white', num)
       + sec('red', num)
       + `\nEn direct : ${location.origin + location.pathname}#/match/${id}`;
   }
