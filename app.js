@@ -643,6 +643,253 @@ function lineupsHTML(m, evs = []){
     + (has ? `<div class="lineups${lsGet('asm-voir-remp', false) ? ' remp' : ''}">${side('H')}${side('A')}</div>` : '<div class="empty">Compo pas encore saisie.</div>')
     + '</section>';
 }
+// ---------- Match à venir : l'adversaire (classement, forme, match aller) ----------
+const numEquipe = s => (String(s || '').trim().match(/\s(\d+)$/) || [])[1] || null;
+async function adversaireRemplir(m, box){
+  if (!box || !/ · J\d+$/.test(m.competition || '')) return;   // championnat seulement
+  let rows = lsGet('asm-cls', null);
+  if (!rows){ try{ const { data } = await sb.from('classements').select('*'); rows = data || []; lsSet('asm-cls', rows); }catch(e){ return; } }
+  const r = (rows || []).find(x => x.equipe === m.equipe); if (!r || !box.isConnected) return;
+  const code = ((m.opp_logo || '').match(/BC(\d+)\./) || [])[1];
+  const advNom = teamName(m, oppSide(m));
+  const memes = r.lignes.filter(l => l[10] === code);
+  const l = memes.find(x => numEquipe(x[1]) === numEquipe(advNom)) || (memes.length === 1 ? memes[0] : null);
+  if (!l) return;
+  const nous = r.lignes.find(x => x[10] === CLUB_FFF);
+  // forme : ses 5 derniers résultats dans la poule
+  const forme = (r.resultats || []).filter(x => (x[2] === code && x[3] === l[1]) || (x[6] === code && x[7] === l[1]))
+    .sort((a, b) => String(b[1]).localeCompare(String(a[1]))).slice(0, 5)
+    .map(x => { const dom = x[2] === code && x[3] === l[1]; const p = +(dom ? x[4] : x[5]), c = +(dom ? x[5] : x[4]); return p > c ? 'V' : p < c ? 'D' : 'N'; });
+  // match aller : notre match déjà joué contre la même équipe cette saison
+  const home = lsGet('asm-home', null) || {};
+  const aller = (home.matches || []).find(x => x.id !== m.id && x.equipe === m.equipe && x.status === 'termine'
+    && seasonOf(x.kickoff) === seasonOf(m.kickoff) && teamName(x, oppSide(x)) === advNom && / · J\d+$/.test(x.competition || ''));
+  let allerTxt = '';
+  if (aller){
+    const g = (home.goals || []).filter(x => x.match_id === aller.id), cs = clubSide(aller);
+    const nb = g.filter(x => x.t === cs).length, ab = g.filter(x => x.t !== cs).length;
+    allerTxt = `<div><span>Match aller</span><b>${nb > ab ? 'Victoire' : nb < ab ? 'Défaite' : 'Nul'} ${nb}–${ab}</b></div>`;
+  }
+  const rg = n => n + (n === 1 ? 'er' : 'e');
+  box.innerHTML = `<section class="advcard"><h3>L’adversaire · ${esc(advNom)}</h3><div class="pfacts">
+    <div><span>Classement</span><b>${rg(l[0])} · ${l[2]} pt${l[2] > 1 ? 's' : ''} · ${l[3]} match${l[3] > 1 ? 's' : ''}</b></div>
+    <div><span>Bilan</span><b>${l[4]} V · ${l[5]} N · ${l[6]} D · ${l[9] > 0 ? '+' : ''}${l[9]}</b></div>
+    ${forme.length ? `<div><span>Forme</span><b class="formeb">${forme.map(x => `<i class="hres ${x}">${x}</i>`).join('')}</b></div>` : ''}
+    ${nous ? `<div><span>${esc(teamLabel(m.equipe))}</span><b>${rg(nous[0])} · ${nous[2]} pt${nous[2] > 1 ? 's' : ''}</b></div>` : ''}
+    ${allerTxt}</div></section>`;
+}
+
+// ---------- Homme du match (vote des comptes, jusqu'à 30 h après le coup d'envoi) ----------
+const hdmFin = m => { const d = new Date(new Date(m.kickoff).getTime() + 30 * 3600e3); return d.toLocaleDateString('fr-FR', { weekday: 'long', timeZone: 'Europe/Paris' }) + ' ' + d.toLocaleTimeString('fr-FR', { hour: 'numeric', timeZone: 'Europe/Paris' }).replace(/\s*h.*$/, '') + ' h'; };
+const hdmOuvert = m => m.status === 'termine' && Date.now() < new Date(m.kickoff).getTime() + 30 * 3600e3;
+async function hdmRemplir(m, evs, box){
+  if (!box) return;
+  const c = clubSide(m), roster = rosterOf(m, c).filter(p => p.name);
+  const entres = new Set(evs.filter(e => e.t === c && e.k === 'sub' && e.in_n).map(e => e.in_n));
+  const joueurs = roster.filter(p => !p.sub || entres.has(p.n));
+  if (!joueurs.length) return;
+  const { data: res } = await sb.rpc('hdm_resultats', { p_match: m.id });
+  let mien = null;
+  if (myId()){ const { data } = await sb.from('votes_hdm').select('joueur').eq('match_id', m.id).maybeSingle(); mien = data && data.joueur; }
+  if (!box.isConnected) return;
+  const R = res || [], total = R.reduce((a, x) => a + x.voix, 0), voix = n => (R.find(x => x.joueur === n) || {}).voix || 0;
+  if (!hdmOuvert(m)){
+    if (!total){ box.innerHTML = ''; return; }
+    const max = Math.max(...R.map(x => x.voix)), g = R.filter(x => x.voix === max).map(x => x.joueur);
+    box.innerHTML = `<section class="hdm"><h3>🏆 Homme du match</h3><p class="hdmwin">${esc(g.join(' et '))} <small>(${max} voix sur ${total})</small></p></section>`;
+    return;
+  }
+  const peut = !!(myId() && profile && !['pending', 'supprime'].includes(profile.role));
+  box.innerHTML = `<section class="hdm"><h3>🏆 Homme du match</h3>
+    <p class="note">${peut ? (mien ? 'Ton vote : <b>' + esc(mien) + '</b>. Tu peux le changer jusqu’à ' + hdmFin(m) + '.' : 'Vote pour le meilleur joueur du match, jusqu’à ' + hdmFin(m) + '.') : myId() ? 'Vote en cours jusqu’à ' + hdmFin(m) + '. Ton compte doit d’abord être validé pour voter.' : 'Vote en cours jusqu’à ' + hdmFin(m) + '. Il faut un compte pour voter.'}</p>
+    <div class="hdmlist">${joueurs.map(p => { const v = voix(p.name), pc = total ? Math.round(100 * v / total) : 0;
+      return `<button type="button" class="hdmrow${mien === p.name ? ' on' : ''}" data-hdm="${esc(p.name)}"${peut ? '' : ' disabled'}><span class="hdmbar" style="width:${pc}%"></span><span class="hdmnom">${esc(p.name)}</span><b>${v || ''}</b></button>`; }).join('')}</div>
+    ${!myId() ? '<a class="fbtn" href="#/connexion" style="width:100%;margin-top:8px">Se connecter pour voter</a>' : ''}</section>`;
+  box.querySelectorAll('[data-hdm]').forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    const { error } = await sb.rpc('voter_hdm', { p_match: m.id, p_joueur: b.dataset.hdm });
+    if (error){ b.disabled = false; toast(/fermé/.test(error.message) ? 'Le vote est fermé' : /compte/.test(error.message) ? 'Ton compte doit être validé pour voter' : isNetErr(error) ? 'Pas de réseau' : 'Vote refusé'); return; }
+    toast('Vote enregistré : ' + b.dataset.hdm); hdmRemplir(m, evs, box);
+  });
+}
+
+// ---------- Résumé du match en image (à partager) ----------
+async function partagerResume(m, evs){
+  // format des publications Instagram du club : titres blancs condensés, sous-titres jaunes, logos dans des ronds
+  const W = 1080, H = 1350, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d'), JAUNE = '#F7E01A'; g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+  try{ await Promise.all([document.fonts.load('italic 800 80px "Barlow Condensed"'), document.fonts.load('800 80px "Barlow Condensed"'), document.fonts.load('700 40px "Barlow Condensed"')]); }catch(e){}
+  const charger = (src, cors) => new Promise(r => { if (!src) return r(null); const i = new Image(); if (cors) i.crossOrigin = 'anonymous'; i.onload = () => r(i); i.onerror = () => r(null); i.src = src; });
+  const cs = clubSide(m), idLogo = ((m.opp_logo || '').match(/^https:\/\/cdn-transverse\.azureedge\.net\/phlogos\/BC(\d+)\.jpg$/) || [])[1];
+  const [logo, logoAdv] = await Promise.all([charger('icons/icon-512.png'), charger(idLogo ? '/api/logo?id=' + idLogo : m.opp_logo, true)]);
+  // fond : noir, halo jaune en bas, bandes diagonales discrètes
+  g.fillStyle = '#0b0b0a'; g.fillRect(0, 0, W, H);
+  const halo = g.createRadialGradient(W / 2, H + 100, 50, W / 2, H + 100, 1100); halo.addColorStop(0, 'rgba(247,224,26,.38)'); halo.addColorStop(1, 'rgba(247,224,26,0)');
+  g.fillStyle = halo; g.fillRect(0, 0, W, H);
+  g.save(); g.globalAlpha = .05; g.fillStyle = JAUNE; for (let x = -H; x < W; x += 90){ g.beginPath(); g.moveTo(x, H); g.lineTo(x + 40, H); g.lineTo(x + 40 + H, 0); g.lineTo(x + H, 0); g.fill(); } g.restore();
+  const T = (txt, x, y, taille, coul, { poids = 800, italique = false, align = 'center', max = W - 120 } = {}) => {
+    let t = String(txt), z = taille;
+    const f = () => { g.font = `${italique ? 'italic ' : ''}${poids} ${z}px "Barlow Condensed", sans-serif`; };
+    f(); while (g.measureText(t).width > max && z > 18){ z -= 2; f(); }
+    g.fillStyle = coul; g.textAlign = align; g.textBaseline = 'alphabetic'; g.fillText(t, x, y); return z;
+  };
+  if (logo){ g.save(); g.globalCompositeOperation = 'lighten'; g.drawImage(logo, W / 2 - 120, 20, 240, 240); g.restore(); }
+  const res = resultOf(m, evs);
+  T(res === 'V' ? 'VICTOIRE' : res === 'D' ? 'DÉFAITE' : 'MATCH NUL', W / 2, 330, 130, '#ffffff');
+  T(`${teamLabel(m.equipe)}${m.competition ? ' · ' + m.competition : ''}`.toUpperCase(), W / 2, 395, 46, JAUNE, { poids: 700 });
+  T(new Date(m.kickoff).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Paris' }).toUpperCase(), W / 2, 448, 38, '#ffffff', { poids: 700 });
+  // écussons + score
+  const rond = (img, x, y, r, initiales, nous) => {
+    g.save(); g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fillStyle = nous ? '#000' : '#fff'; g.fill(); g.lineWidth = 6; g.strokeStyle = JAUNE; g.stroke(); g.clip();
+    if (img){ const k = Math.min((r * (nous ? 2.05 : 1.2)) / img.width, (r * (nous ? 2.05 : 1.2)) / img.height); g.drawImage(img, x - img.width * k / 2, y - img.height * k / 2, img.width * k, img.height * k); }
+    else { g.fillStyle = '#1a1a17'; g.font = `800 ${r * .8}px "Barlow Condensed", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(initiales, x, y + 4); }
+    g.restore();
+  };
+  const ini = s => String(s).replace(/^(FC|AS|US|ES|AC|SC|JS|GJ|CS|ASC)\s+/i, '').split(/[\s-]+/).filter(w => /\p{L}/u.test(w)).slice(0, 2).map(w => w[0].toUpperCase()).join('');
+  const yL = 610, xH = 190, xA = W - 190;
+  [['H', xH], ['A', xA]].forEach(([t, x]) => rond(t === cs ? logo : logoAdv, x, yL, 105, ini(teamName(m, t)), t === cs));
+  const sh = goals(evs, 'H'), sa = goals(evs, 'A');
+  T(`${sh}-${sa}`, W / 2, yL + 75, 220, JAUNE, { italique: true, max: 420 });
+  [['H', xH], ['A', xA]].forEach(([t, x]) => T(teamName(m, t).toUpperCase(), x, yL + 160, 40, t === cs ? JAUNE : '#ffffff', { poids: 700, max: 330 }));
+  const ballon = (cx, cy, r) => {
+    const P = (d, a) => [cx + r * d * Math.cos(a), cy + r * d * Math.sin(a)];
+    const penta = (d, ang, pr, rot) => { const [px, py] = P(d, ang); g.beginPath(); for (let k = 0; k < 5; k++){ const a = rot + k * 2 * Math.PI / 5; g[k ? 'lineTo' : 'moveTo'](px + r * pr * Math.cos(a), py + r * pr * Math.sin(a)); } g.closePath(); g.fill(); };
+    g.save(); g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fillStyle = JAUNE; g.fill(); g.clip();
+    g.fillStyle = '#000'; g.strokeStyle = '#000'; g.lineWidth = r * .07; g.lineJoin = 'round';
+    penta(0, 0, .3, -Math.PI / 2);
+    for (let k = 0; k < 5; k++){
+      const a = -Math.PI / 2 + k * 2 * Math.PI / 5, b = a + Math.PI / 5;
+      g.beginPath(); g.moveTo(...P(.3, a)); g.lineTo(...P(.6, a)); g.lineTo(...P(.92, b)); g.moveTo(...P(.6, a)); g.lineTo(...P(.92, a - Math.PI / 5)); g.stroke();
+      penta(.92, b, .27, b);
+    }
+    g.restore();
+    g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.lineWidth = r * .09; g.strokeStyle = '#000'; g.stroke();
+  };
+  // nos buteurs seulement, en grand avec le ballon
+  const parJ = new Map();
+  evs.filter(e => e.k === 'goal' && e.t === cs).sort((a, b) => (+a.sort || 0) - (+b.sort || 0)).forEach(e => {
+    const n = e.n === 'CSC' ? 'CSC' : e.n ? (nameOf(m, cs, e.n) || 'n°' + e.n) : 'Buteur inconnu';
+    parJ.set(n, [...(parJ.get(n) || []), String(e.min || '').replace(/'$/, '') + '’']); });
+  const lignes = [...parJ], nb = Math.min(lignes.length, 6);
+  if (nb){
+    const pas = nb > 4 ? 66 : nb > 3 ? 78 : 90, taille = nb > 4 ? 50 : nb > 3 ? 62 : 72, y0 = 930;
+    T('NOS BUTEURS', W / 2, y0 - 50, 40, JAUNE, { poids: 700 });
+    lignes.slice(0, nb).forEach(([nom, mins], i) => {
+      const y = y0 + 30 + i * pas;
+      g.font = `800 ${taille}px "Barlow Condensed", sans-serif`;
+      const tNom = nom.toUpperCase(), tMin = '  ' + mins.join(' ');
+      g.font = `800 ${taille}px "Barlow Condensed", sans-serif`; const wN = g.measureText(tNom).width;
+      g.font = `600 ${taille * .7}px "Barlow Condensed", sans-serif`; const wM = g.measureText(tMin).width;
+      const bal = taille * .95, total = bal + 22 + wN + wM, x0 = Math.max(60, (W - total) / 2);
+      ballon(x0 + bal / 2, y - taille * .34, bal / 2); g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+      g.fillStyle = '#ffffff'; g.font = `800 ${taille}px "Barlow Condensed", sans-serif`; g.fillText(tNom, x0 + bal + 22, y);
+      g.fillStyle = JAUNE; g.font = `600 ${taille * .7}px "Barlow Condensed", sans-serif`; g.fillText(tMin, x0 + bal + 22 + wN, y);
+    });
+  }
+  T('asm-live.vercel.app', W - 36, H - 30, 28, 'rgba(255,255,255,.7)', { poids: 600, align: 'right' });
+  // l'écusson adverse vient d'un autre site : s'il bloque l'export, on refait l'image sans lui
+  let blob = null;
+  try{ blob = await new Promise(r => cv.toBlob(r, 'image/png')); }catch(e){}
+  if (!blob && logoAdv){ m = { ...m, opp_logo: '' }; return partagerResume(m, evs); }
+  if (!blob){ toast('Image impossible à créer'); return; }
+  const nom = `resume-${teamLetter(m.equipe)}-${new Date(m.kickoff).toISOString().slice(0, 10)}.png`;
+  const file = new File([blob], nom, { type: 'image/png' });
+  try{ if (navigator.canShare && navigator.canShare({ files: [file] })){ await navigator.share({ files: [file], title: `${teamName(m, 'H')} ${sh}–${sa} ${teamName(m, 'A')}` }); return; } }
+  catch(e){ if (e && e.name === 'AbortError') return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nom; document.body.appendChild(a); a.click(); a.remove();
+  toast('Image téléchargée');
+}
+
+// ---------- « Mon compte » : prochains matchs où je suis dans la compo ----------
+async function convocRemplir(k, box){
+  if (!box) return;
+  const fin = new Date(Date.now() + 8 * 864e5).toISOString();
+  const { data } = await sb.from('matches').select('id,kickoff,equipe,club_side,home_name,away_name,rosters,rdv,status').eq('status', 'prevu').lte('kickoff', fin).order('kickoff');
+  const mes = (data || []).filter(m => rosterOf(m, clubSide(m)).some(p => p.name && playerKey(p.name) === k));
+  if (!box.isConnected) return;
+  box.innerHTML = mes.map(m => {
+    const p = rosterOf(m, clubSide(m)).find(x => x.name && playerKey(x.name) === k);
+    return `<a class="convoc" href="#/match/${esc(m.id)}"><b>📋 Dans la compo · ${esc(teamLabel(m.equipe))}${p && p.n ? ' · n°' + esc(p.n) : ''}</b>
+      <span>${esc(fmtDate(m.kickoff))} · ${clubSide(m) === 'H' ? 'contre' : 'à'} ${esc(teamName(m, oppSide(m)))}${m.rdv ? ' · RDV ' + esc(hhmm(m.rdv)) : ''}</span></a>`;
+  }).join('');
+}
+
+// ---------- Classements : la saison de notre équipe (évolution, série, buteurs) ----------
+function saisonHTML(r){
+  const nous = r.lignes.find(l => l[10] === CLUB_FFF);
+  if (!nous || !Array.isArray(r.resultats) || !r.resultats.length) return '';
+  const cle = (c, n) => c + '|' + n, equipes = new Set(r.lignes.map(l => cle(l[10], l[1]))), moi = cle(nous[10], nous[1]);
+  const res = r.resultats.filter(x => x[4] != null && x[5] != null && equipes.has(cle(x[2], x[3])) && equipes.has(cle(x[6], x[7])))
+    .sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+  // une étape par semaine (week-end de championnat)
+  const semaine = d => { const t = new Date(String(d).slice(0, 10) + 'T12:00:00'); t.setDate(t.getDate() - (t.getDay() + 6) % 7); return t.toISOString().slice(0, 10); };
+  const etapes = [...new Set(res.map(x => semaine(x[1])))];
+  const T = {}; r.lignes.forEach(l => { T[cle(l[10], l[1])] = { pts: 0, diff: 0, bp: 0 }; });
+  const rangs = [];
+  etapes.forEach(s => {
+    res.filter(x => semaine(x[1]) === s).forEach(x => {
+      const a = T[cle(x[2], x[3])], b = T[cle(x[6], x[7])], ba = +x[4], bb = +x[5];
+      a.bp += ba; b.bp += bb; a.diff += ba - bb; b.diff += bb - ba;
+      if (ba > bb) a.pts += 3; else if (ba < bb) b.pts += 3; else { a.pts++; b.pts++; }
+    });
+    const tri = Object.entries(T).sort((p, q) => q[1].pts - p[1].pts || q[1].diff - p[1].diff || q[1].bp - p[1].bp);
+    rangs.push(tri.findIndex(e => e[0] === moi) + 1);
+  });
+  if (rangs.length) rangs[rangs.length - 1] = nous[0];   // dernier point : le classement officiel
+  // nos résultats, du plus récent au plus ancien → série en cours
+  const nosRes = res.filter(x => cle(x[2], x[3]) === moi || cle(x[6], x[7]) === moi).reverse()
+    .map(x => { const dom = cle(x[2], x[3]) === moi, p = +(dom ? x[4] : x[5]), c = +(dom ? x[5] : x[4]); return p > c ? 'V' : p < c ? 'D' : 'N'; });
+  let serie = 0; while (serie < nosRes.length && nosRes[serie] === nosRes[0]) serie++;
+  const MOT = { V: ['victoire', 'victoires'], N: ['nul', 'nuls'], D: ['défaite', 'défaites'] };
+  const serieTxt = nosRes.length ? `${serie} ${MOT[nosRes[0]][serie > 1 ? 1 : 0]}${serie > 1 ? ' de suite' : ''}` : '';
+  // courbe du classement (1er en haut)
+  const n = r.lignes.length, Wd = 300, Ht = 90, pad = 14;
+  const x = i => rangs.length < 2 ? Wd / 2 : pad + i * (Wd - 2 * pad) / (rangs.length - 1);
+  const y = v => pad + (v - 1) * (Ht - 2 * pad) / Math.max(1, n - 1);
+  const pts = rangs.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const svg = rangs.length ? `<svg class="courbe" viewBox="0 0 ${Wd} ${Ht}" aria-label="Évolution au classement">
+      <line x1="0" y1="${y(1)}" x2="${Wd}" y2="${y(1)}" class="c1"/><line x1="0" y1="${y(n)}" x2="${Wd}" y2="${y(n)}" class="c1"/>
+      ${rangs.length > 1 ? `<polyline points="${pts}" class="cl"/>` : ''}${rangs.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="4"/><text x="${x(i)}" y="${y(v) - 8}">${v}</text>`).join('')}</svg>` : '';
+  // meilleurs buteurs de l'équipe (copie des stats)
+  const st = lsGet('asm-stats', null); let but = '';
+  if (st){
+    const B = {};
+    st.ms.filter(m => m.equipe === r.equipe && seasonOf(m.kickoff) === seasonOf(new Date().toISOString())).forEach(m => {
+      st.evs.filter(e => e.match_id === m.id && e.k === 'goal' && e.t === m.club_side && e.n && e.n !== 'CSC').forEach(e => {
+        const nm = nameOf(m, m.club_side, e.n); if (nm) B[nm] = (B[nm] || 0) + 1; }); });
+    const top = Object.entries(B).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    if (top.length) but = `<div><span>Buteurs</span><b>${top.map(([nm, k]) => esc(nm) + ' ' + k).join(' · ')}</b></div>`;
+  }
+  return `<section class="saison"><h3>La saison</h3>${svg ? `<div class="courbewrap">${svg}<small>Évolution au classement, semaine après semaine</small></div>` : ''}
+    <div class="pfacts">${serieTxt ? `<div><span>Série en cours</span><b>${serieTxt}</b></div>` : ''}
+    ${nosRes.length ? `<div><span>Forme</span><b class="formeb">${nosRes.slice(0, 5).map(v => `<i class="hres ${v}">${v}</i>`).join('')}</b></div>` : ''}${but}</div></section>`;
+}
+
+// ---------- Stats : ce qu'il reste à compléter (responsables) ----------
+function aCompleterHTML(list, byMatch){
+  const sansButeur = [], sansCompo = [];
+  list.forEach(m => {
+    const c = m.club_side, me = byMatch[m.id] || [];
+    const n = me.filter(e => e.k === 'goal' && e.t === c && !e.n).length;
+    if (n) sansButeur.push([m, n]);
+    if (!(((m.rosters || {})[c]) || []).some(p => p.name)) sansCompo.push(m);
+  });
+  if (!sansButeur.length && !sansCompo.length) return '';
+  const lien = (m, txt) => `<a href="#/match/${esc(m.id)}">${esc(teamLetter(m.equipe))} · ${esc(teamName(m, m.club_side === 'H' ? 'A' : 'H'))} (${esc(fmtDate(m.kickoff, false))})${txt}</a>`;
+  return `<details class="acompleter"><summary>🧩 À compléter : ${[sansButeur.length ? `${sansButeur.reduce((a, x) => a + x[1], 0)} but${sansButeur.reduce((a, x) => a + x[1], 0) > 1 ? 's' : ''} sans buteur` : '', sansCompo.length ? `${sansCompo.length} match${sansCompo.length > 1 ? 's' : ''} sans compo` : ''].filter(Boolean).join(' · ')}</summary>
+    ${sansButeur.length ? '<p><b>Buts sans buteur</b></p>' + sansButeur.map(([m, n]) => lien(m, ` · ${n} but${n > 1 ? 's' : ''}`)).join('') : ''}
+    ${sansCompo.length ? '<p><b>Matchs sans compo</b></p>' + sansCompo.map(m => lien(m, '')).join('') : ''}</details>`;
+}
+let hdmSaisonCache = null;
+async function hdmSaisonRemplir(box, filtre){
+  if (!box) return;
+  if (!hdmSaisonCache){ const { data } = await sb.rpc('hdm_gagnants'); hdmSaisonCache = data || []; }
+  if (!box.isConnected) return;
+  const C = {}; hdmSaisonCache.filter(filtre).forEach(x => { C[x.joueur] = (C[x.joueur] || 0) + 1; });
+  const top = Object.entries(C).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'fr')).slice(0, 5);
+  box.innerHTML = top.length ? `<section class="hdm"><h3>🏆 Hommes du match</h3><ol class="hdmtop">${top.map(([nm, k]) => `<li><span>${esc(nm)}</span><b>${k}</b></li>`).join('')}</ol></section>` : '';
+}
+
 // Historique des modifications d'un match (écrit par la base à chaque changement)
 function histoTexte(h, m){
   const qui = (t, n) => n ? (n === 'CSC' ? 'CSC' : 'n°' + n + (nameOf(m, t, n) ? ' ' + nameOf(m, t, n) : '')) : '';
@@ -795,18 +1042,23 @@ async function matchView(id){
       loadDem();
     });
   };
+  let advCache = '', hdmCache = '';
   const draw = () => {
     view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false) + niveauHTML(m) + lieuHTML(m)
-      + `<div class="mactions"><button class="pill" id="btnBell">🔔 Buts des ${esc(teamLabel(m.equipe))}</button><button class="pill" id="btnShareLive">↗ Partager</button></div>`
+      + `<div class="mactions"><button class="pill" id="btnBell">🔔 Buts des ${esc(teamLabel(m.equipe))}</button><button class="pill" id="btnShareLive">↗ Partager</button>${m.status==='termine' && !m._partiel ? '<button class="pill" id="btnResume">📸 Résumé</button>' : ''}</div>`
       + demHTML()
       + (canManage(m) ? `<a class="fbtn primary big" href="#/gerer/${esc(m.id)}">Gérer ce match</a>` : '')
       + (isStaff() || m.delegue_nom ? `<div class="field deleg"><span>Responsable score</span>${delegPickHTML('delSel', m.delegue_id, m.delegue_nom, !isTeamManager(m.equipe))}${canManage(m) && !isTeamManager(m.equipe) ? '<small>Seul le responsable de l’équipe (ou un admin) peut changer le responsable score.</small>' : isStaff() && !canManage(m) ? '<small>Seuls le responsable de l’équipe, le responsable score ou un admin peuvent modifier ce match.</small>' : ''}</div>` : '')
       + (isAdmin() && people ? `<div class="audit">Match créé par ${esc(personName(m.created_by))}${m.rosters_at ? ` · Compo saisie par ${esc(personName(m.rosters_by))} le ${esc(fmtDate(m.rosters_at))}` : ''}</div>` : '')
-      + (m._partiel ? '<div class="loading">Chargement des détails…</div>' : (m.status==='prevu' ? rdvHTML(m) + lineupsHTML(m, evs) : '')
+      + (m._partiel ? '<div class="loading">Chargement des détails…</div>' : (m.status==='prevu' ? rdvHTML(m) + `<div id="advBox">${advCache}</div>` + lineupsHTML(m, evs) : '')
       + `<section class="log"><div class="loghead"><h2>Chronologie</h2></div><div id="events">${timelineHTML(m, evs, false)}</div></section>`
+      + (m.status==='termine' ? `<div id="hdmBox">${hdmCache}</div>` : '')
       + (m.status!=='prevu' ? lineupsHTML(m, evs) : '')
       + (isStaff() || canManage(m) ? '<details class="histobox" id="histoBox"><summary>🕓 Historique des modifications</summary><div id="histoList"></div></details>' : ''));
     $('btnShareLive').onclick = () => shareLink(m);
+    if ($('btnResume')) $('btnResume').onclick = () => partagerResume(m, evs).catch(() => toast('Image impossible à créer'));
+    if ($('advBox')) adversaireRemplir(m, $('advBox')).then(() => { if ($('advBox')) advCache = $('advBox').innerHTML; }).catch(() => {});
+    if ($('hdmBox') && !m._partiel) hdmRemplir(m, evs, $('hdmBox')).then(() => { if ($('hdmBox')) hdmCache = $('hdmBox').innerHTML; }).catch(() => {});
     if ($('rempBtn')) $('rempBtn').onclick = () => { const v = !lsGet('asm-voir-remp', false); lsSet('asm-voir-remp', v); view.querySelector('.lineups')?.classList.toggle('remp', v); $('rempBtn').textContent = v ? 'Masquer les remplacements' : 'Afficher les remplacements'; };
     if ($('histoBox')) $('histoBox').ontoggle = () => { if ($('histoBox').open) histoCharger(m, $('histoList')); };
     if ($('btnLieu')) $('btnLieu').onclick = () => openLieu(m);
@@ -1762,6 +2014,7 @@ async function classementsView(){
       </table></div>
       ${hasRes ? '<p class="note">Touche une équipe pour voir ses résultats.</p>' : ''}
       ${r.provisoire ? `<p class="note provis">Provisoire : comprend ${r.provisoire.length > 1 ? 'nos matchs' : 'notre match'} du ${esc(r.provisoire.map(m => new Date(m.kickoff).toLocaleDateString('fr-FR', {weekday:'short', day:'numeric', month:'short'}) + ' (' + m.bH + '–' + m.bA + ')').join(', '))}, pas encore saisi${r.provisoire.length > 1 ? 's' : ''} sur le site de la FFF.</p>` : ''}
+      ${saisonHTML(r)}
       <p class="note">Mis à jour le ${esc(d)}, d’après le site de la FFF (classement sous réserve de procédures en cours). ${r.source ? `<a href="${esc(r.source)}" target="_blank" rel="noopener">Voir le classement officiel ↗</a>` : ''}</p>` + majHTML();
     bind();
   };
@@ -1790,7 +2043,7 @@ async function classementsView(){
     const enAttente = maj && maj.demande_at && (!maj.fait_at || new Date(maj.demande_at) > new Date(maj.fait_at));
     return `<div class="majbox">${enAttente
       ? `<b>Mise à jour demandée</b> par ${esc(maj.demande_par || '?')} à ${esc(hhmm(maj.demande_at))}. Elle sera faite dès que le propriétaire du site acceptera la demande.`
-      : 'Les classements se mettent à jour automatiquement le lundi à 8 h, 12 h et 20 h.'}
+      : 'Les classements se mettent à jour automatiquement le dimanche, toutes les heures de 17 h à 22 h.'}
       <button class="fbtn" id="majBtn" style="width:100%;margin-top:10px"${enAttente ? ' disabled' : ''}>${enAttente ? 'Mise à jour en attente…' : '↻ Mettre à jour les classements'}</button></div>`;
   };
   const bind = () => {
@@ -1907,6 +2160,8 @@ async function statsViewFrom(playerArg, { ms, evs }){
         <div class="kpi"><b>${gf}</b><span>Buts marqués</span></div>
         <div class="kpi"><b>${ga}</b><span>Encaissés</span></div>
       </div>
+      ${isStaff() ? aCompleterHTML(list.filter(m => m.status === 'termine'), byMatch) : ''}
+      ${statMode === 'joueurs' ? '<div id="hdmSaison"></div>' : ''}
       <input id="statQ" class="dpq statq" type="search" placeholder="🔍 Rechercher un joueur…" autocomplete="off" enterkeyhint="search" value="${esc(statQ)}" aria-label="Rechercher un joueur">
       <div class="empty" id="statNone" hidden>Aucun joueur ne correspond à cette recherche.</div>
       ${statMode === 'buteurs' ? (CATS.map(c => { const h = catTeams(c).map(boardHTML).join(''); return h ? `<div class="sec">${esc(c)}</div>` + h : ''; }).join('') || '<div class="empty">Aucun match avec ce filtre.</div>') : rows.length ? `<div class="tblwrap"><table class="stats"><thead><tr>${COLS.map(([k,l])=>`<th class="${statSort.key===k?'on':''}" aria-sort="${statSort.key===k?(statSort.dir<0?'descending':'ascending'):'none'}"><button data-k="${k}">${l}${statSort.key===k?(statSort.dir<0?' ▾':' ▴'):''}</button></th>`).join('')}</tr></thead>
@@ -1916,6 +2171,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
     view.querySelectorAll('th button').forEach(b => b.onclick = () => {
       const k = b.dataset.k; statSort = statSort.key===k ? {key:k, dir:-statSort.dir} : {key:k, dir: k==='name' ? 1 : -1}; draw();
     });
+    hdmSaisonRemplir($('hdmSaison'), x => seasonOf(x.kickoff) === statSeason && inFilter(statF, x.equipe)).catch(() => {});
     const s = $('season'); if (s) s.onchange = () => { statSeason = s.value; draw(); };
     $('steam').onchange = e => { const v = e.target.value; statF.team = /^\d+$/.test(v) ? +v : 0; statF.cat = v.startsWith('c:') ? v.slice(2) : statF.team ? catOf(statF.team) : ''; draw(); };
     view.querySelectorAll('[data-comp]').forEach(b => b.onclick = () => { statComp = b.dataset.comp; draw(); });
@@ -2205,11 +2461,12 @@ async function monJoueurBloc(){
     if (k){
       const nom = (tous.find(j => j.k === k) || {}).name || profile.joueur;
       const b = bilanJoueur(data.ms, data.evs, k);
-      box().innerHTML = `<h2>⚽ Mes stats</h2><p class="sub">Tu es <b>${esc(nom)}</b> dans les compos · saison ${esc(b.saison)}${b.eq ? ' · surtout en <b>' + esc(teamLabel(b.eq)) + '</b>' : ''}</p>
+      box().innerHTML = `<div id="convocBox"></div><h2>⚽ Mes stats</h2><p class="sub">Tu es <b>${esc(nom)}</b> dans les compos · saison ${esc(b.saison)}${b.eq ? ' · surtout en <b>' + esc(teamLabel(b.eq)) + '</b>' : ''}</p>
         <div class="kpis"><div class="kpi"><b>${b.mj}</b><span>Matchs</span></div><div class="kpi"><b>${b.buts}</b><span>Buts</span></div>
         <div class="kpi"><b><span class="kcartes">${b.jaunes}<i class="kc y"></i>${b.blancs}<i class="kc w"></i>${b.rouges}<i class="kc r"></i></span></b><span>Cartons</span></div></div>
         <a class="fbtn" href="#/stats/joueur/${encodeURIComponent(k)}" style="width:100%;margin-top:10px">Voir ma fiche complète</a>
         <button type="button" class="link" id="mjNon" style="width:100%;margin-top:8px">Ce n’est pas moi</button>`;
+      convocRemplir(k, $('convocBox')).catch(() => {});
       $('mjNon').onclick = () => askConfirm('Retirer le lien ?', 'Tes stats ne seront plus affichées dans ton compte. Tu pourras choisir à nouveau ton nom.', 'Retirer', () => lier(null));
       return;
     }
