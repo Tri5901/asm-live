@@ -1,5 +1,5 @@
 // Mise à jour des classements, utilisé par la tâche programmée « Classements ASM ».
-//   node scripts/maj-classements.js check          → affiche A_FAIRE (lundi, pas encore fait cette heure-ci) ou RIEN
+//   node scripts/maj-classements.js check          → affiche A_FAIRE (dimanche de 17 h à 22 h, pas encore fait cette heure-ci) ou RIEN
 //   node scripts/maj-classements.js pages          → liste des pages de classement FFF à relever (« numéro adresse », lue dans la base)
 //   node scripts/maj-classements.js poules         → liste des pages « Résultats / calendrier » des poules (« numéro adresse »)
 //   node scripts/maj-classements.js envoyer <json>  → enregistre les classements relevés (fichier JSON)
@@ -22,9 +22,9 @@ async function check() {
   const demande = m.demande_at ? new Date(m.demande_at) : null;
   const now = new Date();
   const debutHeure = new Date(now); debutHeure.setMinutes(0, 0, 0);
-  const lundi = now.getDay() === 1 && fait < debutHeure;
-  // la tâche programmée ne tourne que le lundi (8 h, 12 h, 20 h) ; les autres demandes sont faites à la main
-  if (lundi) console.log('A_FAIRE mise à jour du lundi' + (demande && demande > fait ? ' (demande en attente de ' + (m.demande_par || '?') + ')' : ''));
+  const dimanche = now.getDay() === 0 && now.getHours() >= 17 && now.getHours() <= 22 && fait < debutHeure;
+  // la tâche programmée tourne le dimanche toutes les heures de 17 h à 22 h ; les autres demandes sont faites à la main
+  if (dimanche) console.log('A_FAIRE mise à jour du dimanche' + (demande && demande > fait ? ' (demande en attente de ' + (m.demande_par || '?') + ')' : ''));
   else console.log('RIEN dernière mise à jour ' + fait.toLocaleString('fr-FR'));
 }
 
