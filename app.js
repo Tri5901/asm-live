@@ -680,8 +680,8 @@ async function adversaireRemplir(m, box){
 }
 
 // ---------- Homme du match (vote des comptes, jusqu'à 30 h après le coup d'envoi) ----------
-const hdmFin = m => { const d = new Date(new Date(m.kickoff).getTime() + 30 * 3600e3); return d.toLocaleDateString('fr-FR', { weekday: 'long', timeZone: 'Europe/Paris' }) + ' ' + d.toLocaleTimeString('fr-FR', { hour: 'numeric', timeZone: 'Europe/Paris' }).replace(/\s*h.*$/, '') + ' h'; };
-const hdmOuvert = m => m.status === 'termine' && Date.now() < new Date(m.kickoff).getTime() + 30 * 3600e3;
+const hdmFin = m => { const d = new Date(new Date(m.kickoff).getTime() + 24 * 3600e3); return d.toLocaleDateString('fr-FR', { weekday: 'long', timeZone: 'Europe/Paris' }) + ' ' + d.toLocaleTimeString('fr-FR', { hour: 'numeric', timeZone: 'Europe/Paris' }).replace(/\s*h.*$/, '') + ' h'; };
+const hdmOuvert = m => m.status === 'termine' && Date.now() < new Date(m.kickoff).getTime() + 24 * 3600e3;
 async function hdmRemplir(m, evs, box){
   if (!box) return;
   const c = clubSide(m), roster = rosterOf(m, c).filter(p => p.name);
@@ -702,8 +702,8 @@ async function hdmRemplir(m, evs, box){
   const peut = !!(myId() && profile && !['pending', 'supprime'].includes(profile.role));
   box.innerHTML = `<section class="hdm"><h3>🏆 Homme du match</h3>
     <p class="note">${peut ? (mien ? 'Ton vote : <b>' + esc(mien) + '</b>. Tu peux le changer jusqu’à ' + hdmFin(m) + '.' : 'Vote pour le meilleur joueur du match, jusqu’à ' + hdmFin(m) + '.') : myId() ? 'Vote en cours jusqu’à ' + hdmFin(m) + '. Ton compte doit d’abord être validé pour voter.' : 'Vote en cours jusqu’à ' + hdmFin(m) + '. Il faut un compte pour voter.'}</p>
-    <div class="hdmlist">${joueurs.map(p => { const v = voix(p.name), pc = total ? Math.round(100 * v / total) : 0;
-      return `<button type="button" class="hdmrow${mien === p.name ? ' on' : ''}" data-hdm="${esc(p.name)}"${peut ? '' : ' disabled'}><span class="hdmbar" style="width:${pc}%"></span><span class="hdmnom">${esc(p.name)}</span><b>${v || ''}</b></button>`; }).join('')}</div>
+    <div class="hdmlist">${joueurs.map(p => `<button type="button" class="hdmrow${mien === p.name ? ' on' : ''}" data-hdm="${esc(p.name)}"${peut ? '' : ' disabled'}><span class="hdmnom">${esc(p.name)}</span><b>${mien === p.name ? '✓' : ''}</b></button>`).join('')}</div>
+    <p class="note" style="margin:8px 0 0">Les votes restent secrets : le résultat sera affiché ${esc(hdmFin(m))}.</p>
     ${!myId() ? '<a class="fbtn" href="#/connexion" style="width:100%;margin-top:8px">Se connecter pour voter</a>' : ''}</section>`;
   box.querySelectorAll('[data-hdm]').forEach(b => b.onclick = async () => {
     b.disabled = true;
@@ -772,7 +772,7 @@ async function partagerResume(m, evs){
     parJ.set(n, [...(parJ.get(n) || []), String(e.min || '').replace(/'$/, '') + '’']); });
   const lignes = [...parJ], nb = Math.min(lignes.length, 6);
   if (nb){
-    const pas = nb > 4 ? 66 : nb > 3 ? 78 : 90, taille = nb > 4 ? 50 : nb > 3 ? 62 : 72, y0 = 930;
+    const pas = nb > 4 ? 56 : nb > 3 ? 62 : 68, taille = nb > 4 ? 40 : nb > 3 ? 46 : 52, y0 = 930;
     T('NOS BUTEURS', W / 2, y0 - 50, 40, JAUNE, { poids: 700 });
     lignes.slice(0, nb).forEach(([nom, mins], i) => {
       const y = y0 + 30 + i * pas;
