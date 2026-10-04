@@ -159,11 +159,53 @@ function timelineHTML(m, evs, editable){
     if (e.k==='sub') detail = `Sort ${who(m,e.t,e.out_n,'?')} · Entre ${who(m,e.t,e.in_n,'?')}`;
     if (e.k==='yellow'||e.k==='white'||e.k==='red') detail = who(m,e.t,e.n,'Joueur non précisé');
     const by = isAdmin() && people ? `<div class="evby">Saisi par ${esc(personName(e.created_by))}${e.created_at ? ' à ' + hhmm(e.created_at) : ''}</div>` : '';
-    html += `<div class="ev ${editable ? 'edit' : 'ro'}${e.t===clubSide(m) ? ' club' : ''}" data-id="${esc(e.id)}"><div class="min">${esc(e.min)}</div>${ICON[e.k]}
-      <div class="txt"><b>${LABEL[e.k]}</b> <span class="evteam">${esc(teamName(m,e.t))}</span><div>${esc(detail)}</div>${by}</div>
+    const moi = estMoi(m, e);
+    html += `<div class="ev ${editable ? 'edit' : 'ro'}${e.t===clubSide(m) ? ' club' : ''}${moi ? ' moi' : ''}" data-id="${esc(e.id)}"><div class="min">${esc(e.min)}</div>${ICON[e.k]}
+      <div class="txt"><b>${LABEL[e.k]}</b> <span class="evteam">${esc(teamName(m,e.t))}</span>${moi ? '<span class="evmoi">⭐ C’est toi</span>' : ''}<div>${esc(detail)}</div>${by}</div>
       ${editable ? '<button class="del" aria-label="Supprimer">×</button>' : ''}</div>`;
   }
   return html;
+}
+
+// ---------- Joueur lié au compte ----------
+// Le compte connecté peut être lié à un joueur des compos (« C'est moi ») : « Mes stats », ses actions mises en avant.
+function monJoueur(){ return profile && profile.joueur ? playerKey(profile.joueur) : null; }
+function estMoi(m, e){
+  const k = monJoueur(); if (!k || e.t !== clubSide(m)) return false;
+  return [e.n, e.in_n].some(n => n && n !== 'CSC' && nameOf(m, e.t, n) && playerKey(nameOf(m, e.t, n)) === k);
+}
+// matchs joués et actions (même copie que la page Stats)
+async function chargerStats(){
+  const [{ data: ms, error }, { data: evs, error: e2 }] = await Promise.all([
+    sb.from('matches').select('id,kickoff,equipe,club_side,rosters,status,competition,home_name,away_name,opp_logo').neq('status','prevu'),
+    sb.from('events').select('match_id,t,k,n,in_n,out_n,min,sort')
+  ]);
+  if (error || e2) throw (error || e2);
+  const r = { ms, evs }; lsSet('asm-stats', r); return r;
+}
+// joueurs du club (noms écrits dans nos compos) avec leur nombre de matchs
+function joueursClub(ms){
+  const m = new Map();
+  (ms || []).forEach(x => (((x.rosters || {})[x.club_side]) || []).forEach(p => {
+    if (!p.name || !p.name.trim()) return;
+    const k = playerKey(p.name), e = m.get(k) || { k, name: p.name, nb: 0 }; e.nb++; m.set(k, e);
+  }));
+  return [...m.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+}
+// bilan d'un joueur sur la saison en cours : matchs joués, buts, cartons
+function bilanJoueur(ms, evs, key){
+  const saison = seasonOf(new Date().toISOString());
+  let mj = 0, buts = 0, jaunes = 0, rouges = 0;
+  (ms || []).filter(m => seasonOf(m.kickoff) === saison).forEach(m => {
+    const c = m.club_side, p = (((m.rosters || {})[c]) || []).find(x => x.name && playerKey(x.name) === key);
+    if (!p) return;
+    const me = (evs || []).filter(e => e.match_id === m.id && e.t === c);
+    if (!p.sub || me.some(e => e.k === 'sub' && e.in_n === p.n)) mj++;
+    buts += me.filter(e => e.k === 'goal' && e.n === p.n).length;
+    jaunes += me.filter(e => e.k === 'yellow' && e.n === p.n).length;
+    rouges += me.filter(e => e.k === 'red' && e.n === p.n).length;
+  });
+  return { saison, mj, buts, jaunes, rouges };
 }
 
 // ---------- Session / profil ----------
@@ -558,7 +600,8 @@ function rdvHTML(m){
   return `<div class="rdv" id="rdvBox">🕐 RDV au stade à <b>${esc(h)}</b></div>`;
 }
 function lineupsHTML(m){
-  const li = p => `<li><b>${esc(p.n || "–")}</b><span>${esc(p.name)}</span></li>`;
+  const k = monJoueur();
+  const li = p => `<li${k && p.name && playerKey(p.name) === k ? ' class="moi"' : ''}><b>${esc(p.n || "–")}</b><span>${esc(p.name)}</span></li>`;
   const side = t => {
     const list = rosterSorted(m,t);
     if (!list.length) return `<div><h3>${esc(teamName(m,t))}</h3><p class="nolu">Pas encore saisie</p></div>`;
@@ -1684,14 +1727,7 @@ function playerKey(name){
   return name.normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[^A-Z ]/g,' ').split(/\s+/).filter(Boolean).sort().join(' ');
 }
 async function statsView(playerArg){
-  const load = async () => {
-    const [{ data: ms, error }, { data: evs, error: e2 }] = await Promise.all([
-      sb.from('matches').select('id,kickoff,equipe,club_side,rosters,status,competition,home_name,away_name,opp_logo').neq('status','prevu'),
-      sb.from('events').select('match_id,t,k,n,in_n,out_n,min,sort')
-    ]);
-    if (error || e2) throw (error || e2);
-    const r = { ms, evs }; lsSet('asm-stats', r); return r;
-  };
+  const load = chargerStats;
   // affichage immédiat avec la dernière copie, puis mise à jour quand le réseau répond
   const cached = lsGet('asm-stats', null);
   if (!cached) view.innerHTML = '<div class="loading">Chargement…</div>';
@@ -1777,7 +1813,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
       <input id="statQ" class="dpq statq" type="search" placeholder="🔍 Rechercher un joueur…" autocomplete="off" enterkeyhint="search" value="${esc(statQ)}" aria-label="Rechercher un joueur">
       <div class="empty" id="statNone" hidden>Aucun joueur ne correspond à cette recherche.</div>
       ${statMode === 'buteurs' ? (CATS.map(c => { const h = catTeams(c).map(boardHTML).join(''); return h ? `<div class="sec">${esc(c)}</div>` + h : ''; }).join('') || '<div class="empty">Aucun match avec ce filtre.</div>') : rows.length ? `<div class="tblwrap"><table class="stats"><thead><tr>${COLS.map(([k,l])=>`<th class="${statSort.key===k?'on':''}" aria-sort="${statSort.key===k?(statSort.dir<0?'descending':'ascending'):'none'}"><button data-k="${k}">${l}${statSort.key===k?(statSort.dir<0?' ▾':' ▴'):''}</button></th>`).join('')}</tr></thead>
-        <tbody>${rows.map(p=>`<tr class="prow" data-pk="${esc(p.k)}" data-nm="${esc(p.name)}" tabindex="0"><td>${esc(p.name)}</td>${cell(p.mj)}${cell(p.tit)}${cell(p.goals)}${cell(p.y)}${cell(p.r)}</tr>`).join('')}${cscGoals ? `<tr class="csc"><td>CSC <small>(contre son camp adverse)</small></td><td></td><td></td>${cell(cscGoals)}<td></td><td></td></tr>` : ''}</tbody></table></div>`
+        <tbody>${rows.map(p=>`<tr class="prow${p.k === monJoueur() ? ' moi' : ''}" data-pk="${esc(p.k)}" data-nm="${esc(p.name)}" tabindex="0"><td>${esc(p.name)}</td>${cell(p.mj)}${cell(p.tit)}${cell(p.goals)}${cell(p.y)}${cell(p.r)}</tr>`).join('')}${cscGoals ? `<tr class="csc"><td>CSC <small>(contre son camp adverse)</small></td><td></td><td></td>${cell(cscGoals)}<td></td><td></td></tr>` : ''}</tbody></table></div>`
         : `<div class="empty">Les stats apparaîtront après le premier match dont la composition de l'${CLUB} a été saisie.</div>`}
       <p class="note">${statComp === 'coupe' ? 'Matchs de coupe uniquement. ' : statComp ? 'Matchs de championnat uniquement. ' : ''}Stats des joueurs de l'${CLUB}, calculées à partir des compositions et de la chronologie de chaque match.${unknownGoals ? ` ${unknownGoals} but${unknownGoals>1?'s':''} sans buteur identifié.` : ''}</p>`;
     view.querySelectorAll('th button').forEach(b => b.onclick = () => {
@@ -1991,7 +2027,9 @@ function accountView(){
     </div>
     <div class="foot" style="margin-top:10px"><button class="fbtn" id="logout">Se déconnecter</button></div>
     <button class="link danger-link" id="delMe" style="width:100%;margin-top:14px">Supprimer mon compte</button>
-  </div>`;
+  </div>
+  <div class="card monjoueur" id="monJoueur"><div class="loading">Chargement de tes stats…</div></div>`;
+  monJoueurBloc();
   $('editNom').onclick = () => nameView(false);
   $('delMe').onclick = () => askConfirm('Supprimer ton compte ?',
     'Tu ne pourras plus te connecter. Les matchs et actions que tu as saisis restent dans l’historique, avec ton nom. Cette suppression est définitive.',
@@ -2005,6 +2043,52 @@ function accountView(){
     if (outbox.length && !confirm('Des actions ne sont pas encore envoyées. Se déconnecter quand même ?')) return;
     await sb.auth.signOut(); session = null; profile = null; lsSet('asm-profile', null); renderAcct(); location.hash = '#/';
   };
+}
+// « Mon compte » : joueur lié (Mes stats) ou proposition de lien
+async function monJoueurBloc(){
+  const box = () => $('monJoueur');
+  let data = lsGet('asm-stats', null);
+  const dessine = () => {
+    if (!box() || !data) return;
+    const k = monJoueur(), tous = joueursClub(data.ms);
+    if (k){
+      const nom = (tous.find(j => j.k === k) || {}).name || profile.joueur;
+      const b = bilanJoueur(data.ms, data.evs, k);
+      box().innerHTML = `<h2>⚽ Mes stats</h2><p class="sub">Tu es <b>${esc(nom)}</b> dans les compos · saison ${esc(b.saison)}</p>
+        <div class="kpis"><div class="kpi"><b>${b.mj}</b><span>Matchs</span></div><div class="kpi"><b>${b.buts}</b><span>Buts</span></div>
+        <div class="kpi"><b>${b.jaunes}<i class="kc y"></i> ${b.rouges}<i class="kc r"></i></b><span>Cartons</span></div></div>
+        <a class="fbtn" href="#/stats/joueur/${encodeURIComponent(k)}" style="width:100%;margin-top:10px">Voir ma fiche complète</a>
+        <button type="button" class="link" id="mjNon" style="width:100%;margin-top:8px">Ce n’est pas moi</button>`;
+      $('mjNon').onclick = () => askConfirm('Retirer le lien ?', 'Tes stats ne seront plus affichées dans ton compte. Tu pourras choisir à nouveau ton nom.', 'Retirer', () => lier(null));
+      return;
+    }
+    // pas encore lié : joueurs dont le nom ressemble à celui du compte, sinon recherche dans la liste
+    const moiNom = playerKey(profile && profile.nom || '');
+    const proches = tous.filter(j => j.k === moiNom || (typeof memeJoueur === 'function' && memeJoueur(j.name, profile.nom || '')));
+    box().innerHTML = `<h2>⚽ Mes stats</h2>
+      ${proches.length ? `<p class="sub">C’est toi dans les compos ?</p>${proches.map(j => `<div class="arow"><div class="who"><b>${esc(j.name)}</b><small>${j.nb} match${j.nb > 1 ? 's' : ''}</small></div><button type="button" class="amod ok" data-moi="${esc(j.name)}">C’est moi</button></div>`).join('')}`
+        : '<p class="sub">Choisis ton nom tel qu’il est écrit dans les compos pour voir tes stats.</p>'}
+      <input id="mjQ" class="dpq" type="search" placeholder="🔍 Chercher mon nom dans les compos…" autocomplete="off" style="margin-top:10px">
+      <div class="alist" id="mjList"></div>`;
+    const q = $('mjQ'), list = $('mjList');
+    const filtre = () => {
+      const w = sansAccent(q.value).split(/\s+/).filter(Boolean);
+      list.innerHTML = w.length ? (tous.filter(j => w.every(x => sansAccent(j.name).includes(x))).slice(0, 8)
+        .map(j => `<div class="arow"><div class="who"><b>${esc(j.name)}</b><small>${j.nb} match${j.nb > 1 ? 's' : ''}</small></div><button type="button" class="amod" data-moi="${esc(j.name)}">C’est moi</button></div>`).join('')
+        || '<div class="empty">Aucun joueur à ce nom dans les compos.</div>') : '';
+      box().querySelectorAll('[data-moi]').forEach(b => b.onclick = () => lier(b.dataset.moi));
+    };
+    q.oninput = filtre; filtre();
+  };
+  const lier = async nom => {
+    const { error } = await sb.rpc('lier_joueur', { p_user: myId(), p_nom: nom });
+    if (error){ toast(isNetErr(error) ? 'Pas de réseau' : 'Modification refusée'); return; }
+    profile = { ...profile, joueur: nom }; lsSet('asm-profile', profile);
+    toast(nom ? 'C’est noté : tu es ' + nom : 'Lien retiré'); dessine();
+  };
+  dessine();
+  try{ data = await chargerStats(); if (location.hash.startsWith('#/compte')) dessine(); }
+  catch(e){ if (!data && box()) box().innerHTML = '<div class="empty">Pas de réseau pour l’instant.</div>'; }
 }
 async function adminView(){
   if (!isAdmin()){ location.hash = '#/compte'; return; }
@@ -2026,7 +2110,7 @@ async function adminView(){
   const row = p => `<div class="arow" data-uid="${esc(p.id)}">
       <span class="pav">${initial(p)}</span>
       <div class="who"><b>${esc(nameOf(p))}${p.id === session.user.id ? ' <small>(toi)</small>' : ''}</b><small>${esc(p.email || '')}${p.a_confirmer && p.created_at ? ' · inscrit le ' + esc(new Date(p.created_at).toLocaleDateString('fr-FR')) : ''}</small>
-        <span class="rbadge r-${p.role}">${esc(summary(p))}</span><span class="onstate"></span></div>
+        <span class="rbadge r-${p.role}">${esc(summary(p))}</span>${p.joueur ? `<span class="ajoueur">⚽ ${esc(p.joueur)}</span>` : ''}<span class="onstate"></span></div>
       ${p.a_confirmer ? `<div class="gonebtns"><button type="button" class="amod ok" data-ok="${esc(p.id)}">Confirmer</button><button type="button" class="amod" data-edit="${esc(p.id)}">Modifier</button></div>`
         : `<button type="button" class="amod" data-edit="${esc(p.id)}">Modifier</button>`}
     </div>`;
@@ -2109,6 +2193,8 @@ async function adminView(){
     const me = p.id === session.user.id;
     let role = p.role, eqs = new Set(p.equipes || []);
     let [pre, nm] = splitNom(p.nom);
+    let joueur = p.joueur || '';
+    const tous = joueursClub((lsGet('asm-stats', null) || {}).ms);
     const draw = () => {
       openSheet(`<div class="phead"><span class="pav">${initial(p)}</span><div class="who"><h3 id="shTitle" style="margin:0">${esc(nameOf(p))}</h3><small>${esc(p.email || '')}</small></div></div>
         <div class="frow2" style="margin-top:14px"><label class="field"><span>Prénom</span><input id="edPre" value="${esc(pre)}" autocapitalize="words"></label><label class="field"><span>Nom</span><input id="edNom" value="${esc(nm)}" autocapitalize="words"></label></div>
@@ -2117,11 +2203,14 @@ async function adminView(){
           <small>${role === 'admin' ? 'Gère toutes les équipes, les accès et les classements.' : role === 'delegue' ? 'Crée et saisit les matchs des équipes cochées ci-dessous.' : role === 'joueur' || role === 'dirigeant' ? 'Aucun accès, sauf les matchs où il est responsable score.' : 'Ne peut rien modifier.'}${me ? ' Tu ne peux pas changer ton propre rôle.' : ''}</small></div>
         ${role === 'delegue' ? `<div class="field"><span>Équipes dont il est responsable</span>
           ${CATS.map(c => `<div class="eqcat"><small>${esc(c)}</small><div class="eqpick">${catTeams(c).map(n => `<button type="button" data-e="${n}" class="${eqs.has(n) ? 'on' : ''}" aria-pressed="${eqs.has(n)}"><b>${esc(teamLetter(n))}</b><small>${esc(teamLabel(n))}</small></button>`).join('')}</div></div>`).join('')}</div>` : ''}
+        <label class="field"><span>Joueur dans les compos</span><input id="edJoueur" list="edJoueurs" value="${esc(joueur)}" placeholder="Aucun (nom tel qu’écrit dans les compos)" autocomplete="off">
+          <datalist id="edJoueurs">${tous.map(j => `<option value="${esc(j.name)}">`).join('')}</datalist><small>Pour « Mes stats » dans son compte et ses actions mises en avant.</small></label>
         <div class="foot" style="margin-top:6px"><button class="fbtn primary" id="edSave">Enregistrer</button><button class="fbtn" id="edNo">Annuler</button></div>
         ${me ? '' : '<button class="link danger-link" id="edDel" style="width:100%;margin-top:12px">Supprimer ce compte</button>'}`);
       $('shBody').querySelectorAll('[data-role]').forEach(b => b.onclick = () => { role = b.dataset.role; draw(); });
       $('shBody').querySelectorAll('[data-e]').forEach(b => b.onclick = () => { const n = +b.dataset.e; eqs.has(n) ? eqs.delete(n) : eqs.add(n); draw(); });
       $('edPre').oninput = e => { pre = e.target.value; }; $('edNom').oninput = e => { nm = e.target.value; };
+      $('edJoueur').oninput = e => { joueur = e.target.value; };
       $('edNo').onclick = closeSheet;
       $('edSave').onclick = async () => {
         if (!nomOk(pre + ' ' + nm) || fmtNom(pre).length < 2 || fmtNom(nm).length < 2){ toast('Prénom et nom obligatoires'); return; }
@@ -2129,6 +2218,8 @@ async function adminView(){
         $('edSave').disabled = true;
         const { data: upd, error } = await sb.from('profiles').update(fields).eq('id', p.id).select('id');
         if (error || !upd || !upd.length){ $('edSave').disabled = false; toast('Modification refusée'); return; }
+        if ((joueur || '').trim() !== (p.joueur || '')) await sb.rpc('lier_joueur', { p_user: p.id, p_nom: joueur.trim() || null });
+        if (p.id === myId()){ profile = { ...profile, joueur: joueur.trim() || null }; lsSet('asm-profile', profile); }
         people = null; closeSheet(); toast('Accès de ' + nameOf(p) + ' mis à jour'); adminView();
       };
       if ($('edDel')) $('edDel').onclick = () => askConfirm('Supprimer le compte de ' + nameOf(p) + ' ?',
