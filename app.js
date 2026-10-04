@@ -1775,7 +1775,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
       if (k==='name') return statSort.dir * a.name.localeCompare(b.name, 'fr');
       return statSort.dir * (a[k]-b[k]) || b.goals-a.goals || b.mj-a.mj || a.name.localeCompare(b.name,'fr');
     });
-    const COLS = [['goals','Buts'],['name','Joueur'],['mj','Matchs'],['tit','Titul.'],['y','🟨'],['w','⬜'],['r','🟥']];
+    const COLS = [['name','Joueur'],['goals','Buts'],['mj','Matchs'],['tit','Titul.'],['y','🟨'],['w','⬜'],['r','🟥']];
     const cell = (v) => `<td class="${v?'':'zero'}">${v}</td>`;
     // classement des buteurs, équipe par équipe (un joueur compte pour chaque équipe où il a marqué)
     const boards = {};
@@ -1815,7 +1815,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
       <input id="statQ" class="dpq statq" type="search" placeholder="🔍 Rechercher un joueur…" autocomplete="off" enterkeyhint="search" value="${esc(statQ)}" aria-label="Rechercher un joueur">
       <div class="empty" id="statNone" hidden>Aucun joueur ne correspond à cette recherche.</div>
       ${statMode === 'buteurs' ? (CATS.map(c => { const h = catTeams(c).map(boardHTML).join(''); return h ? `<div class="sec">${esc(c)}</div>` + h : ''; }).join('') || '<div class="empty">Aucun match avec ce filtre.</div>') : rows.length ? `<div class="tblwrap"><table class="stats"><thead><tr>${COLS.map(([k,l])=>`<th class="${statSort.key===k?'on':''}" aria-sort="${statSort.key===k?(statSort.dir<0?'descending':'ascending'):'none'}"><button data-k="${k}">${l}${statSort.key===k?(statSort.dir<0?' ▾':' ▴'):''}</button></th>`).join('')}</tr></thead>
-        <tbody>${rows.map(p=>`<tr class="prow${p.k === monJoueur() ? ' moi' : ''}" data-pk="${esc(p.k)}" data-nm="${esc(p.name)}" tabindex="0">${cell(p.goals)}<td>${esc(p.name)}</td>${cell(p.mj)}${cell(p.tit)}${cell(p.y)}${cell(p.w)}${cell(p.r)}</tr>`).join('')}${cscGoals ? `<tr class="csc">${cell(cscGoals)}<td>CSC <small>(contre son camp adverse)</small></td><td></td><td></td><td></td><td></td><td></td></tr>` : ''}</tbody></table></div>`
+        <tbody>${rows.map(p=>`<tr class="prow${p.k === monJoueur() ? ' moi' : ''}" data-pk="${esc(p.k)}" data-nm="${esc(p.name)}" tabindex="0"><td>${esc(p.name)}</td>${cell(p.goals)}${cell(p.mj)}${cell(p.tit)}${cell(p.y)}${cell(p.w)}${cell(p.r)}</tr>`).join('')}${cscGoals ? `<tr class="csc"><td>CSC <small>(contre son camp adverse)</small></td>${cell(cscGoals)}<td></td><td></td><td></td><td></td><td></td></tr>` : ''}</tbody></table></div>`
         : `<div class="empty">Les stats apparaîtront après le premier match dont la composition de l'${CLUB} a été saisie.</div>`}
       <p class="note">${statComp === 'coupe' ? 'Matchs de coupe uniquement. ' : statComp ? 'Matchs de championnat uniquement. ' : ''}Stats des joueurs de l'${CLUB}, calculées à partir des compositions et de la chronologie de chaque match.${unknownGoals ? ` ${unknownGoals} but${unknownGoals>1?'s':''} sans buteur identifié.` : ''}</p>`;
     view.querySelectorAll('th button').forEach(b => b.onclick = () => {
