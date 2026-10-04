@@ -1,6 +1,7 @@
 // Notifications déclenchées par le minuteur de la base (pg_cron), avec une clé :
 //  - « pas encore de responsable score » 1 h avant le match (toutes les 10 min) ;
-//  - « coup d'envoi » ~30 s après le lancement d'un match (toutes les 30 s, seulement s'il y en a un).
+//  - « coup d'envoi » ~30 s après le lancement d'un match (toutes les 30 s, seulement s'il y en a un) ;
+//  - rappel ~15 min avant le match si notre compo n'est pas saisie ou s'il manque des numéros (responsables de l'équipe).
 // La base choisit les matchs et les destinataires (une seule notification de chaque sorte par match).
 const webpush = require('web-push');
 
@@ -19,9 +20,9 @@ module.exports = async (req, res) => {
     headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify({ p_cle: cle })
   });
-  const [r1, r2] = await Promise.all([appel('alerte_score_targets'), appel('debut_targets')]);
+  const [r1, r2, r3] = await Promise.all([appel('alerte_score_targets'), appel('debut_targets'), appel('compo_targets')]);
   if (!r1.ok || !r2.ok) return res.status(403).json({ error: 'refusé' });
-  const targets = [...await r1.json(), ...await r2.json()];
+  const targets = [...await r1.json(), ...await r2.json(), ...(r3.ok ? await r3.json() : [])];
   if (!Array.isArray(targets) || !targets.length) return res.json({ sent: 0 });
 
   webpush.setVapidDetails('https://asm-live.vercel.app', VAPID_PUBLIC, process.env.VAPID_PRIVATE_KEY);
