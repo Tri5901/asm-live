@@ -1130,14 +1130,41 @@ async function consoleView(id, openCompo){
     return set;
   }
   const sentOff = t => new Set(S.events.filter(e=>e.t===t&&e.k==='red'&&e.n).map(e=>String(e.n)));
+  // 10 s pour annuler une action notée par erreur ; la notification (buts, cartons) ne part qu'après
+  const notifsEnAttente = new Map();
+  const envoyerNotif = eid => {
+    const t = notifsEnAttente.get(eid); if (t === undefined) return;
+    clearTimeout(t); notifsEnAttente.delete(eid);
+    if (S.events.some(x => x.id === eid)) queue({kind:'notify', match:id, id:eid});
+  };
+  let fermerAnnulation = null;
+  function proposerAnnulation(e){
+    if (fermerAnnulation) fermerAnnulation();
+    document.querySelector('.undobar')?.remove();
+    const fin = Date.now() + 10000;
+    const bar = document.createElement('div');
+    bar.className = 'undobar';
+    bar.innerHTML = `<span>${esc(LABEL[e.k])} noté · ${esc(e.min)} — <b id="undoActN">10</b> s pour annuler</span><button type="button" id="undoActGo">Annuler</button>`;
+    document.body.appendChild(bar);
+    const tick = setInterval(() => { const r = Math.ceil((fin - Date.now()) / 1000); if (r <= 0 || !document.body.contains(bar)) return fermer(); const n = document.getElementById('undoActN'); if (n) n.textContent = r; }, 250);
+    const fermer = () => { clearInterval(tick); bar.remove(); if (fermerAnnulation === fermer) fermerAnnulation = null; };
+    fermerAnnulation = fermer;
+    document.getElementById('undoActGo').onclick = () => {
+      fermer();
+      const t = notifsEnAttente.get(e.id); if (t !== undefined){ clearTimeout(t); notifsEnAttente.delete(e.id); }
+      if (!S.events.some(x => x.id === e.id)) return;
+      S.events = S.events.filter(x => x.id !== e.id); saveLocal(); queue({kind:'evdel', match:id, id:e.id}); render();
+      toast(`${LABEL[e.k]} annulé${t !== undefined ? ' · aucune notification envoyée' : ''}`);
+    };
+  }
   function add(e){
     e.id = uuid(); e.p = S.period || 1; e.created_at = new Date().toISOString(); e.created_by = myId();
     e.sort = sortFromLabel(e.min, e.sort);
     if (S.status==='prevu') patch({status:'direct', period: S.period || 1});
     S.events.push(e); pushEv(e);
-    if (['goal','yellow','white','red'].includes(e.k)) queue({kind:'notify', match:id, id:e.id});   // buts et cartons
+    if (['goal','yellow','white','red'].includes(e.k)) notifsEnAttente.set(e.id, setTimeout(() => envoyerNotif(e.id), 10000));   // buts et cartons
     render();
-    toast(`${LABEL[e.k]} noté · ${e.min}`);
+    proposerAnnulation(e);
   }
   view.querySelectorAll('.act').forEach(b => b.onclick = () => {
     const t = b.dataset.t, k = b.dataset.k, cm = currentMinute(S), tn = teamName(S,t);
@@ -1488,7 +1515,7 @@ async function consoleView(id, openCompo){
   };
   presHooks.add(renderCo); renderCo();
   const prevCleanup = cleanup;
-  cleanup = () => { offRt(); clearInterval(pollRt); document.removeEventListener('visibilitychange', visRt); presHooks.delete(renderCo); if (prevCleanup) prevCleanup(); };
+  cleanup = () => { [...notifsEnAttente.keys()].forEach(envoyerNotif); if (fermerAnnulation) fermerAnnulation(); offRt(); clearInterval(pollRt); document.removeEventListener('visibilitychange', visRt); presHooks.delete(renderCo); if (prevCleanup) prevCleanup(); };
 }
 
 // ---------- Lecture de la photo de la feuille de match (dans le téléphone, gratuit) ----------

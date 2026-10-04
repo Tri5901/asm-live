@@ -43,6 +43,14 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST uniquement' });
   const k = req.body && req.body.cle;
   if (!k || typeof k !== 'string' || k.length > 200) return res.status(400).json({ error: 'requête invalide' });
+  // le minuteur (en heure UTC) appelle aux deux heures possibles été/hiver : on ne garde que vendredi 23 h et samedi 10 h / 18 h
+  // à l'heure de Paris (sauf appel à la main avec force)
+  if (!req.body.force){
+    const p = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', weekday: 'short', hour: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+    const jour = (p.find(x => x.type === 'weekday') || {}).value || '', h = +((p.find(x => x.type === 'hour') || {}).value);
+    const ok = (/^ven/i.test(jour) && h === 23) || (/^sam/i.test(jour) && (h === 10 || h === 18));
+    if (!ok) return res.json({ compos: 0, info: 'pas l’heure (' + jour + ' ' + h + ' h à Paris)' });
+  }
 
   const t = await (await fetch(FEUILLE)).text();
   const rows = csv(t);
