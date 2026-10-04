@@ -1964,7 +1964,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
       <div class="phero"><span class="pav big">${esc(name.trim().charAt(0).toUpperCase())}</span><div><h1>${esc(name)}</h1>
         <p class="sub">${nb ? `${nb} match${nb>1?'s':''} joué${nb>1?'s':''}${teams ? ' · ' + esc(teams) : ''}` : 'Aucun match joué'} · saison ${esc(statSeason||'')}</p></div></div>
       <div class="chipbar compbar" role="group" aria-label="Compétition">${[['', 'Tout'], ['championnat', 'Championnat'], ['coupe', 'Coupes']].map(([v, l]) => `<button data-comp="${v}" class="${statComp===v?'on':''}" aria-pressed="${statComp===v}">${l}</button>`).join('')}</div>
-      <div class="kpis">${kpi(g, 'Buts')}${kpi(nb, 'Matchs')}${kpi(nb ? fr(g/nb, 2) : '–', 'Buts / match')}${kpi(g ? fr(mins/g, 0) + '′' : '–', '1 but toutes les')}</div>
+      <div class="kpis">${kpi(g, 'Buts')}${kpi(nb, 'Matchs joués')}${kpi(nb ? fr(g/nb, 2) : '–', 'Buts / match')}${kpi(g ? fr(mins/g, 0) + '′' : '–', '1 but toutes les')}</div>
       <div class="kpis">${kpi(fr(mins, 0) + '′', 'Temps de jeu')}${kpi(tit, 'Titulaire')}${kpi(ent, 'Entrées')}${kpi(`<span class="kcartes">${y}<i class="kc y"></i>${w}<i class="kc w"></i>${r}<i class="kc r"></i></span>`, 'Cartons')}</div>
       <div class="pfacts">
         ${numFavOk ? `<div><span>Numéro favori</span><b>n°${esc(numFav[0])} (${numFav[1]} match${numFav[1]>1?'s':''})</b></div>` : ''}
@@ -1977,7 +1977,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
         ${best && best.goals.length ? `<div><span>Meilleur match</span><b>${best.goals.length} but${best.goals.length>1?'s':''} contre ${esc(opp(best.m))}</b></div>` : ''}
       </div>
       ${isStaff() ? `<button type="button" class="fbtn" id="pMerge" style="width:100%;margin-top:12px">Fusionner avec un autre joueur (doublon)…</button>` : ''}
-      <div class="sec">Historique des matchs</div>
+      <div class="sec">Historique des matchs</div>${hist.length > nb ? `<p class="note" style="margin:0 0 6px">${hist.length} matchs sur la feuille, dont ${hist.length - nb} sur le banc sans entrer en jeu (pas comptés dans les matchs joués).</p>` : ""}
       ${hist.map(h => {
         const m = h.m, role = !h.played ? 'Sur le banc, pas entré' : h.p.sub ? `Entré à la ${h.start}e` : 'Titulaire';
         const detail = [role, h.played ? `${h.mins} min` : '', ...h.parcours].filter(Boolean).join(' · ');
