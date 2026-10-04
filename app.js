@@ -2829,11 +2829,14 @@ function onlineUsers(){
 // ---------- Mesure d'audience anonyme (identifiant tiré au hasard, gardé sur l'appareil) ----------
 let visiteOuverte = false;
 function noterVisite(page){
-  if (!sb) return;
+  // les admins ne sont pas comptés : la base exclut l'appareil au premier passage connecté en admin, puis l'appli n'envoie plus rien
+  if (!sb || lsGet('asm-vid-exclu', false)) return;
   let id = lsGet('asm-vid', null);
   if (!id){ id = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12)).toLowerCase(); lsSet('asm-vid', id); }
   const ouverture = !visiteOuverte; visiteOuverte = true;
-  sb.rpc('noter_visite', { p_visiteur: id, p_page: (page || 'accueil').replace(/[^a-z]/g, '') || 'accueil', p_ouverture: ouverture }).then(() => {}, () => {});
+  const admin = isAdmin();
+  sb.rpc('noter_visite', { p_visiteur: id, p_page: (page || 'accueil').replace(/[^a-z]/g, '') || 'accueil', p_ouverture: ouverture })
+    .then(({ error }) => { if (admin && !error) lsSet('asm-vid-exclu', true); }, () => {});
 }
 const adminTabs = cur => `<div class="seg admtabs" role="tablist"><a href="#/admin" class="${cur === 'acces' ? 'on' : ''}" role="tab" aria-selected="${cur === 'acces'}">Accès</a><a href="#/admin/stats" class="${cur === 'stats' ? 'on' : ''}" role="tab" aria-selected="${cur === 'stats'}">Statistiques</a></div>`;
 
