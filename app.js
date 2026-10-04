@@ -1779,8 +1779,8 @@ async function statsViewFrom(playerArg, { ms, evs }){
     // équipe principale (la plus jouée ; à égalité, la plus haute) et autres équipes jouées
     const eqPrincipale = p => Object.entries(p.eqs || {}).sort((a, b) => b[1] - a[1] || teamRank(+a[0]) - teamRank(+b[0]))[0];
     const eqCell = p => { const e = Object.keys(p.eqs || {}); if (!e.length) return '<td class="zero">–</td>';
-      const pr = eqPrincipale(p)[0], autres = e.filter(x => x !== pr).sort((a, b) => teamRank(+a) - teamRank(+b));
-      return `<td class="eqc" title="${esc(e.map(x => teamLabel(+x) + ' : ' + p.eqs[x] + ' match' + (p.eqs[x] > 1 ? 's' : '')).join(' · '))}"><b>${esc(teamLetter(+pr))}</b>${autres.length ? '<small>' + esc(autres.map(x => teamLetter(+x)).join('')) + '</small>' : ''}</td>`; };
+      const pr = eqPrincipale(p)[0];   // seulement l'équipe principale (le détail est sur la fiche du joueur)
+      return `<td class="eqc" title="${esc(e.map(x => teamLabel(+x) + ' : ' + p.eqs[x] + ' match' + (p.eqs[x] > 1 ? 's' : '')).join(' · '))}"><b>${esc(teamLetter(+pr))}</b></td>`; };
     const cell = (v) => `<td class="${v?'':'zero'}">${v}</td>`;
     // classement des buteurs, équipe par équipe (un joueur compte pour chaque équipe où il a marqué)
     const boards = {};
