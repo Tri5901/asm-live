@@ -2045,7 +2045,7 @@ function cguHTML(){
   <h3>2. Utilisation sans compte</h3>
   <p>Tout le monde peut suivre les matchs, les classements et les stats sans compte. Les notifications (buts, cartons, début de match) sont facultatives : tu les actives et les désactives toi-même depuis la cloche 🔔.</p>
   <h3>3. Compte</h3>
-  <p>Un compte sert à participer : saisir le score d’un match (responsable score), gérer les matchs d’une équipe, voir ses propres stats. Tu crées ton compte avec ton prénom, ton nom et ton email, et tu choisis un mot de passe que tu gardes secret. Un nouveau compte est validé par un administrateur de l’appli, qui choisit son rôle (supporter, joueur, dirigeant, responsable d’équipe, admin). Les administrateurs de l’appli peuvent modifier un rôle ou supprimer un compte en cas d’usage abusif.</p>
+  <p>Un compte sert à participer : saisir le score d’un match (responsable score), gérer les matchs d’une équipe, voir ses propres stats. Tu crées ton compte avec ton prénom, ton nom et ton email, et tu choisis un mot de passe que tu gardes secret. Un nouveau compte est validé par un administrateur de l’appli, qui choisit son rôle (supporter, joueur, dirigeant, responsable d’équipe, admin). Les administrateurs de l’appli peuvent à tout moment modifier le rôle d’un compte ou le supprimer (par exemple en cas d’usage abusif, de compte en double ou inutilisé).</p>
   <h3>4. Bon usage</h3>
   <p>Tu t’engages à saisir des informations exactes (scores, buteurs, cartons, compositions), à ne pas noter d’actions en double avec une autre personne, et à respecter les joueurs, les adversaires et les arbitres. Chaque modification d’un match est enregistrée avec son auteur et son heure (historique visible par les responsables et les administrateurs de l’appli).</p>
   <h3>5. Données personnelles</h3>
@@ -2053,7 +2053,7 @@ function cguHTML(){
   <p><b>Photos de feuille de match :</b> la lecture d’une photo de compo se fait sur ton téléphone ; la photo n’est pas envoyée ni conservée.</p>
   <p><b>À quoi elles servent :</b> uniquement au fonctionnement de l’appli (suivi des matchs, stats, notifications). Elles ne sont ni vendues, ni utilisées pour de la publicité.</p>
   <p><b>Où elles sont :</b> chez les hébergeurs de l’appli (Supabase pour la base de données, Vercel pour le site et l’envoi des notifications).</p>
-  <p><b>Combien de temps :</b> tant que ton compte existe. Si tu supprimes ton compte, ton accès et ton email sont effacés et tu ne peux plus te connecter ; ton prénom et ton nom restent dans l’historique des matchs et actions que tu as saisis (et dans les compos où tu as joué).</p>
+  <p><b>Combien de temps :</b> tant que ton compte existe. Si ton compte est supprimé (par toi ou par un administrateur), ton accès et ton email sont effacés et tu ne peux plus te connecter ; ton prénom et ton nom restent dans l’historique des matchs et actions que tu as saisis (et dans les compos où tu as joué).</p>
   <p><b>Tes droits :</b> tu peux consulter, corriger ton nom (« Mon compte »), supprimer ton compte (« Mon compte » → « Supprimer mon compte ») ou demander à un administrateur de l’appli de corriger ou retirer ton nom d’une composition ou de l’historique. Tu peux aussi saisir la CNIL (cnil.fr).</p>
   <h3>6. Évolutions</h3>
   <p>Ces conditions peuvent évoluer ; la date de version ci-dessus change alors.</p>`;
