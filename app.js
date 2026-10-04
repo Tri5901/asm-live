@@ -2185,7 +2185,7 @@ async function adminView(){
   const deleted = data.filter(p => p.role === 'supprime' && !p.efface).sort((a, b) => String(b.deleted_at||'').localeCompare(String(a.deleted_at||'')));
   const supprimes = deleted.length;
   data = data.filter(p => p.role !== 'supprime');
-  const ROLES = [['pending', 'Sans accès'], ['joueur', 'Joueur'], ['supporter', 'Supporter'], ['dirigeant', 'Dirigeant'], ['delegue', 'Responsable'], ['admin', 'Admin']];
+  const ROLES = [['joueur', 'Joueur'], ['supporter', 'Supporter'], ['dirigeant', 'Dirigeant'], ['delegue', 'Responsable'], ['admin', 'Admin']];
   const GROUPS = [['pending', 'En attente de validation'], ['admin', 'Admins'], ['delegue', 'Responsables'], ['dirigeant', 'Dirigeants'], ['joueur', 'Joueurs'], ['supporter', 'Supporters']];
   const nameOf = p => p.nom || p.email || 'Sans nom';
   const initial = p => esc(nameOf(p).trim().charAt(0).toUpperCase());
@@ -2210,7 +2210,7 @@ async function adminView(){
     <p class="accon" id="accOnline"></p>
     <p class="note" style="margin-top:4px">Un <b>responsable</b> crée et saisit les matchs de ses équipes. Un <b>joueur</b>, un <b>supporter</b> ou un <b>dirigeant</b> ne peut saisir que les matchs où il est responsable score. Un <b>admin</b> gère tout.</p>
     ${nouveaux.length ? `<div class="sec secwarn">Nouveaux comptes à confirmer · ${nouveaux.length}</div>
-      <p class="note" style="margin:0 0 6px">Ils sont <b>supporters</b> dès leur inscription (ils peuvent demander à être responsable score). <b>Valider</b> ouvre le choix du rôle (sans accès, joueur, supporter, dirigeant, responsable, admin), puis <b>Valider le compte</b>. On peut aussi y supprimer le compte.</p>
+      <p class="note" style="margin:0 0 6px">Ils sont <b>supporters</b> dès leur inscription (ils peuvent demander à être responsable score). <b>Valider</b> ouvre le choix du rôle (joueur, supporter, dirigeant, responsable, admin), puis <b>Valider le compte</b>. On peut aussi y supprimer le compte.</p>
       <div class="alist">${nouveaux.map(row).join('')}</div>` : ''}
     ${GROUPS.map(([r, t]) => {
       // responsables : dernières équipes d'abord, la A en dernier (comme l'accueil), sans équipe à la fin ; les autres par nom
