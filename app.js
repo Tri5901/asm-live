@@ -2139,10 +2139,16 @@ function startPresence(){
   presCh.subscribe(st => { if (st === 'SUBSCRIBED'){ presReady = true; presTrack(); } });
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') presTrack(); });
+// personnes en ligne : un même compte ouvert sur plusieurs écrans (téléphone + ordinateur) ne compte qu'une fois
+function onlineCount(){
+  const metas = Object.values(presState).map(a => (a && a[0]) || {});
+  const comptes = new Set(metas.filter(m => m.compte).map(m => m.uid || '?')).size;
+  return { n: comptes + metas.filter(m => !m.compte).length, comptes };
+}
 function renderOnline(){
   const b = $('online'); if (!b) return;
   b.hidden = !isAdmin();
-  b.querySelector('span').textContent = Object.keys(presState).length || '…';
+  b.querySelector('span').textContent = onlineCount().n || '…';
   if (document.body.classList.contains('open') && $('onlineList')) $('onlineList').innerHTML = onlineHTML();
   renderAdminOnline();
 }
@@ -2173,7 +2179,7 @@ function renderAdminOnline(){
 }
 function onlineHTML(){
   const metas = Object.values(presState).map(a => (a && a[0]) || {});
-  const n = metas.length, comptes = metas.filter(m => m.compte).length;
+  const { n, comptes } = onlineCount();
   const matches = [...((lsGet('asm-home', null) || {}).matches || []), ...presMatches];
   const NOMS = { accueil: 'Accueil', classements: 'Classements', stats: 'Stats joueurs', compte: 'Mon compte', admin: 'Accès', connexion: 'Connexion', nouveau: 'Nouveau match' };
   const label = p => {
