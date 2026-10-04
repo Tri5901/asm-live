@@ -1885,7 +1885,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
         <p class="sub">${nb ? `${nb} match${nb>1?'s':''} joué${nb>1?'s':''}${teams ? ' · ' + esc(teams) : ''}` : 'Aucun match joué'} · saison ${esc(statSeason||'')}</p></div></div>
       <div class="chipbar compbar" role="group" aria-label="Compétition">${[['', 'Tout'], ['championnat', 'Championnat'], ['coupe', 'Coupes']].map(([v, l]) => `<button data-comp="${v}" class="${statComp===v?'on':''}" aria-pressed="${statComp===v}">${l}</button>`).join('')}</div>
       <div class="kpis">${kpi(g, 'Buts')}${kpi(nb, 'Matchs')}${kpi(nb ? fr(g/nb, 2) : '–', 'Buts / match')}${kpi(g ? fr(mins/g, 0) + '′' : '–', '1 but toutes les')}</div>
-      <div class="kpis">${kpi(fr(mins, 0) + '′', 'Temps de jeu')}${kpi(tit, 'Titulaire')}${kpi(ent, 'Entrées')}${kpi(`${y}<i class="kc y"></i> ${w}<i class="kc w"></i> ${r}<i class="kc r"></i>`, 'Cartons')}</div>
+      <div class="kpis">${kpi(fr(mins, 0) + '′', 'Temps de jeu')}${kpi(tit, 'Titulaire')}${kpi(ent, 'Entrées')}${kpi(`<span class="kcartes">${y}<i class="kc y"></i>${w}<i class="kc w"></i>${r}<i class="kc r"></i></span>`, 'Cartons')}</div>
       <div class="pfacts">
         ${eqTri.length ? `<div><span>Équipe principale</span><b>${esc(teamLabel(+eqTri[0][0]))} (${eqTri[0][1]} match${eqTri[0][1]>1?'s':''})</b></div>` : ''}
         ${eqTri.length > 1 ? `<div><span>Équipes jouées cette saison</span><b>${esc(eqTri.map(([e, n]) => teamLetter(+e) + ' : ' + n).join(' · '))}</b></div>` : ''}
@@ -2062,7 +2062,7 @@ async function monJoueurBloc(){
       const b = bilanJoueur(data.ms, data.evs, k);
       box().innerHTML = `<h2>⚽ Mes stats</h2><p class="sub">Tu es <b>${esc(nom)}</b> dans les compos · saison ${esc(b.saison)}${b.eq ? ' · surtout en <b>' + esc(teamLabel(b.eq)) + '</b>' : ''}</p>
         <div class="kpis"><div class="kpi"><b>${b.mj}</b><span>Matchs</span></div><div class="kpi"><b>${b.buts}</b><span>Buts</span></div>
-        <div class="kpi"><b>${b.jaunes}<i class="kc y"></i> ${b.blancs}<i class="kc w"></i> ${b.rouges}<i class="kc r"></i></b><span>Cartons</span></div></div>
+        <div class="kpi"><b><span class="kcartes">${b.jaunes}<i class="kc y"></i>${b.blancs}<i class="kc w"></i>${b.rouges}<i class="kc r"></i></span></b><span>Cartons</span></div></div>
         <a class="fbtn" href="#/stats/joueur/${encodeURIComponent(k)}" style="width:100%;margin-top:10px">Voir ma fiche complète</a>
         <button type="button" class="link" id="mjNon" style="width:100%;margin-top:8px">Ce n’est pas moi</button>`;
       $('mjNon').onclick = () => askConfirm('Retirer le lien ?', 'Tes stats ne seront plus affichées dans ton compte. Tu pourras choisir à nouveau ton nom.', 'Retirer', () => lier(null));
