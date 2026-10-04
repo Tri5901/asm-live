@@ -433,7 +433,8 @@ function drawHome(matches, goalRows){
     return `<a class="mcard${m.status==='direct' ? ' live' : ''}${me ? ' mine' : ''}" href="#/match/${esc(m.id)}">
       <div class="mtop"><span class="tchip" title="${esc(teamLabel(m.equipe))}">${teamLetter(m.equipe)}</span><span class="mcomp">${CATS.length > 1 ? esc(catOf(m.equipe)) + (m.competition ? " · " : "") : ""}${esc(m.competition || (CATS.length > 1 ? "" : teamLabel(m.equipe)))}</span>${canManage(m) && !me ? `<span class="gerer" role="link" tabindex="0" data-href="#/gerer/${esc(m.id)}" aria-label="Gérer ce match">✎ Gérer</span>` : ''}${badge}</div>
       <div class="mrow">${side('H')}<div class="mmid">${mid}</div>${side('A')}</div>
-      ${me ? `<div class="mdeleg" role="link" tabindex="0" data-href="#/gerer/${esc(m.id)}"><span><b>Tu es responsable score de ce match</b><small>C’est toi qui saisis le score et les remplacements.</small></span><span class="mdgo">Gérer ›</span></div>`
+      ${m.status === 'termine' ? '' /* match fini : plus de responsable score sur l'accueil (il reste sur la page du match) */
+        : me ? `<div class="mdeleg" role="link" tabindex="0" data-href="#/gerer/${esc(m.id)}"><span><b>Tu es responsable score de ce match</b><small>C’est toi qui saisis le score et les remplacements.</small></span><span class="mdgo">Gérer ›</span></div>`
         : m.delegue_nom ? `<div class="mdel">Responsable score : ${esc(m.delegue_nom)}</div>`
         : demAtt.some(d => d.match_id === m.id) ? `<div class="mdem">🙋 Demande de ${esc(demAtt.filter(d => d.match_id === m.id).map(d => d.nom).join(', '))} à valider</div>` : ''}</a>`;
   };
