@@ -1129,7 +1129,7 @@ async function consoleView(id, openCompo){
         <div class="seg luteams">${order.map(t => `<button type="button" data-t="${t}" class="${t===cur?'on':''}">${esc(teamName(S,t))} · ${ed[t].length}</button>`).join('')}</div>
         <div class="lubar"><span><b>${plural(c.tit, 'titulaire')}</b> · ${plural(c.rem, 'remplaçant')}</span>
           <span class="lutools"><button type="button" class="photo" id="luPhoto">📷 Photo</button><button type="button" class="photo" id="luPaste">${paste ? 'Fermer' : 'Coller'}</button></span></div>
-        <input type="file" accept="image/*" capture="environment" id="luFile" hidden>
+        <input type="file" accept="image/*" id="luFile" hidden>
         <div class="ocrstat" id="luStat"></div>
         ${paste ? `<textarea id="luText" placeholder="10 DUPONT Lucas&#10;7 MARTIN Hugo&#10;14 BERNARD Léo R"></textarea>
           <button type="button" class="fbtn" id="luParse" style="width:100%;margin:6px 0 10px">Ajouter ces joueurs</button>` : ''}
