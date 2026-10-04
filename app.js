@@ -505,9 +505,12 @@ function openLieu(m){
   const waze = 'https://waze.com/ul?q=' + a + '&navigate=yes';
   const gmaps = 'https://www.google.com/maps/dir/?api=1&destination=' + a;
   openSheet(`<h3 id="shTitle">Lieu du match</h3><p><b>${esc(m.lieu || '')}</b><br>${esc(m.adresse)}</p>
-    <div class="foot lieufoot" style="margin-top:14px"><a class="fbtn primary" data-go href="${esc(waze)}" target="_blank" rel="noopener">Waze</a><a class="fbtn primary" data-go href="${esc(gmaps)}" target="_blank" rel="noopener">Google Maps</a><button class="fbtn" id="lieuNo">Fermer</button></div>`);
+    <div class="foot lieufoot" style="margin-top:14px"><a class="fbtn primary" data-go href="${esc(waze)}" target="_blank" rel="noopener">Waze</a><a class="fbtn primary" data-go href="${esc(gmaps)}" target="_blank" rel="noopener">Google Maps</a><button class="fbtn" id="lieuCopy">Copier</button></div>`);
   document.querySelectorAll('#shBody [data-go]').forEach(b => b.onclick = () => closeSheet());
-  $('lieuNo').onclick = closeSheet;
+  // pour fermer : toucher en dehors de la fenêtre
+  $('lieuCopy').onclick = async () => {
+    try{ await navigator.clipboard.writeText(m.adresse); toast('Adresse copiée'); closeSheet(); }catch(e){ prompt('Adresse du match', m.adresse); }
+  };
 }
 function boardHTML(m, evs, staff){
   const c = clubSide(m), niv = niveaux(m);
