@@ -585,7 +585,10 @@ const matchCache = {
   }
 };
 async function matchView(id){
-  const here = () => location.hash.includes(id);
+  // toujours sur cette page ? (#/gerer/<id> contient aussi l'id : sans ce contrôle, la vue spectateur
+  // qui finit de charger écrasait la page « Gérer » et son bouton Lancer)
+  const tok = route.cur;
+  const here = () => route.cur === tok && location.hash.replace(/^#\/?/, '').split('/')[1] === id && /^#\/?match\//.test(location.hash);
   const fresh = (async () => {
     if (isStaff()) await loadDelegues().catch(()=>{});
     if (isAdmin()) await loadPeople().catch(()=>{});
