@@ -677,15 +677,15 @@ function histoTexte(h, m){
       }
       if (d.length) parts.push(teamName(m, t) + ' : ' + d.join(', '));
     });
-    return 'Compo ' + (parts.join(' · ') || 'modifiée');
+    return 'Compo ' + (parts.join(' · ') || 'modifiée') + (h.source ? ' — via ' + h.source : '');
   }
   return h.quoi;
 }
 async function histoCharger(m, box){
   box.innerHTML = '<div class="loading">Chargement…</div>';
-  const { data, error } = await sb.from('historique').select('at,par_nom,quoi,avant,apres').eq('match_id', m.id).order('at', { ascending: false }).limit(300);
+  const { data, error } = await sb.from('historique').select('at,par_nom,quoi,avant,apres,source').eq('match_id', m.id).order('at', { ascending: false }).limit(300);
   if (error){ box.innerHTML = '<div class="empty">Pas de réseau pour l’instant.</div>'; return; }
-  box.innerHTML = (data || []).length ? '<ul class="histo">' + data.map(h => `<li><span class="hat">${esc(new Date(h.at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}</span><b>${esc(h.par_nom || 'Import automatique')}</b><span>${esc(histoTexte(h, m))}</span></li>`).join('') + '</ul>'
+  box.innerHTML = (data || []).length ? '<ul class="histo">' + data.map(h => `<li><span class="hat">${esc(new Date(h.at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}</span><b>${esc(h.par_nom || 'Import automatique')}</b><span>${esc(histoTexte(h, m))}</span></li>`).join('') + '</ul>'
     : '<div class="empty">Aucune modification enregistrée (l’historique a démarré le 4 octobre au soir).</div>';
 }
 // Préchargement discret (une fois par ouverture de l'appli) : Classements et Stats s'affichent ensuite tout de suite
@@ -1007,7 +1007,7 @@ async function consoleView(id, openCompo){
       if (S.events.length) return toast('Des actions sont déjà notées : supprime-les d’abord');
       const adv = oppSide(S), r = rosterOf(S, adv);
       const auto = r.length === 14 && r.every((p, k) => p.n === String(k + 1) && !p.name);   // numéros mis au coup d'envoi
-      patch({ status: 'prevu', period: 0, running: false, acc: 0, started_at: 0, ...(auto ? { rosters: { ...S.rosters, [adv]: [] } } : {}) }); render();
+      patch({ status: 'prevu', period: 0, running: false, acc: 0, started_at: 0, ...(auto ? { rosters: { ...S.rosters, [adv]: [] }, compo_source: 'coup d’envoi annulé : numéros automatiques retirés' } : {}) }); render();
       toast('Coup d’envoi annulé · aucune notification envoyée');
     };
     const prev = cleanup;
@@ -1021,11 +1021,12 @@ async function consoleView(id, openCompo){
       const adv = oppSide(S);
       if (coupEnvoi && !rosterOf(S, adv).length)
         f.rosters = { ...(S.rosters || {}), [adv]: Array.from({length: 14}, (_, k) => ({ n: String(k + 1), name: '', sub: k >= 11 })) };
+        f.compo_source = 'numéros automatiques au coup d’envoi';
       // plus de 11 titulaires au coup d'envoi : les plus grands numéros passent remplaçants
       if (coupEnvoi){
         const ro = { ...(f.rosters || S.rosters || {}) }, bancs = [];
         ['H', 'A'].forEach(t => { const r = onzeTitulaires(ro[t]); if (r.moved.length){ ro[t] = r.list; bancs.push(...r.moved.map(n => 'n°' + n)); } });
-        if (bancs.length){ f.rosters = ro; setTimeout(() => toast(`Plus de 11 titulaires : ${bancs.join(', ')} mis remplaçant${bancs.length > 1 ? 's' : ''}`), 1500); }
+        if (bancs.length){ f.rosters = ro; f.compo_source = (f.compo_source ? f.compo_source + ' + ' : '') + 'plus de 11 titulaires corrigés au coup d’envoi'; setTimeout(() => toast(`Plus de 11 titulaires : ${bancs.join(', ')} mis remplaçant${bancs.length > 1 ? 's' : ''}`), 1500); }
       }
       if (S.running){ f.acc = (+S.acc) + Date.now() - (+S.started_at); f.running = false; }
       else { f.started_at = Date.now(); f.running = true; }
@@ -1102,7 +1103,7 @@ async function consoleView(id, openCompo){
       const i = r.findIndex(p => !p.n && p.name === pending);
       if (i < 0){ done(n); return; }
       const rosters = { ...(S.rosters || {}) }; rosters[t] = r.map((p, k) => k === i ? { ...p, n } : p);
-      patch({ rosters });
+      patch({ rosters, compo_source: 'numéro ajouté pendant le match' });
       done(n);
     };
     $('shBody').querySelectorAll('.chip').forEach(c => c.onclick = () => {
@@ -1207,6 +1208,7 @@ async function consoleView(id, openCompo){
   }
   function openLineupEditor(){
     const order = [clubSide(S), oppSide(S)];
+    let viaPhoto = false, viaColle = false;   // comment la compo a été entrée (historique)
     const grouped = t => { const l = rosterSorted(S,t).map(p=>({...p})); return [...l.filter(p=>!p.sub), ...l.filter(p=>p.sub)]; };
     const ed = {H: grouped('H'), A: grouped('A')};
     let cur = order[0], paste = false, errs = new Set(), msg = '';
@@ -1324,10 +1326,11 @@ async function consoleView(id, openCompo){
       $('luAdd').onclick = () => { addPlayer(cur, {}); draw(true); };
       body.querySelectorAll('.lusug button').forEach(b => b.onclick = () => { addPlayer(cur, sugg[+b.dataset.j]); draw(); });
       $('luPaste').onclick = () => { paste = !paste; draw(); if (paste) $('luText').focus(); };
-      if (paste) $('luParse').onclick = () => { parse($('luText').value).forEach(p => addPlayer(cur, p)); paste = false; draw(); };
+      if (paste) $('luParse').onclick = () => { viaColle = true; parse($('luText').value).forEach(p => addPlayer(cur, p)); paste = false; draw(); };
       $('luPhoto').onclick = () => $('luFile').click();
       $('luFile').onchange = async ev => {
         const file = ev.target.files[0]; ev.target.value = '';
+        if (file) viaPhoto = true;
         if (file) await readSheetPhoto(file, $('luStat'), teams => {
           // compo déjà préparée : fusion (numéros complétés) ; sinon on remplit avec ce qui est lu
           const remplir = (t, lus) => {
@@ -1371,7 +1374,7 @@ async function consoleView(id, openCompo){
       const sansNum = order.reduce((s, t) => s + out[t].filter(p => !p.n).length, 0);
       const bancs = [];
       for (const t of order){ const r = onzeTitulaires(out[t]); out[t] = r.list; if (r.moved.length) bancs.push(...r.moved.map(n => 'n°' + n)); }
-      patch({rosters: out}); closeSheet(); render();
+      patch({rosters: out, compo_source: [viaPhoto && 'photo de la feuille', viaColle && 'liste collée', 'saisie à la main'].filter(Boolean).join(' + ')}); closeSheet(); render();
       toast(bancs.length ? `Plus de 11 titulaires : ${bancs.join(', ')} mis remplaçant${bancs.length > 1 ? 's' : ''}`
         : sansNum ? `Compositions enregistrées · ${plural(sansNum, 'joueur')} sans numéro` : 'Compositions enregistrées');
     }
