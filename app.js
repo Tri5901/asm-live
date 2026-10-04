@@ -374,6 +374,7 @@ async function route(){
   $('tabs').hidden = page==='gerer' || page==='match';
   $('fab').hidden = !(canCreate() && page==='');
   presTrack();
+  noterVisite(page);
   window.scrollTo(0,0);
   if (!sb){ view.innerHTML = `<div class="card"><h1>Configuration à terminer</h1><p class="sub">Le site n'est pas encore relié à sa base de données (fichier config.js).</p></div>`; return; }
   try{
@@ -387,7 +388,7 @@ async function route(){
     if (page==='connexion') return loginView();
     if (page==='compte') return accountView();
     if (page==='cgu') return cguView();
-    if (page==='admin') return await adminView();
+    if (page==='admin') return await (arg === 'stats' ? siteStatsView() : adminView());
     location.hash = '#/';
   }catch(e){
     console.error(e);
@@ -2452,7 +2453,7 @@ function accountView(){
     ${role==='delegue' ? `<div class="msg">${myTeams().length ? 'Tu gères les matchs des ' + esc(teamsText(myTeams())) + '.' : 'Aucune équipe ne t’est encore confiée : tu peux saisir uniquement les matchs où tu es responsable score.'}</div>` : ''}
     <div class="foot" style="margin-top:4px">
       ${canCreate() ? '<a class="fbtn club" href="#/nouveau">+ Nouveau match</a>' : ''}
-      ${isAdmin() ? '<a class="fbtn" href="#/admin">Gérer les accès</a>' : ''}
+      ${isAdmin() ? '<a class="fbtn" href="#/admin">Gérer les accès</a><a class="fbtn" href="#/admin/stats">📊 Statistiques du site</a>' : ''}
     </div>
     <div class="foot" style="margin-top:10px"><button class="fbtn" id="logout">Se déconnecter</button></div>
     <a class="link" href="#/cgu" style="display:block;text-align:center;margin-top:14px">Conditions d’utilisation</a>
@@ -2541,17 +2542,18 @@ async function adminView(){
   const row = p => `<div class="arow" data-uid="${esc(p.id)}">
       <span class="pav">${initial(p)}</span>
       <div class="who"><b>${esc(nameOf(p))}${p.id === session.user.id ? ' <small>(toi)</small>' : ''}</b><small>${esc(p.email || '')}${p.a_confirmer && p.created_at ? ' · inscrit le ' + esc(new Date(p.created_at).toLocaleDateString('fr-FR')) : ''}</small>
-        <span class="rbadge r-${p.role}">${esc(summary(p))}</span>${p.joueur ? `<span class="ajoueur">⚽ ${esc(p.joueur)}</span>` : ''}<span class="onstate"></span></div>
+        <span class="rbadge r-${p.role}">${esc(summary(p))}</span>${p.joueur ? `<span class="ajoueur">⚽ ${esc(p.joueur)}</span>` : ''}<span class="anotif"></span><span class="onstate"></span></div>
       ${p.a_confirmer ? `<button type="button" class="amod ok" data-edit="${esc(p.id)}">Valider</button>`
         : `<button type="button" class="amod" data-edit="${esc(p.id)}">Modifier</button>`}
     </div>`;
   // nouveaux comptes (joueurs d'office) : à confirmer, ou rôle à changer, ou compte à supprimer
   const nouveaux = data.filter(p => p.a_confirmer).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
   const pendingN = data.filter(p => p.role === 'pending').length;
-  view.innerHTML = `<div class="acc">
+  view.innerHTML = `<div class="acc">${adminTabs('acces')}
     <div class="acctop"><h1>Accès</h1><a class="link" href="#/compte">← Mon compte</a></div>
     <div class="acctotal"><b>${data.length}</b><span>compte${data.length>1?'s':''} créé${data.length>1?'s':''}<small>${[['admin','admin'],['delegue','responsable'],['dirigeant','dirigeant'],['joueur','joueur'],['supporter','supporter'],['pending','en attente']].map(([r,l])=>{const n=data.filter(p=>p.role===r).length; return n ? n+' '+l+(n>1&&r!=='pending'?'s':'') : '';}).filter(Boolean).join(' · ')}</small></span></div>
     <p class="accon" id="accOnline"></p>
+    <p class="accnotif" id="accNotif"></p>
     <p class="note" style="margin-top:4px">Un <b>responsable</b> crée et saisit les matchs de ses équipes. Un <b>joueur</b>, un <b>supporter</b> ou un <b>dirigeant</b> ne peut saisir que les matchs où il est responsable score. Un <b>admin</b> gère tout.</p>
     ${nouveaux.length ? `<div class="sec secwarn">Nouveaux comptes à confirmer · ${nouveaux.length}</div>
       <p class="note" style="margin:0 0 6px">Ils sont <b>supporters</b> dès leur inscription (ils peuvent demander à être responsable score). <b>Valider</b> ouvre le choix du rôle (joueur, supporter, dirigeant, responsable, admin), puis <b>Valider le compte</b>. On peut aussi y supprimer le compte.</p>
@@ -2581,6 +2583,7 @@ async function adminView(){
       });
   });
   renderAdminOnline();
+  notifsAcces();
 
   // Rattacher un compte supprimé à un compte existant
   function linkAccount(old){
@@ -2814,6 +2817,88 @@ function onlineUsers(){
   const u = new Map();
   Object.values(presState).forEach(a => (a || []).forEach(m => { if (m && m.uid){ if (!u.has(m.uid)) u.set(m.uid, new Set()); u.get(m.uid).add(m.page); } }));
   return u;
+}
+// ---------- Mesure d'audience anonyme (identifiant tiré au hasard, gardé sur l'appareil) ----------
+let visiteOuverte = false;
+function noterVisite(page){
+  if (!sb) return;
+  let id = lsGet('asm-vid', null);
+  if (!id){ id = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12)).toLowerCase(); lsSet('asm-vid', id); }
+  const ouverture = !visiteOuverte; visiteOuverte = true;
+  sb.rpc('noter_visite', { p_visiteur: id, p_page: (page || 'accueil').replace(/[^a-z]/g, '') || 'accueil', p_ouverture: ouverture }).then(() => {}, () => {});
+}
+const adminTabs = cur => `<div class="seg admtabs" role="tablist"><a href="#/admin" class="${cur === 'acces' ? 'on' : ''}" role="tab" aria-selected="${cur === 'acces'}">Accès</a><a href="#/admin/stats" class="${cur === 'stats' ? 'on' : ''}" role="tab" aria-selected="${cur === 'stats'}">Statistiques</a></div>`;
+
+// ---------- Page admin « Statistiques » : visites, comptes connectés, inscriptions, pages vues ----------
+let statsJours = 30;
+const PAGES_NOM = { accueil: 'Accueil', match: 'Pages de match', gerer: 'Gérer (saisie)', stats: 'Stats joueurs', classements: 'Classements', compte: 'Mon compte', connexion: 'Connexion', admin: 'Admin', nouveau: 'Nouveau match', cgu: 'CGU' };
+function barresSVG(jours, series, { hauteur = 140 } = {}){
+  // barres empilées, une par jour ; series = [{cle, coul, nom}] ; étiquettes de dates régulières en dessous
+  const n = jours.length, W = 600, H = hauteur * 1.4, bas = 34, haut = 24, larg = W / n;
+  const tot = j => series.reduce((a, s) => a + (+j[s.cle] || 0), 0), max = Math.max(1, ...jours.map(tot));
+  const pas = Math.max(1, Math.ceil(n / 7)), y = v => haut + (H - haut - bas) * (1 - v / max);
+  const lbl = d => new Date(d + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  let barres = '';
+  jours.forEach((j, i) => {
+    let cumul = 0; const x = i * larg + larg * .15, w = larg * .7;
+    series.forEach(s => { const v = +j[s.cle] || 0; if (!v) return; const y1 = y(cumul + v), y0 = y(cumul); barres += `<rect x="${x.toFixed(1)}" y="${y1.toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(1, y0 - y1).toFixed(1)}" rx="2" fill="${s.coul}"><title>${lbl(j.jour)} · ${s.nom} : ${v}</title></rect>`; cumul += v; });
+    if (n <= 14 && tot(j)) barres += `<text x="${(x + w / 2).toFixed(1)}" y="${(y(tot(j)) - 4).toFixed(1)}" class="bv">${tot(j)}</text>`;
+    if (i % pas === 0 || i === n - 1) barres += `<text x="${(x + w / 2).toFixed(1)}" y="${H - 8}" class="bl">${lbl(j.jour)}</text>`;
+  });
+  return `<svg class="barres" viewBox="0 0 ${W} ${H}" role="img"><line x1="0" x2="${W}" y1="${H - bas}" y2="${H - bas}" class="ax"/>${barres}</svg>`;
+}
+async function siteStatsView(){
+  if (!isAdmin()){ location.hash = '#/compte'; return; }
+  view.innerHTML = `<div class="acc">${adminTabs('stats')}<div class="loading">Chargement…</div></div>`;
+  const draw = async () => {
+    const { data: S, error } = await sb.rpc('stats_site', { p_jours: statsJours });
+    if (!location.hash.startsWith('#/admin/stats')) return;
+    if (error || !S){ view.innerHTML = `<div class="acc">${adminTabs('stats')}<div class="empty">Impossible de charger les statistiques.</div></div>`; return; }
+    const J = S.jours || [], auj = J[J.length - 1] || {};
+    const somme = k => J.reduce((a, j) => a + (+j[k] || 0), 0);
+    const pages = Object.entries(S.pages_vues || {}).sort((a, b) => b[1] - a[1]), maxP = Math.max(1, ...pages.map(p => p[1]));
+    const debut = S.debut_mesure ? new Date(S.debut_mesure + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }) : null;
+    const J2 = J.map(j => ({ ...j, anonymes: Math.max(0, j.visiteurs - j.comptes) }));
+    view.innerHTML = `<div class="acc">${adminTabs('stats')}
+      <div class="acctop"><h1>Statistiques</h1><a class="link" href="#/compte">← Mon compte</a></div>
+      <div class="chipbar" role="group" aria-label="Période">${[7, 30, 90].map(d => `<button type="button" data-j="${d}" class="${statsJours === d ? 'on' : ''}" aria-pressed="${statsJours === d}">${d} jours</button>`).join('')}</div>
+      <div class="kpis">
+        <div class="kpi"><b>${auj.visiteurs || 0}</b><span>Visiteurs aujourd’hui</span></div>
+        <div class="kpi"><b>${S.visiteurs_periode || 0}</b><span>Visiteurs sur ${statsJours} j</span></div>
+        <div class="kpi"><b>${S.comptes_periode || 0}</b><span>Comptes connectés sur ${statsJours} j</span></div>
+        <div class="kpi"><b>${somme('ouvertures')}</b><span>Ouvertures de l’appli</span></div>
+      </div>
+      <section class="schart"><h3>Visiteurs par jour</h3><p class="leg"><i style="background:var(--club)"></i>Connectés à un compte <i style="background:#8A8880"></i>Sans compte</p>
+        ${barresSVG(J2, [{ cle: 'comptes', coul: 'var(--club)', nom: 'connectés' }, { cle: 'anonymes', coul: '#8A8880', nom: 'sans compte' }])}</section>
+      <section class="schart"><h3>Ouvertures de l’appli par jour</h3>${barresSVG(J, [{ cle: 'ouvertures', coul: 'var(--ok)', nom: 'ouvertures' }])}</section>
+      <section class="schart"><h3>Nouveaux comptes par jour</h3>${barresSVG(J, [{ cle: 'inscriptions', coul: '#5B8DEF', nom: 'inscriptions' }], { hauteur: 110 })}</section>
+      ${pages.length ? `<section class="schart"><h3>Pages les plus vues (${statsJours} j)</h3><div class="pvues">${pages.map(([k, v]) => `<div><span>${esc(PAGES_NOM[k] || k)}</span><i style="width:${Math.round(100 * v / maxP)}%"></i><b>${v}</b></div>`).join('')}</div></section>` : ''}
+      <div class="pfacts">
+        <div><span>Comptes créés</span><b>${S.comptes_total}</b></div>
+        <div><span>Comptes avec notifs</span><b>${S.notifs_comptes}</b></div>
+        <div><span>Appareils abonnés aux notifs</span><b>${S.notifs_appareils}</b></div>
+      </div>
+      <p class="note">Mesure anonyme : chaque téléphone ou ordinateur compte pour un visiteur par jour (un identifiant tiré au hasard, sans adresse IP). ${debut ? 'Mesure commencée le ' + esc(debut) + ' : les jours d’avant sont vides.' : ''} Les inscriptions ont tout leur historique.</p>
+    </div>`;
+    view.querySelectorAll('[data-j]').forEach(b => b.onclick = () => { statsJours = +b.dataset.j; draw(); });
+  };
+  await draw();
+}
+
+// Accès : qui a activé les notifications (nombre d'appareils, équipes dont il suit les buts)
+async function notifsAcces(){
+  const { data, error } = await sb.rpc('notifs_comptes');
+  if (error || !data) return;
+  const par = new Map(data.filter(x => x.user_id).map(x => [x.user_id, x])), anonymes = (data.find(x => !x.user_id) || {}).appareils || 0;
+  let n = 0;
+  document.querySelectorAll('.arow[data-uid]').forEach(r => {
+    const x = par.get(r.dataset.uid), el = r.querySelector('.anotif'); if (!el) return;
+    if (x) n++;
+    el.classList.toggle('on', !!x);
+    el.textContent = x ? '🔔 Notifs' + (x.appareils > 1 ? ' · ' + x.appareils + ' appareils' : '') + ((x.equipes || []).length ? ' · buts ' + x.equipes.map(teamLetter).join(', ') : '') : '🔕 Pas de notifs';
+  });
+  const sum = $('accNotif');
+  if (sum) sum.textContent = '🔔 ' + n + ' compte' + (n > 1 ? 's ont' : ' a') + ' activé les notifications' + (anonymes ? ' · ' + anonymes + ' appareil' + (anonymes > 1 ? 's' : '') + ' sans compte' : '');
 }
 function renderAdminOnline(){
   const rows = document.querySelectorAll('.arow[data-uid]'); if (!rows.length) return;

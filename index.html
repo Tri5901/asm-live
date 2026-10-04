@@ -605,6 +605,16 @@ table.cls tr.clsdet td{padding:0 0 10px;text-align:left}
 li.moi > span:not(.lacts){font-weight:700} li.moi > span:not(.lacts)::after{content:" ⭐"}
 tr.prow.moi td{background:color-mix(in srgb,var(--club) 22%,transparent);font-weight:700}
 .monjoueur h2{margin:0 0 4px} .monjoueur .kpis{margin-top:10px}
+.admtabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:0 0 14px}.admtabs a{text-align:center;text-decoration:none;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-weight:600}.admtabs a.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.schart{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px 6px;margin:0 0 14px}
+.schart h3{font-family:"Barlow Condensed",sans-serif;font-size:17px;font-weight:800;text-transform:uppercase;margin:0 0 6px}
+.schart .leg{font-size:12px;color:var(--muted);margin:0 0 4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}.schart .leg i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.barres{width:100%;height:auto;display:block;overflow:visible}.barres .ax{stroke:var(--line);stroke-width:2}
+.barres .bl{font-size:19px;fill:var(--muted);text-anchor:middle}.barres .bv{font-size:17px;fill:var(--ink);text-anchor:middle;font-weight:700}
+.pvues{display:flex;flex-direction:column;gap:6px;padding-bottom:8px}.pvues div{display:grid;grid-template-columns:120px 1fr 44px;align-items:center;gap:8px;font-size:13px}
+.pvues i{height:10px;border-radius:5px;background:var(--club);min-width:2px}.pvues b{text-align:right}
+.anotif{display:block;margin-top:3px;font-size:12px;color:var(--muted)}.anotif.on{color:var(--ok);font-weight:600}.anotif:empty{display:none}
+.accnotif{margin:2px 0 0;font-size:13px;color:var(--muted)}.accnotif:empty{display:none}
 .ajoueur{display:inline-block;margin-left:6px;font-size:12px;color:var(--muted)}
 td.eqc{white-space:nowrap;text-align:center} td.eqc b{display:inline-block;min-width:18px} td.eqc small{color:var(--muted);margin-left:2px;font-size:11px}
 .lineups li:has(.lacts){flex-wrap:wrap;row-gap:0}
