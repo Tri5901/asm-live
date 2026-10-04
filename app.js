@@ -215,7 +215,7 @@ let session = null;
 let profile = lsGet('asm-profile', null);
 const isStaff = () => !!profile && (profile.role==='delegue' || profile.role==='admin');
 // Joueur : aucun droit, sauf sur les matchs où il est désigné délégué
-const isMember = () => !!profile && ['joueur', 'dirigeant', 'delegue', 'admin'].includes(profile.role);
+const isMember = () => !!profile && ['joueur', 'supporter', 'dirigeant', 'delegue', 'admin'].includes(profile.role);
 const isAdmin = () => !!profile && profile.role==='admin';
 const myId = () => session && session.user ? session.user.id : null;
 // Un match avec un délégué désigné ne peut être saisi que par lui (ou un admin)
@@ -2032,13 +2032,13 @@ function nameView(force){
 }
 function accountView(){
   if (!session){ location.hash = '#/connexion'; return; }
-  const ROLE = {pending:'En attente de validation', joueur:'Joueur', dirigeant:'Dirigeant', delegue:'Responsable d’équipe', admin:'Administrateur'};
+  const ROLE = {pending:'En attente de validation', joueur:'Joueur', supporter:'Supporter', dirigeant:'Dirigeant', delegue:'Responsable d’équipe', admin:'Administrateur'};
   const role = profile ? profile.role : 'pending';
   view.innerHTML = `<div class="card">
     <h1>${esc(profile && profile.nom || 'Mon compte')}</h1>
     <p class="sub">${esc(session.user.email)} · ${ROLE[role]} · <button class="link" id="editNom" style="padding:0">Modifier mon nom</button></p>
     ${role==='pending' ? '<div class="msg">Ton compte doit être validé par un administrateur du club avant de pouvoir saisir les matchs.</div>' : ''}
-    ${role==='joueur' || role==='dirigeant' ? '<div class="msg">Tu peux saisir uniquement les matchs où tu es responsable score (choisi par un responsable, ou en faisant la demande sur la page du match). Ils apparaissent sur l’accueil avec la pastille « ✎ Gérer ».</div>' : ''}
+    ${role==='joueur' || role==='supporter' || role==='dirigeant' ? '<div class="msg">Tu peux saisir uniquement les matchs où tu es responsable score (choisi par un responsable, ou en faisant la demande sur la page du match). Ils apparaissent sur l’accueil avec la pastille « ✎ Gérer ».</div>' : ''}
     ${role==='delegue' ? `<div class="msg">${myTeams().length ? 'Tu gères les matchs des ' + esc(teamsText(myTeams())) + '.' : 'Aucune équipe ne t’est encore confiée : tu peux saisir uniquement les matchs où tu es responsable score.'}</div>` : ''}
     <div class="foot" style="margin-top:4px">
       ${canCreate() ? '<a class="fbtn club" href="#/nouveau">+ Nouveau match</a>' : ''}
@@ -2117,14 +2117,14 @@ async function adminView(){
   const deleted = data.filter(p => p.role === 'supprime' && !p.efface).sort((a, b) => String(b.deleted_at||'').localeCompare(String(a.deleted_at||'')));
   const supprimes = deleted.length;
   data = data.filter(p => p.role !== 'supprime');
-  const ROLES = [['pending', 'Sans accès'], ['joueur', 'Joueur'], ['dirigeant', 'Dirigeant'], ['delegue', 'Responsable'], ['admin', 'Admin']];
-  const GROUPS = [['pending', 'En attente de validation'], ['admin', 'Admins'], ['delegue', 'Responsables'], ['dirigeant', 'Dirigeants'], ['joueur', 'Joueurs']];
+  const ROLES = [['pending', 'Sans accès'], ['joueur', 'Joueur'], ['supporter', 'Supporter'], ['dirigeant', 'Dirigeant'], ['delegue', 'Responsable'], ['admin', 'Admin']];
+  const GROUPS = [['pending', 'En attente de validation'], ['admin', 'Admins'], ['delegue', 'Responsables'], ['dirigeant', 'Dirigeants'], ['joueur', 'Joueurs'], ['supporter', 'Supporters']];
   const nameOf = p => p.nom || p.email || 'Sans nom';
   const initial = p => esc(nameOf(p).trim().charAt(0).toUpperCase());
   const teamsOf = p => p.role === 'delegue' ? (p.equipes || []) : [];
   const summary = p => p.role === 'admin' ? 'Admin · toutes les équipes'
     : p.role === 'delegue' ? 'Responsable · ' + (teamsOf(p).length ? teamsText(teamsOf(p)) : 'aucune équipe')
-    : p.role === 'joueur' ? 'Joueur' : p.role === 'dirigeant' ? 'Dirigeant' : 'En attente';
+    : p.role === 'joueur' ? 'Joueur' : p.role === 'supporter' ? 'Supporter' : p.role === 'dirigeant' ? 'Dirigeant' : 'En attente';
 
   const row = p => `<div class="arow" data-uid="${esc(p.id)}">
       <span class="pav">${initial(p)}</span>
@@ -2138,9 +2138,9 @@ async function adminView(){
   const pendingN = data.filter(p => p.role === 'pending').length;
   view.innerHTML = `<div class="acc">
     <div class="acctop"><h1>Accès</h1><a class="link" href="#/compte">← Mon compte</a></div>
-    <div class="acctotal"><b>${data.length}</b><span>compte${data.length>1?'s':''} créé${data.length>1?'s':''}<small>${[['admin','admin'],['delegue','responsable'],['dirigeant','dirigeant'],['joueur','joueur'],['pending','en attente']].map(([r,l])=>{const n=data.filter(p=>p.role===r).length; return n ? n+' '+l+(n>1&&r!=='pending'?'s':'') : '';}).filter(Boolean).join(' · ')}</small></span></div>
+    <div class="acctotal"><b>${data.length}</b><span>compte${data.length>1?'s':''} créé${data.length>1?'s':''}<small>${[['admin','admin'],['delegue','responsable'],['dirigeant','dirigeant'],['joueur','joueur'],['supporter','supporter'],['pending','en attente']].map(([r,l])=>{const n=data.filter(p=>p.role===r).length; return n ? n+' '+l+(n>1&&r!=='pending'?'s':'') : '';}).filter(Boolean).join(' · ')}</small></span></div>
     <p class="accon" id="accOnline"></p>
-    <p class="note" style="margin-top:4px">Un <b>responsable</b> crée et saisit les matchs de ses équipes. Un <b>joueur</b> ou un <b>dirigeant</b> ne peut saisir que les matchs où il est responsable score. Un <b>admin</b> gère tout.</p>
+    <p class="note" style="margin-top:4px">Un <b>responsable</b> crée et saisit les matchs de ses équipes. Un <b>joueur</b>, un <b>supporter</b> ou un <b>dirigeant</b> ne peut saisir que les matchs où il est responsable score. Un <b>admin</b> gère tout.</p>
     ${nouveaux.length ? `<div class="sec secwarn">Nouveaux comptes à confirmer · ${nouveaux.length}</div>
       <p class="note" style="margin:0 0 6px">Ils sont <b>joueurs</b> dès leur inscription (ils peuvent demander à être responsable score). <b>Confirmer</b> les garde joueurs ; <b>Modifier</b> pour changer le rôle ou supprimer le compte.</p>
       <div class="alist">${nouveaux.map(row).join('')}</div>` : ''}
@@ -2219,7 +2219,7 @@ async function adminView(){
         <div class="frow2" style="margin-top:14px"><label class="field"><span>Prénom</span><input id="edPre" value="${esc(pre)}" autocapitalize="words"></label><label class="field"><span>Nom</span><input id="edNom" value="${esc(nm)}" autocapitalize="words"></label></div>
         <div class="field"><span>Rôle</span>
           <div class="rseg" role="group" aria-label="Rôle">${ROLES.map(([v, l]) => `<button type="button" data-role="${v}" class="${role === v ? 'on' : ''}" aria-pressed="${role === v}"${me ? ' disabled' : ''}>${l}</button>`).join('')}</div>
-          <small>${role === 'admin' ? 'Gère toutes les équipes, les accès et les classements.' : role === 'delegue' ? 'Crée et saisit les matchs des équipes cochées ci-dessous.' : role === 'joueur' || role === 'dirigeant' ? 'Aucun accès, sauf les matchs où il est responsable score.' : 'Ne peut rien modifier.'}${me ? ' Tu ne peux pas changer ton propre rôle.' : ''}</small></div>
+          <small>${role === 'admin' ? 'Gère toutes les équipes, les accès et les classements.' : role === 'delegue' ? 'Crée et saisit les matchs des équipes cochées ci-dessous.' : role === 'joueur' || role === 'supporter' || role === 'dirigeant' ? 'Aucun accès, sauf les matchs où il est responsable score.' : 'Ne peut rien modifier.'}${me ? ' Tu ne peux pas changer ton propre rôle.' : ''}</small></div>
         ${role === 'delegue' ? `<div class="field"><span>Équipes dont il est responsable</span>
           ${CATS.map(c => `<div class="eqcat"><small>${esc(c)}</small><div class="eqpick">${catTeams(c).map(n => `<button type="button" data-e="${n}" class="${eqs.has(n) ? 'on' : ''}" aria-pressed="${eqs.has(n)}"><b>${esc(teamLetter(n))}</b><small>${esc(teamLabel(n))}</small></button>`).join('')}</div></div>`).join('')}</div>` : ''}
         <label class="field"><span>Joueur dans les compos</span><input id="edJoueur" list="edJoueurs" value="${esc(joueur)}" placeholder="Aucun (nom tel qu’écrit dans les compos)" autocomplete="off">
