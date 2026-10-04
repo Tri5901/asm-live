@@ -794,10 +794,18 @@ async function partagerResume(m, evs){
   if (!blob){ toast('Image impossible à créer'); return; }
   const nom = `resume-${teamLetter(m.equipe)}-${new Date(m.kickoff).toISOString().slice(0, 10)}.png`;
   const file = new File([blob], nom, { type: 'image/png' });
-  try{ if (navigator.canShare && navigator.canShare({ files: [file] })){ await navigator.share({ files: [file], title: `${teamName(m, 'H')} ${sh}–${sa} ${teamName(m, 'A')}` }); return; } }
-  catch(e){ if (e && e.name === 'AbortError') return; }
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nom; document.body.appendChild(a); a.click(); a.remove();
-  toast('Image téléchargée');
+  // aperçu d'abord : le partage part ensuite de l'appui sur « Partager » (le téléphone l'exige)
+  const url = URL.createObjectURL(blob), peutPartager = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+  // iPhone : un téléchargement finit dans Fichiers (ou rien dans l'appli installée) → seulement « Partager », qui propose « Enregistrer l'image » (Photos)
+  const iphone = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  openSheet(`<h3 id="shTitle">Résumé du match</h3><img src="${url}" alt="Résumé du match" class="resumeimg" style="display:block;width:100%;max-width:360px;height:auto;margin:0 auto;border-radius:10px">
+    <p class="note" style="margin:8px 0 0;text-align:center">${iphone && peutPartager ? 'Pour la garder dans tes photos : « Partager » puis « Enregistrer l’image », ou appui long sur l’image.' : 'Tu peux aussi faire un appui long sur l’image pour l’enregistrer.'}</p>
+    <div class="foot" style="margin-top:12px">${peutPartager ? '<button class="fbtn primary" id="resPartager">Partager</button>' : ''}${iphone && peutPartager ? '' : `<button class="fbtn${peutPartager ? '' : ' primary'}" id="resEnreg">Enregistrer</button>`}</div>`);
+  if ($('resPartager')) $('resPartager').onclick = async () => {
+    try{ await navigator.share({ files: [file], title: `${teamName(m, 'H')} ${sh}–${sa} ${teamName(m, 'A')}` }); closeSheet(); }
+    catch(e){ if (!e || e.name !== 'AbortError') toast('Partage impossible, utilise « Enregistrer »'); }
+  };
+  if ($('resEnreg')) $('resEnreg').onclick = () => { const a = document.createElement('a'); a.href = url; a.download = nom; document.body.appendChild(a); a.click(); a.remove(); toast('Image enregistrée'); };
 }
 
 // ---------- « Mon compte » : prochains matchs où je suis dans la compo ----------
