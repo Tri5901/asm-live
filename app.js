@@ -446,7 +446,11 @@ function drawHome(matches, goalRows){
   const asc = (a,b) => a.kickoff.localeCompare(b.kickoff) || byTeam(a,b), desc = (a,b) => b.kickoff.localeCompare(a.kickoff) || byTeam(a,b);
   const live = matches.filter(m=>m.status==='direct').sort(asc);
   const next = matches.filter(m=>m.status==='prevu').sort(asc);
-  const done = matches.filter(m=>m.status==='termine').sort(desc);
+  // matchs terminés aujourd'hui : restent en haut (sous le direct) jusqu'à minuit
+  const jour = d => new Date(d).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' }), auj = jour(Date.now());
+  const doneAll = matches.filter(m=>m.status==='termine');
+  const doneToday = doneAll.filter(m => jour(m.kickoff) === auj).sort(asc);
+  const done = doneAll.filter(m => jour(m.kickoff) !== auj).sort(desc);
   // demandes à valider : une ligne par match (équipe, adversaire, date, qui demande)
   const demParMatch = {};
   demAtt.forEach(d => { (demParMatch[d.match_id] ||= []).push(d.nom); });
@@ -458,6 +462,7 @@ function drawHome(matches, goalRows){
   let html = (demHtml ? `<div class="dembar"><div class="demtitle">🙋 Demande${demAtt.length > 1 ? 's' : ''} pour être responsable score à valider</div>${demHtml}</div>` : '')
     + teamFilterHTML(homeF, true);
   if (live.length) html += `<div class="sec">En direct</div>` + live.map(card).join('');
+  if (doneToday.length) html += `<div class="sec">Terminés aujourd’hui</div>` + doneToday.map(card).join('');
   const NEXT_MAX = 6;
   if (next.length) html += `<div class="sec">À venir</div>` + byDay(showAllNext ? next : next.filter((m, i) => i < NEXT_MAX || isMine(m)))
     + (next.length > NEXT_MAX && !showAllNext ? `<button class="fbtn" id="moreNext" style="width:100%">Voir les ${next.length} matchs à venir</button>` : '');
