@@ -844,9 +844,13 @@ async function consoleView(id, openCompo){
     $('period').textContent = periodText(S) + (S.status==='termine' ? '' : ' · toucher le chrono pour régler');
     const bc = $('btnClock'), bp = $('btnPeriod');
     bc.hidden = S.status==='termine';
-    bc.textContent = S.running ? 'Pause' : (S.period===0 ? 'Lancer' : 'Reprendre');
+    bc.textContent = S.running ? 'Pause' : S.period===0 ? 'Lancer' : (S.period===2 && !elapsedMs(S)) ? 'Lancer la 2e' : 'Reprendre';
     bp.hidden = S.period===0;
     bp.textContent = S.status==='termine' ? 'Rouvrir' : S.period===1 ? '2e mi-temps' : 'Fin du match';
+    // pause après la 45e : « 2e mi-temps » en gros, « Reprendre » en petit (si le jeu reprend)
+    const miTemps = S.status!=='termine' && S.period===1 && !S.running && elapsedMs(S) >= S.half*60000;
+    bp.classList.toggle('ghost', !miTemps);
+    bc.classList.toggle('ghost', miTemps); bc.classList.toggle('small', miTemps);
   }
   function render(){
     $('boardBox').innerHTML = boardHTML(S, S.events, true);
