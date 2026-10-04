@@ -573,11 +573,25 @@ table.cls tr.clsdet td{padding:0 0 10px;text-align:left}
 .note.provis{color:var(--ink);background:color-mix(in srgb,var(--yellow) 14%,transparent);border-radius:10px;padding:8px 10px}
 .ev.moi{box-shadow:inset 4px 0 0 var(--club)}
 .evmoi{display:inline-block;margin-left:6px;font-size:12px;font-weight:700;color:var(--ink);background:color-mix(in srgb,var(--club) 35%,transparent);border-radius:999px;padding:1px 8px}
-li.moi span{font-weight:700} li.moi span::after{content:" ⭐"}
+li.moi > span:not(.lacts){font-weight:700} li.moi > span:not(.lacts)::after{content:" ⭐"}
 tr.prow.moi td{background:color-mix(in srgb,var(--club) 22%,transparent);font-weight:700}
 .monjoueur h2{margin:0 0 4px} .monjoueur .kpis{margin-top:10px}
 .ajoueur{display:inline-block;margin-left:6px;font-size:12px;color:var(--muted)}
 td.eqc{white-space:nowrap;text-align:center} td.eqc b{display:inline-block;min-width:18px} td.eqc small{color:var(--muted);margin-left:2px;font-size:11px}
+.lineups li:has(.lacts){flex-wrap:wrap;row-gap:0}
+.lacts{display:flex;flex-wrap:wrap;gap:0 8px;flex-basis:100%;padding-left:28px;margin-top:-1px;align-items:center}
+.lacts .la{display:inline-flex;align-items:center;gap:1px;font-size:13px;white-space:nowrap}
+.lacts .la small{font-size:10px;color:var(--muted)}
+.lacts .la.in{color:var(--ok);font-weight:700} .lacts .la.out{color:var(--red);font-weight:700}
+.lacts i.kc{display:inline-block;width:8px;height:11px;border-radius:2px}
+.lineups:not(.remp) .la.in,.lineups:not(.remp) .la.out{display:none}
+.rempbtn{display:block;margin:2px 0 8px;font-size:13px}
+.histobox{margin-top:16px;border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:0 12px}
+.histobox summary{cursor:pointer;padding:12px 0;font-weight:700}
+.histo{list-style:none;margin:0 0 10px;padding:0;font-size:13px}
+.histo li{display:grid;grid-template-columns:auto 1fr;gap:0 8px;padding:7px 0;border-top:1px solid var(--line)}
+.histo .hat{color:var(--muted);font-variant-numeric:tabular-nums;grid-row:span 2}
+.histo li span:last-child{overflow-wrap:anywhere}
 .lieufoot .fbtn{flex:1;text-align:center;text-decoration:none}
 .lieu{display:block;margin:8px auto 0;padding:4px 10px;border:0;background:none;font:inherit;font-size:13px;color:var(--muted);text-decoration:underline dotted;text-underline-offset:3px;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nivline{margin:8px 2px 0;font-size:13px;color:var(--muted);text-align:center}

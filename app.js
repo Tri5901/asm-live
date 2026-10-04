@@ -603,10 +603,22 @@ function rdvHTML(m){
   const h = new Date(m.rdv).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' }).replace(':', 'h');
   return `<div class="rdv" id="rdvBox">🕐 RDV au stade à <b>${esc(h)}</b></div>`;
 }
-function lineupsHTML(m){
+function lineupsHTML(m, evs = []){
   const k = monJoueur();
-  const li = p => `<li${k && p.name && playerKey(p.name) === k ? ' class="moi"' : ''}><b>${esc(p.n || "–")}</b><span>${esc(p.name)}</span></li>`;
+  // à côté de chaque joueur : ses buts, cartons, entrée et sortie (d'après la chronologie)
+  const actions = (t, n) => {
+    if (!n) return '';
+    const e = evs.filter(e => e.t === t).sort((a, b) => (+a.sort || 0) - (+b.sort || 0));
+    const C = { yellow: 'y', white: 'w', red: 'r' };
+    // dans l'ordre du match
+    const h = e.map(x => x.k === 'goal' && x.n === n ? `<span class="la" title="But ${esc(x.min)}">⚽<small>${esc(x.min)}</small></span>`
+      : C[x.k] && x.n === n ? `<span class="la" title="${esc(LABEL[x.k])} ${esc(x.min)}"><i class="kc ${C[x.k]}"></i><small>${esc(x.min)}</small></span>`
+      : x.k === 'sub' && x.in_n === n ? `<span class="la in" title="Entré à la ${esc(x.min)}">↑<small>${esc(x.min)}</small></span>`
+      : x.k === 'sub' && x.out_n === n ? `<span class="la out" title="Sorti à la ${esc(x.min)}">↓<small>${esc(x.min)}</small></span>` : '').filter(Boolean);
+    return h.length ? `<span class="lacts">${h.join('')}</span>` : '';
+  };
   const side = t => {
+    const li = p => `<li${k && p.name && t === clubSide(m) && playerKey(p.name) === k ? ' class="moi"' : ''}><b>${esc(p.n || "–")}</b><span>${esc(p.name)}</span>${actions(t, p.n)}</li>`;
     const list = rosterSorted(m,t);
     if (!list.length) return `<div><h3>${esc(teamName(m,t))}</h3><p class="nolu">Pas encore saisie</p></div>`;
     if (!list.some(p => p.name)) return `<div><h3>${esc(teamName(m,t))}</h3><p class="nolu">Numéros seulement, sans noms</p></div>`;
@@ -626,8 +638,55 @@ function lineupsHTML(m){
     : m.compo_cachee ? '<span class="vistog off static"><i></i>Cachée au public</span>' : '';
   return `<section class="log"><div class="loghead"><h2>Compositions</h2>${canManage(m) ? `<a class="link" href="#/gerer/${esc(m.id)}/compo">${has ? 'Modifier' : '📋 Saisir la compo'}</a>` : ''}</div>`
     + (vis ? `<div class="visrow">${vis}<small>${m.compo_cachee ? 'Seuls les responsables d’équipe, les admins et le responsable score du match la voient.' : 'Tout le monde peut la voir sur la page du match.'}</small></div>` : '')
-    + (has ? `<div class="lineups">${side('H')}${side('A')}</div>` : '<div class="empty">Compo pas encore saisie.</div>')
+    + (has && m.status !== 'prevu' && evs.some(e => e.k === 'sub') ? `<button type="button" class="link rempbtn" id="rempBtn">${lsGet('asm-voir-remp', false) ? 'Masquer les remplacements' : 'Afficher les remplacements'}</button>` : '')
+    + (has ? `<div class="lineups${lsGet('asm-voir-remp', false) ? ' remp' : ''}">${side('H')}${side('A')}</div>` : '<div class="empty">Compo pas encore saisie.</div>')
     + '</section>';
+}
+// Historique des modifications d'un match (écrit par la base à chaque changement)
+function histoTexte(h, m){
+  const qui = (t, n) => n ? (n === 'CSC' ? 'CSC' : 'n°' + n + (nameOf(m, t, n) ? ' ' + nameOf(m, t, n) : '')) : '';
+  const act = e => e ? `${LABEL[e.k] || e.k} ${teamName(m, e.t)} ${e.min || ''}${e.k === 'sub' ? ` (sort ${qui(e.t, e.out_n) || '?'}, entre ${qui(e.t, e.in_n) || '?'})` : e.n ? ' · ' + qui(e.t, e.n) : ''}` : '';
+  if (h.quoi === 'action_ajout') return 'Ajout : ' + act(h.apres);
+  if (h.quoi === 'action_suppression') return 'Suppression : ' + act(h.avant);
+  if (h.quoi === 'action_modif'){
+    // seulement la minute changée : « But A n°11 X : 45' → 45+1' » ; sinon avant → après
+    const a = h.avant || {}, b = h.apres || {};
+    if (a.min !== b.min && ['k', 't', 'n', 'in_n', 'out_n'].every(c => (a[c] || null) === (b[c] || null)))
+      return 'Correction : ' + act({ ...b, min: '' }).replace(/\s+·/, ' ·').trim() + ' : ' + a.min + ' → ' + b.min;
+    return 'Correction : ' + act(a) + ' → ' + act(b);
+  }
+  if (h.quoi === 'statut') return ({ 'prevu>direct': 'Coup d’envoi', 'direct>termine': 'Fin du match', 'termine>direct': 'Match rouvert', 'direct>prevu': 'Coup d’envoi annulé' })[h.avant + '>' + h.apres] || ('Statut : ' + h.avant + ' → ' + h.apres);
+  if (h.quoi === 'periode') return h.apres === 2 ? 'Mi-temps / 2e mi-temps' : h.apres === 1 ? 'Début du match' : 'Période : ' + h.avant + ' → ' + h.apres;
+  if (h.quoi === 'responsable') return 'Responsable score : ' + (h.avant || 'personne') + ' → ' + (h.apres || 'personne');
+  if (h.quoi === 'horaire') return 'Horaire : ' + fmtDate(h.avant) + ' → ' + fmtDate(h.apres);
+  if (h.quoi === 'compo'){
+    const parts = [];
+    ['H', 'A'].forEach(t => {
+      const a = ((h.avant || {})[t]) || [], b = ((h.apres || {})[t]) || [];
+      if (JSON.stringify(a) === JSON.stringify(b)) return;
+      const k = p => p.name ? playerKey(p.name) : 'n' + p.n;
+      const A = new Map(a.map(p => [k(p), p])), B = new Map(b.map(p => [k(p), p]));
+      const d = [];
+      if (!a.length) d.push(b.length + ' joueurs saisis');
+      else {
+        b.filter(p => !A.has(k(p))).forEach(p => d.push('+ ' + (p.name || 'n°' + p.n)));
+        a.filter(p => !B.has(k(p))).forEach(p => d.push('− ' + (p.name || 'n°' + p.n)));
+        b.filter(p => A.has(k(p))).forEach(p => { const o = A.get(k(p));
+          if ((o.n || '') !== (p.n || '')) d.push((p.name || '?') + ' : n°' + (o.n || '–') + ' → n°' + (p.n || '–'));
+          if (!!o.sub !== !!p.sub) d.push((p.name || 'n°' + p.n) + (p.sub ? ' → remplaçant' : ' → titulaire')); });
+      }
+      if (d.length) parts.push(teamName(m, t) + ' : ' + d.join(', '));
+    });
+    return 'Compo ' + (parts.join(' · ') || 'modifiée');
+  }
+  return h.quoi;
+}
+async function histoCharger(m, box){
+  box.innerHTML = '<div class="loading">Chargement…</div>';
+  const { data, error } = await sb.from('historique').select('at,par_nom,quoi,avant,apres').eq('match_id', m.id).order('at', { ascending: false }).limit(300);
+  if (error){ box.innerHTML = '<div class="empty">Pas de réseau pour l’instant.</div>'; return; }
+  box.innerHTML = (data || []).length ? '<ul class="histo">' + data.map(h => `<li><span class="hat">${esc(new Date(h.at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}</span><b>${esc(h.par_nom || 'Import automatique')}</b><span>${esc(histoTexte(h, m))}</span></li>`).join('') + '</ul>'
+    : '<div class="empty">Aucune modification enregistrée (l’historique a démarré le 4 octobre au soir).</div>';
 }
 // Préchargement discret (une fois par ouverture de l'appli) : Classements et Stats s'affichent ensuite tout de suite
 let prefetched = false;
@@ -742,10 +801,13 @@ async function matchView(id){
       + (canManage(m) ? `<a class="fbtn primary big" href="#/gerer/${esc(m.id)}">Gérer ce match</a>` : '')
       + (isStaff() || m.delegue_nom ? `<div class="field deleg"><span>Responsable score</span>${delegPickHTML('delSel', m.delegue_id, m.delegue_nom, !isTeamManager(m.equipe))}${canManage(m) && !isTeamManager(m.equipe) ? '<small>Seul le responsable de l’équipe (ou un admin) peut changer le responsable score.</small>' : isStaff() && !canManage(m) ? '<small>Seuls le responsable de l’équipe, le responsable score ou un admin peuvent modifier ce match.</small>' : ''}</div>` : '')
       + (isAdmin() && people ? `<div class="audit">Match créé par ${esc(personName(m.created_by))}${m.rosters_at ? ` · Compo saisie par ${esc(personName(m.rosters_by))} le ${esc(fmtDate(m.rosters_at))}` : ''}</div>` : '')
-      + (m._partiel ? '<div class="loading">Chargement des détails…</div>' : (m.status==='prevu' ? rdvHTML(m) + lineupsHTML(m) : '')
+      + (m._partiel ? '<div class="loading">Chargement des détails…</div>' : (m.status==='prevu' ? rdvHTML(m) + lineupsHTML(m, evs) : '')
       + `<section class="log"><div class="loghead"><h2>Chronologie</h2></div><div id="events">${timelineHTML(m, evs, false)}</div></section>`
-      + (m.status!=='prevu' ? lineupsHTML(m) : ''));
+      + (m.status!=='prevu' ? lineupsHTML(m, evs) : '')
+      + (isStaff() || canManage(m) ? '<details class="histobox" id="histoBox"><summary>🕓 Historique des modifications</summary><div id="histoList"></div></details>' : ''));
     $('btnShareLive').onclick = () => shareLink(m);
+    if ($('rempBtn')) $('rempBtn').onclick = () => { const v = !lsGet('asm-voir-remp', false); lsSet('asm-voir-remp', v); view.querySelector('.lineups')?.classList.toggle('remp', v); $('rempBtn').textContent = v ? 'Masquer les remplacements' : 'Afficher les remplacements'; };
+    if ($('histoBox')) $('histoBox').ontoggle = () => { if ($('histoBox').open) histoCharger(m, $('histoList')); };
     if ($('btnLieu')) $('btnLieu').onclick = () => openLieu(m);
     if ($('rdvBox')) { const ms = new Date(m.kickoff).getTime() - Date.now(); if (ms < 864e5) setTimeout(() => $('rdvBox')?.remove(), ms); }
     $('btnBell').onclick = () => openBell(m.equipe || 1);
