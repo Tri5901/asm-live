@@ -26,7 +26,7 @@ module.exports = async (req, res) => {
   const { nom, email } = targets[0];
   const payload = JSON.stringify({
     title: '👤 Nouveau compte',
-    body: `${nom}${nom !== email ? ' (' + email + ')' : ''} s’est inscrit : il est joueur. Confirme-le ou change son rôle dans Accès.`,
+    body: `${nom}${nom !== email ? ' (' + email + ')' : ''} s’est inscrit : il est supporter. Valide-le en choisissant son rôle dans Accès.`,
     url: '/#/admin',
     tag: 'compte-' + email
   });

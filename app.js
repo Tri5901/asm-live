@@ -1954,6 +1954,9 @@ async function statsViewFrom(playerArg, { ms, evs }){
     const teams = teamsText([...new Set(pl.map(h => h.m.equipe || 1))]);
     const parEq = {}; pl.forEach(h => { const e = h.m.equipe || 1; parEq[e] = (parEq[e] || 0) + 1; });
     const eqTri = Object.entries(parEq).sort((a, b) => b[1] - a[1] || teamRank(+a[0]) - teamRank(+b[0]));
+    const parNum = {}; pl.forEach(h => { if (h.p.n) parNum[h.p.n] = (parNum[h.p.n] || 0) + 1; });
+    const numFav = Object.entries(parNum).sort((a, b) => b[1] - a[1] || +a[0] - +b[0])[0];
+    const numFavOk = numFav && !['12', '13', '14'].includes(numFav[0]);
     const fr = (v, d=1) => v.toLocaleString('fr-FR', {maximumFractionDigits: d});
     const kpi = (v, l) => `<div class="kpi"><b>${v}</b><span>${l}</span></div>`;
     const opp = m => teamName(m, m.club_side==='H' ? 'A' : 'H');
@@ -1964,6 +1967,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
       <div class="kpis">${kpi(g, 'Buts')}${kpi(nb, 'Matchs')}${kpi(nb ? fr(g/nb, 2) : '–', 'Buts / match')}${kpi(g ? fr(mins/g, 0) + '′' : '–', '1 but toutes les')}</div>
       <div class="kpis">${kpi(fr(mins, 0) + '′', 'Temps de jeu')}${kpi(tit, 'Titulaire')}${kpi(ent, 'Entrées')}${kpi(`<span class="kcartes">${y}<i class="kc y"></i>${w}<i class="kc w"></i>${r}<i class="kc r"></i></span>`, 'Cartons')}</div>
       <div class="pfacts">
+        ${numFavOk ? `<div><span>Numéro favori</span><b>n°${esc(numFav[0])} (${numFav[1]} match${numFav[1]>1?'s':''})</b></div>` : ''}
         ${eqTri.length ? `<div><span>Équipe principale</span><b>${esc(teamLabel(+eqTri[0][0]))} (${eqTri[0][1]} match${eqTri[0][1]>1?'s':''})</b></div>` : ''}
         ${eqTri.length > 1 ? `<div><span>Équipes jouées cette saison</span><b>${esc(eqTri.map(([e, n]) => teamLetter(+e) + ' : ' + n).join(' · '))}</b></div>` : ''}
         ${nb ? `<div><span>Bilan quand il joue</span><b>${W} V · ${N} N · ${L} D</b></div>` : ''}
@@ -2194,7 +2198,7 @@ async function adminView(){
       <span class="pav">${initial(p)}</span>
       <div class="who"><b>${esc(nameOf(p))}${p.id === session.user.id ? ' <small>(toi)</small>' : ''}</b><small>${esc(p.email || '')}${p.a_confirmer && p.created_at ? ' · inscrit le ' + esc(new Date(p.created_at).toLocaleDateString('fr-FR')) : ''}</small>
         <span class="rbadge r-${p.role}">${esc(summary(p))}</span>${p.joueur ? `<span class="ajoueur">⚽ ${esc(p.joueur)}</span>` : ''}<span class="onstate"></span></div>
-      ${p.a_confirmer ? `<div class="gonebtns"><button type="button" class="amod ok" data-ok="${esc(p.id)}">Confirmer</button><button type="button" class="amod" data-edit="${esc(p.id)}">Modifier</button></div>`
+      ${p.a_confirmer ? `<button type="button" class="amod ok" data-edit="${esc(p.id)}">Valider</button>`
         : `<button type="button" class="amod" data-edit="${esc(p.id)}">Modifier</button>`}
     </div>`;
   // nouveaux comptes (joueurs d'office) : à confirmer, ou rôle à changer, ou compte à supprimer
@@ -2206,7 +2210,7 @@ async function adminView(){
     <p class="accon" id="accOnline"></p>
     <p class="note" style="margin-top:4px">Un <b>responsable</b> crée et saisit les matchs de ses équipes. Un <b>joueur</b>, un <b>supporter</b> ou un <b>dirigeant</b> ne peut saisir que les matchs où il est responsable score. Un <b>admin</b> gère tout.</p>
     ${nouveaux.length ? `<div class="sec secwarn">Nouveaux comptes à confirmer · ${nouveaux.length}</div>
-      <p class="note" style="margin:0 0 6px">Ils sont <b>joueurs</b> dès leur inscription (ils peuvent demander à être responsable score). <b>Confirmer</b> les garde joueurs ; <b>Modifier</b> pour changer le rôle ou supprimer le compte.</p>
+      <p class="note" style="margin:0 0 6px">Ils sont <b>supporters</b> dès leur inscription (ils peuvent demander à être responsable score). <b>Valider</b> ouvre le choix du rôle (sans accès, joueur, supporter, dirigeant, responsable, admin), puis <b>Valider le compte</b>. On peut aussi y supprimer le compte.</p>
       <div class="alist">${nouveaux.map(row).join('')}</div>` : ''}
     ${GROUPS.map(([r, t]) => {
       // responsables : dernières équipes d'abord, la A en dernier (comme l'accueil), sans équipe à la fin ; les autres par nom
@@ -2221,13 +2225,6 @@ async function adminView(){
   </div>`;
 
   view.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editPerson(data.find(p => p.id === b.dataset.edit)));
-  view.querySelectorAll('[data-ok]').forEach(b => b.onclick = async () => {
-    const p = data.find(x => x.id === b.dataset.ok);
-    b.disabled = true;
-    const { data: upd, error } = await sb.from('profiles').update({ a_confirmer: false }).eq('id', p.id).select('id');
-    if (error || !upd || !upd.length){ b.disabled = false; toast('Modification refusée'); return; }
-    people = null; toast(nameOf(p) + ' confirmé comme joueur'); adminView();
-  });
   view.querySelectorAll('[data-link]').forEach(b => b.onclick = () => linkAccount(deleted.find(p => p.id === b.dataset.link)));
   view.querySelectorAll('[data-wipe]').forEach(b => b.onclick = () => {
     const old = deleted.find(p => p.id === b.dataset.wipe);
@@ -2288,7 +2285,8 @@ async function adminView(){
           ${CATS.map(c => `<div class="eqcat"><small>${esc(c)}</small><div class="eqpick">${catTeams(c).map(n => `<button type="button" data-e="${n}" class="${eqs.has(n) ? 'on' : ''}" aria-pressed="${eqs.has(n)}"><b>${esc(teamLetter(n))}</b><small>${esc(teamLabel(n))}</small></button>`).join('')}</div></div>`).join('')}</div>` : ''}
         <label class="field"><span>Joueur dans les compos</span><input id="edJoueur" list="edJoueurs" value="${esc(joueur)}" placeholder="Aucun (nom tel qu’écrit dans les compos)" autocomplete="off">
           <datalist id="edJoueurs">${tous.map(j => `<option value="${esc(j.name)}">`).join('')}</datalist><small>Pour « Mes stats » dans son compte et ses actions mises en avant.</small></label>
-        <div class="foot" style="margin-top:6px"><button class="fbtn primary" id="edSave">Enregistrer</button><button class="fbtn" id="edNo">Annuler</button></div>
+        ${p.a_confirmer ? '<p class="note" style="margin:0 0 6px">Nouveau compte : choisis son rôle puis valide.</p>' : ''}
+        <div class="foot" style="margin-top:6px"><button class="fbtn primary" id="edSave">${p.a_confirmer ? 'Valider le compte' : 'Enregistrer'}</button><button class="fbtn" id="edNo">Annuler</button></div>
         ${me ? '' : '<button class="link danger-link" id="edDel" style="width:100%;margin-top:12px">Supprimer ce compte</button>'}`);
       $('shBody').querySelectorAll('[data-role]').forEach(b => b.onclick = () => { role = b.dataset.role; draw(); });
       $('shBody').querySelectorAll('[data-e]').forEach(b => b.onclick = () => { const n = +b.dataset.e; eqs.has(n) ? eqs.delete(n) : eqs.add(n); draw(); });
@@ -2303,7 +2301,7 @@ async function adminView(){
         if (error || !upd || !upd.length){ $('edSave').disabled = false; toast('Modification refusée'); return; }
         if ((joueur || '').trim() !== (p.joueur || '')) await sb.rpc('lier_joueur', { p_user: p.id, p_nom: joueur.trim() || null });
         if (p.id === myId()){ profile = { ...profile, joueur: joueur.trim() || null }; lsSet('asm-profile', profile); }
-        people = null; closeSheet(); toast('Accès de ' + nameOf(p) + ' mis à jour'); adminView();
+        people = null; closeSheet(); toast(p.a_confirmer ? nameOf(p) + ' validé' : 'Accès de ' + nameOf(p) + ' mis à jour'); adminView();
       };
       if ($('edDel')) $('edDel').onclick = () => askConfirm('Supprimer le compte de ' + nameOf(p) + ' ?',
         'Cette personne ne pourra plus se connecter. Les matchs et actions qu’elle a saisis restent dans l’historique, avec son nom. Cette suppression est définitive.',
