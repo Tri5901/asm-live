@@ -528,6 +528,12 @@ function boardHTML(m, evs, staff){
     </div>
   </section>`;
 }
+// heure de rendez-vous au stade (feuille des convocations) : pour les personnes connectées, jusqu'au coup d'envoi
+function rdvHTML(m){
+  if (!myId() || !m.rdv || m.status !== 'prevu' || Date.now() >= new Date(m.kickoff).getTime()) return '';
+  const h = new Date(m.rdv).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' }).replace(':', 'h');
+  return `<div class="rdv" id="rdvBox">🕐 RDV au stade à <b>${esc(h)}</b></div>`;
+}
 function lineupsHTML(m){
   const li = p => `<li><b>${esc(p.n || "–")}</b><span>${esc(p.name)}</span></li>`;
   const side = t => {
@@ -663,11 +669,12 @@ async function matchView(id){
       + (canManage(m) ? `<a class="fbtn primary big" href="#/gerer/${esc(m.id)}">Gérer ce match</a>` : '')
       + (isStaff() || m.delegue_nom ? `<div class="field deleg"><span>Responsable score</span>${delegPickHTML('delSel', m.delegue_id, m.delegue_nom, !isTeamManager(m.equipe))}${canManage(m) && !isTeamManager(m.equipe) ? '<small>Seul le responsable de l’équipe (ou un admin) peut changer le responsable score.</small>' : isStaff() && !canManage(m) ? '<small>Seuls le responsable de l’équipe, le responsable score ou un admin peuvent modifier ce match.</small>' : ''}</div>` : '')
       + (isAdmin() && people ? `<div class="audit">Match créé par ${esc(personName(m.created_by))}${m.rosters_at ? ` · Compo saisie par ${esc(personName(m.rosters_by))} le ${esc(fmtDate(m.rosters_at))}` : ''}</div>` : '')
-      + (m._partiel ? '<div class="loading">Chargement des détails…</div>' : (m.status==='prevu' ? lineupsHTML(m) : '')
+      + (m._partiel ? '<div class="loading">Chargement des détails…</div>' : (m.status==='prevu' ? rdvHTML(m) + lineupsHTML(m) : '')
       + `<section class="log"><div class="loghead"><h2>Chronologie</h2></div><div id="events">${timelineHTML(m, evs, false)}</div></section>`
       + (m.status!=='prevu' ? lineupsHTML(m) : ''));
     $('btnShareLive').onclick = () => shareLink(m);
     if ($('btnLieu')) $('btnLieu').onclick = () => openLieu(m);
+    if ($('rdvBox')) { const ms = new Date(m.kickoff).getTime() - Date.now(); if (ms < 864e5) setTimeout(() => $('rdvBox')?.remove(), ms); }
     $('btnBell').onclick = () => openBell(m.equipe || 1);
     if ($('compoVis')) $('compoVis').onclick = async () => {
       const hide = !m.compo_cachee;

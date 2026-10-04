@@ -1,6 +1,7 @@
 // Convocations du week-end → compos des matchs (sans numéros). Appelé le samedi par le minuteur de la base (pg_cron),
 // avec une clé. Lit la feuille Google publiée sur asmfootball.fr/convocations/seniors, retrouve le match de chaque
-// équipe à la date indiquée et envoie les noms à la base, qui ne remplit que les compos encore vides.
+// équipe à la date indiquée et envoie les noms à la base, qui ne remplit que les compos encore vides,
+// ainsi que l'heure de rendez-vous au stade (« RDV au STADE à »).
 const SUPABASE_URL = 'https://xzzttulqlydcespgkpnx.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_VwLyp5ROGzidc4oHWehoLg_kIehYAcE';
 const FEUILLE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTRVvGcXBPj8hUXVcxWVH-9fnv0juykXnyFc79hu2C_J_dmNnZ209hxm1eqDdwjMsHfonsRB3dYjImv/pub?gid=1926192979&single=true&output=csv';
@@ -28,6 +29,14 @@ const prenomNom = s => {
   const nom = mots.filter(w => w === w.toUpperCase() && /\p{L}/u.test(w)), pre = mots.filter(w => !(w === w.toUpperCase() && /\p{L}/u.test(w)));
   return (pre.length && nom.length ? cap(pre.join(' ')) + ' ' + cap(nom.join(' ')) : cap(s)).trim();
 };
+// « 04/10/2026 » + « 13H30 » (heure de Paris) → instant ISO
+function rdvISO(date, h) {
+  const d = String(date).match(/^(\d{2})\/(\d{2})\/(\d{4})$/), t = String(h || '').match(/(\d{1,2})\s*[Hh:]\s*(\d{2})?/);
+  if (!d || !t) return null;
+  const guess = Date.UTC(+d[3], +d[2] - 1, +d[1], +t[1], +(t[2] || 0));
+  const off = n => { const p = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Paris', timeZoneName: 'shortOffset' }).formatToParts(new Date(n)).find(x => x.type === 'timeZoneName').value; const m = p.match(/GMT([+-]\d+)?/); return (m && m[1] ? +m[1] : 0) * 3600000; };
+  return new Date(guess - off(guess - off(guess))).toISOString();
+}
 const jourParis = iso => new Date(iso).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric' });
 
 module.exports = async (req, res) => {
@@ -40,6 +49,7 @@ module.exports = async (req, res) => {
   const tete = rows.find(r => r.some(c => /^Equipe\s+\S+/i.test(c)));
   if (!tete) return res.json({ compos: 0, info: 'feuille illisible' });
   const dateRow = rows.find(r => /^Date/i.test(r[0] || '')) || [];
+  const rdvRow = rows.find(r => /^RDV/i.test(r[0] || '')) || [];
   const cols = tete.map((c, i) => [i, (c.match(/^Equipe\s+(\S+)/i) || [])[1]]).filter(x => x[1]);
 
   const [equipes, matchs, connus] = await Promise.all([
@@ -66,7 +76,8 @@ module.exports = async (req, res) => {
       && new Date(x.kickoff).getTime() > maintenant && new Date(x.kickoff).getTime() < maintenant + 3 * 86400000);
     if (!m) { detail.push(court + ' : pas de match à venir le ' + date + ' (convocation ancienne ou autre date)'); continue; }
     const joueurs = rows.filter(r => /^\d+$/.test(r[c] || '') && (r[c + 1] || '').length > 1).map(r => nomConnu(r[c + 1]));
-    if (joueurs.length) { data.push({ match_id: m.id, joueurs }); detail.push(court + ' : ' + joueurs.length + ' joueurs'); }
+    const rdv = rdvISO(date, rdvRow[c]);
+    if (joueurs.length || rdv) { data.push({ match_id: m.id, joueurs, rdv }); detail.push(court + ' : ' + joueurs.length + ' joueurs' + (rdv ? ', RDV ' + rdvRow[c] : '')); }
   }
   if (!data.length) return res.json({ compos: 0, detail });
   const r = await fetch(SUPABASE_URL + '/rest/v1/rpc/convocations_compos', { method: 'POST', headers: H, body: JSON.stringify({ p_cle: k, p_data: data }) });
