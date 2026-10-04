@@ -1,12 +1,15 @@
 // Vérification de tous les matchs (championnat et coupes), utilisé par la tâche programmée « Matchs ASM » (lundi et mercredi).
 //   node scripts/verif-horaires.js pages                     → pages « Résultats / calendrier » FFF de chaque équipe (« numéro adresse »)
 //   node scripts/verif-horaires.js comparer <json>           → affiche les différences entre la FFF et le site
-//   node scripts/verif-horaires.js corriger <json> [niveaux] → idem, puis met le site comme sur la FFF :
+//   node scripts/verif-horaires.js corriger <json> [niveaux|-] [lieux] → idem, puis met le site comme sur la FFF :
 //        horaires changés, matchs nouveaux sur la FFF (ex. tour de coupe tiré), logos d'adversaires manquants,
-//        niveau des adversaires en coupe. Un niveau introuvable est signalé par une ligne « A_CHERCHER <adresse> » :
-//        on relève le championnat sur cette page FFF et on relance avec le fichier niveaux { "<adresse>": "<texte relevé>" }
-// Format du JSON : { "1": [["DIM 07 FÉV 2027 - 15H00", "Régional 3 - Senior Journée 12", "516995", "MESANGER AS", "502138", "THOUARE US", "/competition/club/…/equipe/…", "/competition/club/…/equipe/…"], ...], ... }
-//   (date, compétition, code club et nom du recevant, code club et nom du visiteur, pages FFF des deux équipes ;
+//        niveau des adversaires en coupe, stade et adresse des matchs à l'extérieur (bouton Waze).
+//        Un niveau introuvable est signalé par une ligne « A_CHERCHER <adresse> » : on relève le championnat sur
+//        cette page FFF et on relance avec le fichier niveaux { "<adresse>": "<texte relevé>" }.
+//        Un lieu à relever est signalé par « A_LIEU <adresse du match> » : on relève le lieu sur la page du match
+//        et on relance avec le fichier lieux { "<adresse du match>": ["STADE …", "RUE …", "44150 VILLE"] } (« - » si pas de fichier niveaux).
+// Format du JSON : { "1": [["DIM 07 FÉV 2027 - 15H00", "Régional 3 - Senior Journée 12", "516995", "MESANGER AS", "502138", "THOUARE US", "/competition/club/…/equipe/…", "/competition/club/…/equipe/…", "/competition/match/…"], ...], ... }
+//   (date, compétition, code club et nom du recevant, code club et nom du visiteur, pages FFF des deux équipes, page du match ;
 //    l'ancien format [date, "A - B", compétition] est encore accepté)
 // La clé secrète est lue dans C:\Users\Utilisateur\.asm-live\classements.key (jamais dans le dépôt).
 const fs = require('fs');
@@ -57,12 +60,26 @@ async function pages() {
   (await r.json()).forEach(e => console.log(e.id + ' ' + e.fff_classement.replace(/\/classement$/, '/resultat-calendrier') + '   (' + e.nom + ')'));
 }
 
-async function ecarts(file, fichNiv) {
+// « STADE CHARLES ARDOUX 2 » → « Stade Charles Ardoux 2 » ; adresse sur une ligne
+const lieuDe = l => {
+  const t = (Array.isArray(l) ? l : String(l || '').split('\n')).map(x => String(x).replace(/\s+/g, ' ').trim()).filter(Boolean);
+  // petits mots en minuscules sauf en début de ligne : « Route D Avessac » → « Route d'Avessac »
+  // (pas après le code postal : « 44850 Le Cellier »)
+  const petits = x => x.replace(/([^\s\d]) (D|L) (?=\p{L})/gu, (m, c, w) => c + ' ' + w.toLowerCase() + "'")
+    .replace(/([^\s\d]) (De|Des|Du|La|Le|Les|Et|Sur|Sous|En|Aux?)(?= )/g, (m, c, w) => c + ' ' + w.toLowerCase());
+  const joli = x => petits(petits(titre(x)).replace(/ L'(\p{L})/gu, (m, c) => " l'" + c.toUpperCase()));   // deux passes : « De La Haie »
+  return t.length >= 2 ? { lieu: joli(t[0]), adresse: t.slice(1).map(joli).join(', ') } : null;
+};
+const pageMatch = u => String(u || '').replace(/^https:\/\/epreuves\.fff\.fr/, '').replace(/\/match$/, '');
+
+async function ecarts(file, fichNiv, fichLieux) {
   const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-  const niv = fichNiv ? JSON.parse(fs.readFileSync(fichNiv, 'utf8')) : {};
+  const niv = fichNiv && fichNiv !== '-' ? JSON.parse(fs.readFileSync(fichNiv, 'utf8')) : {};
+  const lieux = {};
+  if (fichLieux) Object.entries(JSON.parse(fs.readFileSync(fichLieux, 'utf8'))).forEach(([u, l]) => { lieux[pageMatch(u)] = lieuDe(l); });
   // équipes des poules de nos équipes (classements) : leur niveau est celui de notre équipe dans cette poule
   const cls = await (await fetch(URL_ + '/rest/v1/classements?select=equipe,lignes', { headers: H })).json();
-  const r = await fetch(URL_ + '/rest/v1/matches?select=id,equipe,competition,kickoff,status,club_side,home_name,away_name,opp_logo,opp_niveau', { headers: H });
+  const r = await fetch(URL_ + '/rest/v1/matches?select=id,equipe,competition,kickoff,status,club_side,home_name,away_name,opp_logo,opp_niveau,lieu,adresse', { headers: H });
   const tous = await r.json();
   const champDe = eq => ((tous.find(x => x.equipe === eq && / · J\d+$/.test(x.competition)) || {}).competition || '').replace(/ · J\d+$/, '') || null;
   // nom des adversaires déjà connus sur le site, par code club FFF (sans le numéro d'équipe réserve)
@@ -76,8 +93,8 @@ async function ecarts(file, fichNiv) {
     const nous = (duSite.find(x => x.club_side) || {});
     const nomNous = nous.club_side === 'H' ? nous.home_name : nous.away_name;
     for (const row of list) {
-      let quand, comp, cDom, nDom, cExt, nExt, uDom, uExt;
-      if (row.length >= 6) [quand, comp, cDom, nDom, cExt, nExt, uDom, uExt] = row;
+      let quand, comp, cDom, nDom, cExt, nExt, uDom, uExt, uMatch;
+      if (row.length >= 6) [quand, comp, cDom, nDom, cExt, nExt, uDom, uExt, uMatch] = row;
       else { [quand, , comp] = row; [nDom, nExt] = String(row[1]).split(' - '); }
       if (/EXEMPT/i.test(nDom + ' ' + nExt)) continue;
       const appComp = compSite(comp, champ);
@@ -115,6 +132,14 @@ async function ecarts(file, fichNiv) {
         if (n) out.push({ type: 'niveau', id: site.id, eq, comp: appComp, opp_niveau: n, equipes: site.home_name + ' – ' + site.away_name });
         else if (uAdv) out.push({ type: 'chercher', url: 'https://epreuves.fff.fr' + uAdv });
       }
+      // lieu des matchs à l'extérieur : relevé dans les 3 semaines, revérifié dans les 4 derniers jours (terrain changé)
+      const dans = new Date(site.kickoff).getTime() - maintenant;
+      if (!domNous && uMatch && dans < 21 * 86400000 && (!site.adresse || dans < 4 * 86400000)) {
+        const l = lieux[pageMatch(uMatch)];
+        if (!l) out.push({ type: 'chercher_lieu', url: 'https://epreuves.fff.fr' + pageMatch(uMatch) });
+        else if (l.lieu !== site.lieu || l.adresse !== site.adresse)
+          out.push({ type: 'lieu', id: site.id, eq, comp: appComp, lieu: l.lieu, adresse: l.adresse, equipes: site.home_name + ' – ' + site.away_name });
+      }
       if (!site.opp_logo && cAdv)
         out.push({ type: 'logo', id: site.id, eq, comp: appComp, opp_logo: LOGO(cAdv), equipes: site.home_name + ' – ' + site.away_name });
     }
@@ -122,23 +147,27 @@ async function ecarts(file, fichNiv) {
   return out;
 }
 
-async function comparer(file, corriger, fichNiv) {
-  const tout = await ecarts(file, fichNiv);
+async function comparer(file, corriger, fichNiv, fichLieux) {
+  const tout = await ecarts(file, fichNiv, fichLieux);
   const chercher = [...new Set(tout.filter(x => x.type === 'chercher').map(x => x.url))];
-  const out = tout.filter(x => x.type !== 'chercher');
+  const chercherLieu = [...new Set(tout.filter(x => x.type === 'chercher_lieu').map(x => x.url))];
+  const out = tout.filter(x => x.type !== 'chercher' && x.type !== 'chercher_lieu');
   out.forEach(x => console.log(
     x.type === 'horaire' ? `HORAIRE équipe ${x.eq} ${x.comp} ${x.equipes} : site ${fmt(x.site)} → FFF ${fmt(x.kickoff)}`
     : x.type === 'ajout' ? `NOUVEAU équipe ${x.eq} ${x.comp} ${x.home_name} – ${x.away_name} (${fmt(x.kickoff)})${x.opp_niveau ? ', adversaire en ' + x.opp_niveau : ''}`
     : x.type === 'niveau' ? `NIVEAU équipe ${x.eq} ${x.comp} ${x.equipes} : adversaire en ${x.opp_niveau}`
+    : x.type === 'lieu' ? `LIEU équipe ${x.eq} ${x.comp} ${x.equipes} : ${x.lieu}, ${x.adresse}`
     : `LOGO équipe ${x.eq} ${x.comp} ${x.equipes} : logo de l’adversaire ajouté`));
   chercher.forEach(u => console.log('A_CHERCHER ' + u));
-  if (!out.length && !chercher.length) console.log('OK tout est à jour');
+  chercherLieu.forEach(u => console.log('A_LIEU ' + u));
+  if (!out.length && !chercher.length && !chercherLieu.length) console.log('OK tout est à jour');
   if (corriger && out.length) {
     const secret = fs.readFileSync(path.join(os.homedir(), '.asm-live', 'classements.key'), 'utf8').trim();
     const p_data = out.map(x => x.type === 'ajout'
       ? { type: 'ajout', equipe: +x.eq, competition: x.comp, kickoff: x.kickoff, club_side: x.club_side, home_name: x.home_name, away_name: x.away_name, opp_logo: x.opp_logo, opp_niveau: x.opp_niveau }
       : x.type === 'horaire' ? { type: 'horaire', id: x.id, kickoff: x.kickoff }
-      : x.type === 'niveau' ? { type: 'niveau', id: x.id, opp_niveau: x.opp_niveau } : { type: 'logo', id: x.id, opp_logo: x.opp_logo });
+      : x.type === 'niveau' ? { type: 'niveau', id: x.id, opp_niveau: x.opp_niveau }
+      : x.type === 'lieu' ? { type: 'lieu', id: x.id, lieu: x.lieu, adresse: x.adresse } : { type: 'logo', id: x.id, opp_logo: x.opp_logo });
     const r = await fetch(URL_ + '/rest/v1/rpc/maj_matchs', { method: 'POST', headers: H, body: JSON.stringify({ p_secret: secret, p_data }) });
     const t = await r.text();
     if (!r.ok) throw new Error('refus : ' + t);
@@ -146,6 +175,6 @@ async function comparer(file, corriger, fichNiv) {
   }
 }
 
-const [cmd, arg, arg2] = process.argv.slice(2);
-(cmd === 'pages' ? pages() : cmd === 'comparer' ? comparer(arg, false, arg2) : cmd === 'corriger' ? comparer(arg, true, arg2) : Promise.reject(new Error('usage : pages | comparer <json> [niveaux] | corriger <json> [niveaux]')))
+const [cmd, arg, arg2, arg3] = process.argv.slice(2);
+(cmd === 'pages' ? pages() : cmd === 'comparer' ? comparer(arg, false, arg2, arg3) : cmd === 'corriger' ? comparer(arg, true, arg2, arg3) : Promise.reject(new Error('usage : pages | comparer <json> [niveaux|-] [lieux] | corriger <json> [niveaux|-] [lieux]')))
   .catch(e => { console.error('ERREUR ' + e.message); process.exit(1); });

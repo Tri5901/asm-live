@@ -424,7 +424,7 @@ function drawHome(matches, goalRows){
     return `<a class="mcard${m.status==='direct' ? ' live' : ''}${me ? ' mine' : ''}" href="#/match/${esc(m.id)}">
       <div class="mtop"><span class="tchip" title="${esc(teamLabel(m.equipe))}">${teamLetter(m.equipe)}</span><span class="mcomp">${CATS.length > 1 ? esc(catOf(m.equipe)) + (m.competition ? " · " : "") : ""}${esc(m.competition || (CATS.length > 1 ? "" : teamLabel(m.equipe)))}</span>${canManage(m) && !me ? `<span class="gerer" role="link" tabindex="0" data-href="#/gerer/${esc(m.id)}" aria-label="Gérer ce match">✎ Gérer</span>` : ''}${badge}</div>
       <div class="mrow">${side('H')}<div class="mmid">${mid}</div>${side('A')}</div>
-      ${me ? `<div class="mdeleg" role="link" tabindex="0" data-href="#/gerer/${esc(m.id)}"><span><b>Tu es responsable score de ce match</b><small>C’est toi qui saisis le score et les actions.</small></span><span class="mdgo">Gérer ›</span></div>`
+      ${me ? `<div class="mdeleg" role="link" tabindex="0" data-href="#/gerer/${esc(m.id)}"><span><b>Tu es responsable score de ce match</b><small>C’est toi qui saisis le score et les remplacements.</small></span><span class="mdgo">Gérer ›</span></div>`
         : m.delegue_nom ? `<div class="mdel">Responsable score : ${esc(m.delegue_nom)}</div>`
         : demAtt.some(d => d.match_id === m.id) ? `<div class="mdem">🙋 Demande de ${esc(demAtt.filter(d => d.match_id === m.id).map(d => d.nom).join(', '))} à valider</div>` : ''}</a>`;
   };
@@ -493,6 +493,21 @@ function niveauHTML(m){
   if (!n || n.d == null) return '';
   const ecart = n.d === 0 ? 'Même niveau' : `Adversaire ${Math.abs(n.d)} division${Math.abs(n.d) > 1 ? 's' : ''} ${n.d > 0 ? 'au-dessus' : 'en dessous'}`;
   return `<div class="nivline"><span class="${n.d > 0 ? 'up' : n.d < 0 ? 'down' : ''}">${esc(ecart)}</span></div>`;
+}
+// matchs à l'extérieur : lieu discret, qui ouvre l'adresse puis Waze ou Google Maps
+function lieuHTML(m){
+  if (clubSide(m) !== 'A' || !m.adresse || m.status === 'termine') return '';
+  const ville = m.adresse.split(', ').pop().replace(/^\d{5}\s*/, '');
+  return `<button class="lieu" id="btnLieu">📍 ${esc(m.lieu || 'Lieu du match')}${ville ? ' · ' + esc(ville) : ''}</button>`;
+}
+function openLieu(m){
+  const a = encodeURIComponent(m.adresse);
+  const waze = 'https://waze.com/ul?q=' + a + '&navigate=yes';
+  const gmaps = 'https://www.google.com/maps/dir/?api=1&destination=' + a;
+  openSheet(`<h3 id="shTitle">Lieu du match</h3><p><b>${esc(m.lieu || '')}</b><br>${esc(m.adresse)}</p>
+    <div class="foot lieufoot" style="margin-top:14px"><a class="fbtn primary" data-go href="${esc(waze)}" target="_blank" rel="noopener">Waze</a><a class="fbtn primary" data-go href="${esc(gmaps)}" target="_blank" rel="noopener">Google Maps</a><button class="fbtn" id="lieuNo">Fermer</button></div>`);
+  document.querySelectorAll('#shBody [data-go]').forEach(b => b.onclick = () => closeSheet());
+  $('lieuNo').onclick = closeSheet;
 }
 function boardHTML(m, evs, staff){
   const c = clubSide(m), niv = niveaux(m);
@@ -607,7 +622,7 @@ async function matchView(id){
     if (mine && mine.statut === 'attente')
       return `<div class="demcard"><b>⏳ Ta demande pour être responsable score est en attente</b><small>Un responsable de l’équipe ou un admin va l’accepter ou la refuser.</small>
         <button type="button" class="link" data-dann="${esc(mine.id)}">Retirer ma demande</button></div>`;
-    return `<div class="demcard"><b>Pas encore de responsable score pour ce match</b>${mine && mine.statut === 'refusee' ? '<small>Ta précédente demande a été refusée.</small>' : '<small>Tu peux proposer de saisir le score et les actions.</small>'}
+    return `<div class="demcard"><b>Pas encore de responsable score pour ce match</b>${mine && mine.statut === 'refusee' ? '<small>Ta précédente demande a été refusée.</small>' : '<small>Tu peux proposer de saisir le score et les remplacements.</small>'}
       <button type="button" class="fbtn primary" id="demAsk" style="width:100%;margin-top:8px">🙋 Je veux être responsable score</button></div>`;
   };
   const notifDem = id2 => { if (session) fetch('api/notify-demande', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token }, body: JSON.stringify({ id: id2 }) }).catch(() => {}); };
@@ -638,7 +653,7 @@ async function matchView(id){
     });
   };
   const draw = () => {
-    view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false) + niveauHTML(m)
+    view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false) + niveauHTML(m) + lieuHTML(m)
       + `<div class="mactions"><button class="pill" id="btnBell">🔔 Buts des ${esc(teamLabel(m.equipe))}</button><button class="pill" id="btnShareLive">↗ Partager</button></div>`
       + demHTML()
       + (canManage(m) ? `<a class="fbtn primary big" href="#/gerer/${esc(m.id)}">Gérer ce match</a>` : '')
@@ -648,6 +663,7 @@ async function matchView(id){
       + `<section class="log"><div class="loghead"><h2>Chronologie</h2></div><div id="events">${timelineHTML(m, evs, false)}</div></section>`
       + (m.status!=='prevu' ? lineupsHTML(m) : ''));
     $('btnShareLive').onclick = () => shareLink(m);
+    if ($('btnLieu')) $('btnLieu').onclick = () => openLieu(m);
     $('btnBell').onclick = () => openBell(m.equipe || 1);
     if ($('compoVis')) $('compoVis').onclick = async () => {
       const hide = !m.compo_cachee;
