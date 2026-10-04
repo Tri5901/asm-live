@@ -107,9 +107,12 @@ function clockText(m){
   const tot = Math.max(0, Math.floor(elapsedMs(m)/1000)) + (m.period===2 ? m.half*60 : 0);
   return `${String(Math.floor(tot/60)).padStart(2,'0')}:${String(tot%60).padStart(2,'0')}`;
 }
+// mi-temps : 2e période pas encore lancée (bouton « Mi-temps » : chrono arrêté, prêt à repartir de 45:00)
+const isMiTemps = m => m.status==='direct' && m.period===2 && !m.running && !elapsedMs(m);
 function periodText(m){
   if (m.status==='termine') return 'Match terminé';
   if (m.period===0) return 'Avant match';
+  if (isMiTemps(m)) return 'Mi-temps';
   return (m.period===1 ? '1re mi-temps' : '2e mi-temps') + (m.running ? '' : (m.period===1 && elapsedMs(m) >= m.half*60000 ? ' · mi-temps' : ' · en pause'));
 }
 function resultOf(m, evs){
@@ -405,7 +408,7 @@ async function homeView(){
   const reload = debounce(load, 400);
   const off = liveChannel('home', reload, [{event:'*', table:'matches'}, {event:'*', table:'events'}]);
   const tick = setInterval(() => document.querySelectorAll('[data-live]').forEach(el => {
-    const m = JSON.parse(el.dataset.live); el.textContent = m.status==='direct' && m.period ? 'Direct · ' + currentMinute(m).label : 'Direct';
+    const m = JSON.parse(el.dataset.live); el.textContent = isMiTemps(m) ? 'Mi-temps' : m.status==='direct' && m.period ? 'Direct · ' + currentMinute(m).label : 'Direct';
   }), 5000);
   const vis = () => { if (document.visibilityState==='visible') reload(); };
   document.addEventListener('visibilitychange', vis);
@@ -427,7 +430,7 @@ function drawHome(matches, goalRows){
     let badge = '', mid;
     if (m.status==='prevu') mid = `<span class="mtime">${esc(hhmm(m.kickoff))}</span>`;
     else mid = `<span class="msc">${goals(evs,'H')}<i>–</i>${goals(evs,'A')}</span>`;
-    if (m.status==='direct') badge = `<span class="badge live" data-live='${esc(JSON.stringify({status:m.status,period:m.period,half:m.half,running:m.running,started_at:m.started_at,acc:m.acc}))}'>Direct${m.period ? ' · ' + esc(currentMinute(m).label) : ''}</span>`;
+    if (m.status==='direct') badge = `<span class="badge live" data-live='${esc(JSON.stringify({status:m.status,period:m.period,half:m.half,running:m.running,started_at:m.started_at,acc:m.acc}))}'>${isMiTemps(m) ? 'Mi-temps' : 'Direct' + (m.period ? ' · ' + esc(currentMinute(m).label) : '')}</span>`;
     else if (m.status==='termine'){ const r = resultOf(m, evs); badge = `<span class="badge ${r==='V'?'w':r==='D'?'l':''}">${r==='V'?'Victoire':r==='D'?'Défaite':'Nul'}</span>`; }
     const side = t => `<div class="mside${c===t?' club':''}">${logoOf(m,t) ? logoImg(m,t,'mlg') : '<span class="mlg ph"></span>'}<span>${esc(teamName(m,t))}</span></div>`;
     return `<a class="mcard${m.status==='direct' ? ' live' : ''}${me ? ' mine' : ''}" href="#/match/${esc(m.id)}">
@@ -844,13 +847,13 @@ async function consoleView(id, openCompo){
     $('period').textContent = periodText(S) + (S.status==='termine' ? '' : ' · toucher le chrono pour régler');
     const bc = $('btnClock'), bp = $('btnPeriod');
     bc.hidden = S.status==='termine';
-    bc.textContent = S.running ? 'Pause' : S.period===0 ? 'Lancer' : (S.period===2 && !elapsedMs(S)) ? 'Lancer la 2e' : 'Reprendre';
-    bp.hidden = S.period===0;
-    bp.textContent = S.status==='termine' ? 'Rouvrir' : S.period===1 ? '2e mi-temps' : 'Fin du match';
-    // pause après la 45e : « 2e mi-temps » en gros, « Reprendre » en petit (si le jeu reprend)
-    const miTemps = S.status!=='termine' && S.period===1 && !S.running && elapsedMs(S) >= S.half*60000;
-    bp.classList.toggle('ghost', !miTemps);
-    bc.classList.toggle('ghost', miTemps); bc.classList.toggle('small', miTemps);
+    const mt = isMiTemps(S);
+    bc.textContent = S.running ? 'Pause' : S.period===0 ? 'Lancer' : mt ? 'Lancer la 2e' : 'Reprendre';
+    bp.hidden = S.period===0 || mt;
+    bp.textContent = S.status==='termine' ? 'Rouvrir' : S.period===1 ? 'Mi-temps' : 'Fin du match';
+    // « Pause » en petit, à côté du bouton principal « Mi-temps » / « Fin du match »
+    bc.classList.toggle('ghost', !!S.running); bc.classList.toggle('small', !!S.running);
+    bp.classList.toggle('ghost', !S.running && S.status!=='termine');
   }
   function render(){
     $('boardBox').innerHTML = boardHTML(S, S.events, true);
@@ -916,7 +919,7 @@ async function consoleView(id, openCompo){
     };
     $('btnPeriod').onclick = () => {
       if (S.status==='termine') return askConfirm('Rouvrir le match', 'Le match repasse en direct pour corriger ou reprendre.', 'Rouvrir', () => { patch({status:'direct'}); render(); });
-      if (S.period===1) return askConfirm('2e mi-temps', 'Le chrono repartira de ' + S.half + ':00. Touche Reprendre au coup d\'envoi.', 'Passer en 2e mi-temps', () => {
+      if (S.period===1) return askConfirm('Mi-temps', 'Le chrono s\'arrête. À la reprise, touche « Lancer la 2e » : il repartira de ' + S.half + ':00.', 'C\'est la mi-temps', () => {
         patch({period:2, acc:0, running:false}); render();
       });
       askConfirm('Fin du match', 'Le chrono s\'arrête et le match passe dans les résultats. Tu pourras encore corriger les actions.', 'Terminer le match', () => {
