@@ -2041,7 +2041,7 @@ function cguHTML(){
   return `<h2>Conditions générales d’utilisation</h2>
   <p class="note">Version du 4 octobre 2026</p>
   <h3>1. L’appli</h3>
-  <p>« AS Mésanger – Matchs en direct » (asm-live.vercel.app) est une appli indépendante pour suivre en direct les matchs des équipes de l’AS Mésanger : scores, buteurs, cartons, remplacements, compositions, classements et statistiques des joueurs. <b>Ce n’est pas l’appli officielle de l’AS Mésanger</b> : elle est réalisée et gérée bénévolement par des personnes proches du club, et elle n’engage pas le club. Elle est gratuite, sans garantie de disponibilité ni d’exactitude : les informations officielles restent celles de la FFF et du club.</p>
+  <p>« AS Mésanger Live » (asm-live.vercel.app) est une appli indépendante pour suivre en direct les matchs des équipes de l’AS Mésanger : scores, buteurs, cartons, remplacements, compositions, classements et statistiques des joueurs. <b>Ce n’est pas l’appli officielle de l’AS Mésanger</b> : elle est réalisée et gérée bénévolement par des personnes proches du club, et elle n’engage pas le club. Elle est gratuite, sans garantie de disponibilité ni d’exactitude : les informations officielles restent celles de la FFF et du club.</p>
   <h3>2. Utilisation sans compte</h3>
   <p>Tout le monde peut suivre les matchs, les classements et les stats sans compte. Les notifications (buts, cartons, début de match) sont facultatives : tu les actives et les désactives toi-même depuis la cloche 🔔.</p>
   <h3>3. Compte</h3>
