@@ -79,7 +79,7 @@ async function ecarts(file, fichNiv, fichLieux) {
   if (fichLieux) Object.entries(JSON.parse(fs.readFileSync(fichLieux, 'utf8'))).forEach(([u, l]) => { lieux[pageMatch(u)] = lieuDe(l); });
   // équipes des poules de nos équipes (classements) : leur niveau est celui de notre équipe dans cette poule
   const cls = await (await fetch(URL_ + '/rest/v1/classements?select=equipe,lignes', { headers: H })).json();
-  const r = await fetch(URL_ + '/rest/v1/matches?select=id,equipe,competition,kickoff,status,club_side,home_name,away_name,opp_logo,opp_niveau,lieu,adresse', { headers: H });
+  const r = await fetch(URL_ + '/rest/v1/matches?select=id,equipe,competition,kickoff,status,club_side,home_name,away_name,opp_logo,opp_niveau,lieu,adresse,fff_match', { headers: H });
   const tous = await r.json();
   const champDe = eq => ((tous.find(x => x.equipe === eq && / · J\d+$/.test(x.competition)) || {}).competition || '').replace(/ · J\d+$/, '') || null;
   // nom des adversaires déjà connus sur le site, par code club FFF (sans le numéro d'équipe réserve)
@@ -124,6 +124,8 @@ async function ecarts(file, fichNiv, fichLieux) {
           home_name: domNous ? nomNous : adv, away_name: domNous ? adv : nomNous, opp_logo: LOGO(cAdv), opp_niveau: n });
         continue;
       }
+      // page du match sur la FFF (pour relever ensuite la compo adverse sur la feuille de match), même pour un match joué
+      if (uMatch && site.fff_match !== pageMatch(uMatch)) out.push({ type: 'fff', id: site.id, fff_match: pageMatch(uMatch) });
       if (site.status !== 'prevu') continue;                               // match commencé ou terminé : on n'y touche pas
       if (new Date(site.kickoff).getTime() !== fff.getTime())
         out.push({ type: 'horaire', id: site.id, eq, comp: appComp, site: site.kickoff, kickoff: fff.toISOString(), equipes: site.home_name + ' – ' + site.away_name });
@@ -152,7 +154,8 @@ async function comparer(file, corriger, fichNiv, fichLieux) {
   const chercher = [...new Set(tout.filter(x => x.type === 'chercher').map(x => x.url))];
   const chercherLieu = [...new Set(tout.filter(x => x.type === 'chercher_lieu').map(x => x.url))];
   const out = tout.filter(x => x.type !== 'chercher' && x.type !== 'chercher_lieu');
-  out.forEach(x => console.log(
+  const liens = out.filter(x => x.type === 'fff').length;
+  out.filter(x => x.type !== 'fff').forEach(x => console.log(
     x.type === 'horaire' ? `HORAIRE équipe ${x.eq} ${x.comp} ${x.equipes} : site ${fmt(x.site)} → FFF ${fmt(x.kickoff)}`
     : x.type === 'ajout' ? `NOUVEAU équipe ${x.eq} ${x.comp} ${x.home_name} – ${x.away_name} (${fmt(x.kickoff)})${x.opp_niveau ? ', adversaire en ' + x.opp_niveau : ''}`
     : x.type === 'niveau' ? `NIVEAU équipe ${x.eq} ${x.comp} ${x.equipes} : adversaire en ${x.opp_niveau}`
@@ -160,14 +163,16 @@ async function comparer(file, corriger, fichNiv, fichLieux) {
     : `LOGO équipe ${x.eq} ${x.comp} ${x.equipes} : logo de l’adversaire ajouté`));
   chercher.forEach(u => console.log('A_CHERCHER ' + u));
   chercherLieu.forEach(u => console.log('A_LIEU ' + u));
-  if (!out.length && !chercher.length && !chercherLieu.length) console.log('OK tout est à jour');
+  if (liens) console.log('LIENS ' + liens + ' page(s) de match FFF enregistrée(s) (pour les compos adverses)');
+  if (out.length === liens && !chercher.length && !chercherLieu.length) console.log('OK tout est à jour');
   if (corriger && out.length) {
     const secret = fs.readFileSync(path.join(os.homedir(), '.asm-live', 'classements.key'), 'utf8').trim();
     const p_data = out.map(x => x.type === 'ajout'
       ? { type: 'ajout', equipe: +x.eq, competition: x.comp, kickoff: x.kickoff, club_side: x.club_side, home_name: x.home_name, away_name: x.away_name, opp_logo: x.opp_logo, opp_niveau: x.opp_niveau }
       : x.type === 'horaire' ? { type: 'horaire', id: x.id, kickoff: x.kickoff }
       : x.type === 'niveau' ? { type: 'niveau', id: x.id, opp_niveau: x.opp_niveau }
-      : x.type === 'lieu' ? { type: 'lieu', id: x.id, lieu: x.lieu, adresse: x.adresse } : { type: 'logo', id: x.id, opp_logo: x.opp_logo });
+      : x.type === 'lieu' ? { type: 'lieu', id: x.id, lieu: x.lieu, adresse: x.adresse }
+      : x.type === 'fff' ? { type: 'fff', id: x.id, fff_match: x.fff_match } : { type: 'logo', id: x.id, opp_logo: x.opp_logo });
     const r = await fetch(URL_ + '/rest/v1/rpc/maj_matchs', { method: 'POST', headers: H, body: JSON.stringify({ p_secret: secret, p_data }) });
     const t = await r.text();
     if (!r.ok) throw new Error('refus : ' + t);
