@@ -379,7 +379,7 @@ document.addEventListener('visibilitychange', () => {
     if (rtAsleep){
       rtAsleep = false;
       startPresence();
-      if (!location.hash.startsWith('#/gerer')) route(); // la console du délégué n'utilise pas le temps réel
+      if (!location.hash.startsWith('#/gerer')) route(); // la console se resynchronise seule (relève + retour au premier plan)
     }
   }
 });
@@ -450,11 +450,16 @@ function drawHome(matches, goalRows){
   const asc = (a,b) => a.kickoff.localeCompare(b.kickoff) || byTeam(a,b), desc = (a,b) => b.kickoff.localeCompare(a.kickoff) || byTeam(a,b);
   const live = matches.filter(m=>m.status==='direct').sort(asc);
   const next = matches.filter(m=>m.status==='prevu').sort(asc);
-  // matchs terminés aujourd'hui : restent en haut (sous le direct) jusqu'à minuit
-  const jour = d => new Date(d).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' }), auj = jour(Date.now());
+  // derniers matchs terminés : restent en haut (sous le direct). Ceux du week-end (vendredi → lundi) jusqu'au mardi 6 h,
+  // les autres jusqu'au lendemain 6 h.
+  const resteEnHaut = m => {
+    const d = new Date(m.kickoff), dow = d.getDay(), fin = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 6);
+    fin.setDate(fin.getDate() + ([5, 6, 0, 1].includes(dow) ? ((2 - dow + 7) % 7 || 7) : 1));
+    return Date.now() < fin.getTime();
+  };
   const doneAll = matches.filter(m=>m.status==='termine');
-  const doneToday = doneAll.filter(m => jour(m.kickoff) === auj).sort(asc);
-  const done = doneAll.filter(m => jour(m.kickoff) !== auj).sort(desc);
+  const doneToday = doneAll.filter(resteEnHaut).sort(desc);
+  const done = doneAll.filter(m => !resteEnHaut(m)).sort(desc);
   // demandes à valider : une ligne par match (équipe, adversaire, date, qui demande)
   const demParMatch = {};
   demAtt.forEach(d => { (demParMatch[d.match_id] ||= []).push(d.nom); });
@@ -466,7 +471,7 @@ function drawHome(matches, goalRows){
   let html = (demHtml ? `<div class="dembar"><div class="demtitle">🙋 Demande${demAtt.length > 1 ? 's' : ''} pour être responsable score à valider</div>${demHtml}</div>` : '')
     + teamFilterHTML(homeF, true);
   if (live.length) html += `<div class="sec">En direct</div>` + live.map(card).join('');
-  if (doneToday.length) html += `<div class="sec">Terminés aujourd’hui</div>` + doneToday.map(card).join('');
+  if (doneToday.length) html += `<div class="sec">Derniers résultats</div>` + doneToday.map(card).join('');
   const NEXT_MAX = 6;
   if (next.length) html += `<div class="sec">À venir</div>` + byDay(showAllNext ? next : next.filter((m, i) => i < NEXT_MAX || isMine(m)))
     + (next.length > NEXT_MAX && !showAllNext ? `<button class="fbtn" id="moreNext" style="width:100%">Voir les ${next.length} matchs à venir</button>` : '');
@@ -815,6 +820,7 @@ async function consoleView(id, openCompo){
 
   view.innerHTML = `
     <div id="boardBox"></div>
+    <div class="cobar" id="coBar" hidden></div>
     <div class="syncrow"><span class="sync" id="sync">Envoyé</span><button class="link" id="btnShareLive" style="padding:0">Partager le direct</button></div>
     <section class="actions">
       ${['H','A'].map(t => `<div class="col ${t===clubSide(S)?'home':'away'}">
@@ -1331,6 +1337,45 @@ async function consoleView(id, openCompo){
 
   render(); renderSync();
   if (openCompo) $('btnLineup').click();
+
+  // Synchro en direct : on voit ce que les autres saisissent sur ce match (autre téléphone, responsable d'équipe…).
+  // Ce qui est encore dans la file d'envoi de ce téléphone garde la main jusqu'à son envoi.
+  const etat = () => JSON.stringify([S.events.map(e => [e.id, e.min, e.n, e.out_n, e.in_n, e.p, e.t, e.k]).sort(), S.status, S.period, S.running, S.acc, S.started_at, S.rosters, S.delegue_id]);
+  const syncRemote = debounce(async () => {
+    if (!location.hash.startsWith('#/gerer/' + id)) return;
+    let r; try{ r = await fetchMatch(id); }catch(e){ return; }
+    if (!r.m || !location.hash.startsWith('#/gerer/' + id)) return;
+    const ops = outbox.filter(o => o.match === id);
+    const enAttente = new Set(ops.filter(o => o.kind === 'ev').map(o => o.row.id));
+    const supprimes = new Set(ops.filter(o => o.kind === 'evdel').map(o => o.id));
+    const serveur = new Set(r.evs.map(e => e.id));
+    const avant = etat();
+    if (!ops.some(o => o.kind === 'match')) Object.assign(S, r.m);
+    S.events = [...r.evs.filter(e => !supprimes.has(e.id)), ...S.events.filter(e => enAttente.has(e.id) && !serveur.has(e.id))];
+    S.rosters = S.rosters || {H:[],A:[]};
+    if (etat() !== avant){ saveLocal(); render(); }
+  }, 400);
+  const offRt = liveChannel('gerer', syncRemote, [
+    {event:'*', table:'matches', filter:`id=eq.${id}`},
+    {event:'*', table:'events', filter:`match_id=eq.${id}`},
+    {event:'DELETE', table:'events'}
+  ]);
+  const pollRt = fallbackPoll(offRt, syncRemote);
+  const visRt = () => { if (document.visibilityState === 'visible') syncRemote(); };
+  document.addEventListener('visibilitychange', visRt);
+  // bandeau : quelqu'un d'autre a aussi la page « Gérer » de ce match ouverte
+  const renderCo = () => {
+    const bar = $('coBar'); if (!bar) return;
+    const autres = Object.entries(presState).filter(([k]) => k !== presKey).map(([, a]) => a && a[0]).filter(p => p && p.gerer === id);
+    const moi = autres.some(p => p.uid && p.uid === myId());
+    const noms = [...new Set(autres.filter(p => !(p.uid && p.uid === myId())).map(p => p.nom || 'Quelqu’un'))];
+    bar.hidden = !noms.length && !moi;
+    const titre = noms.length ? `${noms.join(', ')} saisi${noms.length > 1 ? 'ssent' : 't'} aussi ce match` : 'Ce match est aussi ouvert sur ton autre appareil';
+    if (!bar.hidden) bar.innerHTML = `<b>⚠️ ${esc(titre)}</b><small>Tout s’affiche ici en direct. Une seule personne doit noter les actions, sinon elles seront en double.</small>`;
+  };
+  presHooks.add(renderCo); renderCo();
+  const prevCleanup = cleanup;
+  cleanup = () => { offRt(); clearInterval(pollRt); document.removeEventListener('visibilitychange', visRt); presHooks.delete(renderCo); if (prevCleanup) prevCleanup(); };
 }
 
 // ---------- Lecture de la photo de la feuille de match (dans le téléphone, gratuit) ----------
@@ -1502,18 +1547,60 @@ async function readSheetPhoto(file, stat, onFound){
 const CLUB_FFF = '516995';
 const clsF = { cat: '', team: 0 };
 async function classementsView(){
-  let rows = lsGet('asm-cls', null), maj = null;
+  let rows = lsGet('asm-cls', null), maj = null, nous = lsGet('asm-cls-nous', []);
   const tok = route.cur, cachedFirst = !!rows;
   const fetchCls = async () => {
     const { data, error } = await sb.from('classements').select('*').order('equipe');
     if (error) throw error;
     rows = data; lsSet('asm-cls', data);
+    // nos matchs de championnat terminés dans l'appli (15 derniers jours), pour les compter avant la FFF
+    try{
+      const depuis = new Date(Date.now() - 15 * 864e5).toISOString();
+      const { data: ms } = await sb.from('matches').select('id,kickoff,competition,equipe,club_side,home_name,away_name,opp_logo')
+        .eq('status', 'termine').gte('kickoff', depuis).like('competition', '% · J%');
+      const ids = (ms || []).map(m => m.id);
+      const { data: g } = ids.length ? await sb.from('events').select('match_id,t').eq('k', 'goal').in('match_id', ids) : { data: [] };
+      nous = (ms || []).map(m => ({ ...m, bH: (g || []).filter(x => x.match_id === m.id && x.t === 'H').length, bA: (g || []).filter(x => x.match_id === m.id && x.t === 'A').length }));
+      lsSet('asm-cls-nous', nous);
+    }catch(e){}
     if (isAdmin()){ const r2 = await sb.from('classements_maj').select('*').maybeSingle(); maj = r2.data; }
+  };
+  // Classement provisoire : nos matchs terminés dans l'appli mais pas encore saisis sur la FFF sont ajoutés
+  // (pour nous et pour l'adversaire), puis le classement est retrié.
+  const jourISO = d => new Date(d).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+  const numEq = s => (String(s || '').trim().match(/\s(\d+)$/) || [])[1] || null;
+  const provisoire = r => {
+    const ajouts = [];
+    const lignes = r.lignes.map(l => [...l]);
+    const resultats = Array.isArray(r.resultats) ? [...r.resultats] : [];
+    nous.filter(m => m.equipe === r.equipe).forEach(m => {
+      const j = jourISO(m.kickoff);
+      if (resultats.some(x => (x[2] === CLUB_FFF || x[6] === CLUB_FFF) && String(x[1]).slice(0, 10) === j)) return;   // déjà sur la FFF
+      const code = ((m.opp_logo || '').match(/BC(\d+)\./) || [])[1];
+      const advNom = m.club_side === 'H' ? m.away_name : m.home_name;
+      const memeClub = lignes.filter(l => l[10] === code);
+      const adv = memeClub.find(l => numEq(l[1]) === numEq(advNom)) || (memeClub.length === 1 ? memeClub[0] : null);
+      const moi = lignes.find(l => l[10] === CLUB_FFF);
+      if (!adv || !moi) return;
+      const pour = m.club_side === 'H' ? m.bH : m.bA, contre = m.club_side === 'H' ? m.bA : m.bH;
+      [[moi, pour, contre], [adv, contre, pour]].forEach(([l, p, c]) => {
+        l[3]++; l[7] += p; l[8] += c; l[9] = l[7] - l[8];
+        if (p > c){ l[2] += 3; l[4]++; } else if (p === c){ l[2] += 1; l[5]++; } else l[6]++;
+      });
+      const domMoi = m.club_side === 'H';
+      const heure = new Date(m.kickoff).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' });
+      resultats.push(['app-' + m.id, j + 'T' + heure, domMoi ? CLUB_FFF : adv[10], domMoi ? moi[1] : adv[1], m.bH, m.bA, domMoi ? adv[10] : CLUB_FFF, domMoi ? adv[1] : moi[1]]);
+      ajouts.push(m);
+    });
+    if (!ajouts.length) return r;
+    lignes.sort((a, b) => b[2] - a[2] || b[9] - a[9] || b[7] - a[7] || String(a[1]).localeCompare(String(b[1])));
+    lignes.forEach((l, i) => { l[0] = i + 1; });
+    return { ...r, lignes, resultats, provisoire: ajouts };
   };
   // avec une copie sur le téléphone : affichage immédiat, mise à jour quand le réseau répond
   if (!rows){ view.innerHTML = '<div class="loading">Chargement…</div>'; await fetchCls(); }
   const byTeam = {};
-  const index = () => { Object.keys(byTeam).forEach(k => delete byTeam[k]); (rows || []).forEach(r => { byTeam[r.equipe] = r; }); };
+  const index = () => { Object.keys(byTeam).forEach(k => delete byTeam[k]); (rows || []).forEach(r => { byTeam[r.equipe] = provisoire(r); }); };
   index();
   let openClub = null;
   const rankOf = n => { const r = byTeam[n]; const l = r && r.lignes.find(x => x[10] === CLUB_FFF); return l ? l[0] : null; };
@@ -1534,6 +1621,7 @@ async function classementsView(){
           <td class="pts">${l[2]}</td><td>${l[3]}</td><td>${l[4]}</td><td>${l[5]}</td><td>${l[6]}</td><td>${l[9] > 0 ? '+' + l[9] : l[9]}</td></tr>${hasRes && l[10]===openClub ? `<tr class="clsdet"><td colspan="8">${histHTML(r, l)}</td></tr>` : ''}`).join('')}</tbody>
       </table></div>
       ${hasRes ? '<p class="note">Touche une équipe pour voir ses résultats.</p>' : ''}
+      ${r.provisoire ? `<p class="note provis">Provisoire : comprend ${r.provisoire.length > 1 ? 'nos matchs' : 'notre match'} du ${esc(r.provisoire.map(m => new Date(m.kickoff).toLocaleDateString('fr-FR', {weekday:'short', day:'numeric', month:'short'}) + ' (' + m.bH + '–' + m.bA + ')').join(', '))}, pas encore saisi${r.provisoire.length > 1 ? 's' : ''} sur le site de la FFF.</p>` : ''}
       <p class="note">Mis à jour le ${esc(d)}, d’après le site de la FFF (classement sous réserve de procédures en cours). ${r.source ? `<a href="${esc(r.source)}" target="_blank" rel="noopener">Voir le classement officiel ↗</a>` : ''}</p>` + majHTML();
     bind();
   };
@@ -2166,14 +2254,21 @@ renderBell();
 // Chaque visiteur signale seulement la page ouverte et s'il est connecté (pas de nom, pas d'adresse).
 const presKey = uuid();
 let presCh = null, presReady = false, presState = {};
+const presHooks = new Set();   // pages qui suivent la présence (bandeau « saisit aussi ce match »)
 function presPage(){
   const [p, a] = (location.hash.replace(/^#\/?/, '') || '').split('/');
   return p === 'match' || p === 'gerer' ? 'match:' + a : (p || 'accueil');
 }
-function presTrack(){ if (presCh && presReady) presCh.track({ page: presPage(), compte: !!session, uid: myId() }).catch(() => {}); }
+function presTrack(){
+  if (!presCh || !presReady) return;
+  // sur la page « Gérer » : le match et le prénom, pour prévenir les autres personnes qui saisissent le même match
+  const [p, a] = (location.hash.replace(/^#\/?/, '') || '').split('/');
+  const gerer = p === 'gerer' ? a : null;
+  presCh.track({ page: presPage(), compte: !!session, uid: myId(), gerer, nom: gerer && profile ? profile.nom || null : null }).catch(() => {});
+}
 function startPresence(){
   presCh = sb.channel('en-ligne', { config: { presence: { key: presKey } } });
-  presCh.on('presence', { event: 'sync' }, () => { presState = presCh.presenceState(); renderOnline(); });
+  presCh.on('presence', { event: 'sync' }, () => { presState = presCh.presenceState(); renderOnline(); presHooks.forEach(f => { try{ f(); }catch(e){} }); });
   presCh.subscribe(st => { if (st === 'SUBSCRIBED'){ presReady = true; presTrack(); } });
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') presTrack(); });
