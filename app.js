@@ -2840,8 +2840,10 @@ const adminTabs = cur => `<div class="seg admtabs" role="tablist"><a href="#/adm
 // ---------- Page admin « Statistiques » : visites, comptes connectés, inscriptions, pages vues ----------
 let statsJours = 30;
 const PAGES_NOM = { accueil: 'Accueil', match: 'Pages de match', gerer: 'Gérer (saisie)', stats: 'Stats joueurs', classements: 'Classements', compte: 'Mon compte', connexion: 'Connexion', admin: 'Admin', nouveau: 'Nouveau match', cgu: 'CGU' };
-function barresSVG(jours, series, { hauteur = 140 } = {}){
-  // barres empilées, une par jour ; series = [{cle, coul, nom}] ; étiquettes de dates régulières en dessous
+const graphes = [];   // données de chaque graphique affiché (pour le détail d'un jour au toucher)
+function barresSVG(jours, series, { hauteur = 140, total = '' } = {}){
+  // barres empilées, une par jour ; series = [{cle, coul, nom}] ; étiquettes de dates régulières en dessous.
+  // Toucher (ou survoler) un jour affiche son détail au-dessus du graphique ; par défaut le dernier jour.
   const n = jours.length, W = 600, H = hauteur * 1.4, bas = 34, haut = 24, larg = W / n;
   const tot = j => series.reduce((a, s) => a + (+j[s.cle] || 0), 0), max = Math.max(1, ...jours.map(tot));
   const pas = Math.max(1, Math.ceil(n / 7)), y = v => haut + (H - haut - bas) * (1 - v / max);
@@ -2849,11 +2851,29 @@ function barresSVG(jours, series, { hauteur = 140 } = {}){
   let barres = '';
   jours.forEach((j, i) => {
     let cumul = 0; const x = i * larg + larg * .15, w = larg * .7;
-    series.forEach(s => { const v = +j[s.cle] || 0; if (!v) return; const y1 = y(cumul + v), y0 = y(cumul); barres += `<rect x="${x.toFixed(1)}" y="${y1.toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(1, y0 - y1).toFixed(1)}" rx="2" fill="${s.coul}"><title>${lbl(j.jour)} · ${s.nom} : ${v}</title></rect>`; cumul += v; });
+    barres += `<g class="bj" data-i="${i}">`;
+    series.forEach(s => { const v = +j[s.cle] || 0; if (!v) return; const y1 = y(cumul + v), y0 = y(cumul); barres += `<rect x="${x.toFixed(1)}" y="${y1.toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(1, y0 - y1).toFixed(1)}" rx="2" fill="${s.coul}"/>`; cumul += v; });
+    barres += `<rect class="hit" x="${(i * larg).toFixed(1)}" y="0" width="${larg.toFixed(1)}" height="${H - bas}" fill="transparent"/></g>`;
     if (n <= 14 && tot(j)) barres += `<text x="${(x + w / 2).toFixed(1)}" y="${(y(tot(j)) - 4).toFixed(1)}" class="bv">${tot(j)}</text>`;
     if (i % pas === 0 || i === n - 1) barres += `<text x="${(x + w / 2).toFixed(1)}" y="${H - 8}" class="bl">${lbl(j.jour)}</text>`;
   });
-  return `<svg class="barres" viewBox="0 0 ${W} ${H}" role="img"><line x1="0" x2="${W}" y1="${H - bas}" y2="${H - bas}" class="ax"/>${barres}</svg>`;
+  const k = graphes.push({ jours, series, total }) - 1;
+  return `<p class="bdet" data-g="${k}"></p><svg class="barres" data-g="${k}" viewBox="0 0 ${W} ${H}" role="img"><line x1="0" x2="${W}" y1="${H - bas}" y2="${H - bas}" class="ax"/>${barres}</svg>`;
+}
+function barresActiver(root){
+  root.querySelectorAll('svg.barres[data-g]').forEach(svg => {
+    const g = graphes[+svg.dataset.g], det = root.querySelector(`.bdet[data-g="${svg.dataset.g}"]`); if (!g || !det) return;
+    const montrer = i => {
+      const j = g.jours[i]; if (!j) return;
+      const jour = new Date(j.jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+      const vals = g.series.map(s => [s.nom, +j[s.cle] || 0]), t = vals.reduce((a, v) => a + v[1], 0);
+      const pl = (nm, v) => Array.isArray(nm) ? nm[v > 1 ? 1 : 0] : nm;
+      det.innerHTML = `<b>${esc(jour.charAt(0).toUpperCase() + jour.slice(1))}</b> : ${g.total ? `${t} ${esc(pl(g.total, t))}` : ''}${vals.length > 1 ? ` (${vals.map(([nm, v]) => v + ' ' + esc(pl(nm, v))).join(' · ')})` : g.total ? '' : vals.map(([nm, v]) => v + ' ' + esc(pl(nm, v))).join('')}`;
+      svg.querySelectorAll('.bj').forEach(e => e.classList.toggle('sel', +e.dataset.i === i));
+    };
+    svg.querySelectorAll('.bj').forEach(e => { e.onclick = () => montrer(+e.dataset.i); e.onmouseenter = () => montrer(+e.dataset.i); });
+    montrer(g.jours.length - 1);
+  });
 }
 async function siteStatsView(){
   if (!isAdmin()){ location.hash = '#/compte'; return; }
@@ -2862,6 +2882,7 @@ async function siteStatsView(){
     const { data: S, error } = await sb.rpc('stats_site', { p_jours: statsJours });
     if (!location.hash.startsWith('#/admin/stats')) return;
     if (error || !S){ view.innerHTML = `<div class="acc">${adminTabs('stats')}<div class="empty">Impossible de charger les statistiques.</div></div>`; return; }
+    graphes.length = 0;
     const J = S.jours || [], auj = J[J.length - 1] || {};
     const somme = k => J.reduce((a, j) => a + (+j[k] || 0), 0);
     const pages = Object.entries(S.pages_vues || {}).sort((a, b) => b[1] - a[1]), maxP = Math.max(1, ...pages.map(p => p[1]));
@@ -2877,9 +2898,9 @@ async function siteStatsView(){
         <div class="kpi"><b>${somme('ouvertures')}</b><span>Ouvertures de l’appli</span></div>
       </div>
       <section class="schart"><h3>Visiteurs par jour</h3><p class="leg"><i style="background:var(--club)"></i>Connectés à un compte <i style="background:#8A8880"></i>Sans compte</p>
-        ${barresSVG(J2, [{ cle: 'comptes', coul: 'var(--club)', nom: 'connectés' }, { cle: 'anonymes', coul: '#8A8880', nom: 'sans compte' }])}</section>
-      <section class="schart"><h3>Ouvertures de l’appli par jour</h3>${barresSVG(J, [{ cle: 'ouvertures', coul: 'var(--ok)', nom: 'ouvertures' }])}</section>
-      <section class="schart"><h3>Nouveaux comptes par jour</h3>${barresSVG(J, [{ cle: 'inscriptions', coul: '#5B8DEF', nom: 'inscriptions' }], { hauteur: 110 })}</section>
+        ${barresSVG(J2, [{ cle: 'comptes', coul: 'var(--club)', nom: ['connecté', 'connectés'] }, { cle: 'anonymes', coul: '#8A8880', nom: 'sans compte' }], { total: ['visiteur', 'visiteurs'] })}</section>
+      <section class="schart"><h3>Ouvertures de l’appli par jour</h3>${barresSVG(J, [{ cle: 'ouvertures', coul: 'var(--ok)', nom: ['ouverture de l’appli', 'ouvertures de l’appli'] }])}</section>
+      <section class="schart"><h3>Nouveaux comptes par jour</h3>${barresSVG(J, [{ cle: 'inscriptions', coul: '#5B8DEF', nom: ['nouveau compte', 'nouveaux comptes'] }], { hauteur: 110 })}</section>
       ${pages.length ? `<section class="schart"><h3>Pages les plus vues (${statsJours} j)</h3><div class="pvues">${pages.map(([k, v]) => `<div><span>${esc(PAGES_NOM[k] || k)}</span><i style="width:${Math.round(100 * v / maxP)}%"></i><b>${v}</b></div>`).join('')}</div></section>` : ''}
       <div class="pfacts">
         <div><span>Comptes créés</span><b>${S.comptes_total}</b></div>
@@ -2888,6 +2909,7 @@ async function siteStatsView(){
       </div>
       <p class="note">Mesure anonyme : chaque téléphone ou ordinateur compte pour un visiteur par jour (un identifiant tiré au hasard, sans adresse IP). ${debut ? 'Mesure commencée le ' + esc(debut) + ' : les jours d’avant sont vides.' : ''} Les inscriptions ont tout leur historique.</p>
     </div>`;
+    barresActiver(view);
     view.querySelectorAll('[data-j]').forEach(b => b.onclick = () => { statsJours = +b.dataset.j; draw(); });
   };
   await draw();
