@@ -530,6 +530,7 @@ function lineupsHTML(m){
   const side = t => {
     const list = rosterSorted(m,t);
     if (!list.length) return `<div><h3>${esc(teamName(m,t))}</h3><p class="nolu">Pas encore saisie</p></div>`;
+    if (!list.some(p => p.name)) return `<div><h3>${esc(teamName(m,t))}</h3><p class="nolu">Numéros seulement, sans noms</p></div>`;
     const tit = list.filter(p=>!p.sub), rem = list.filter(p=>p.sub);
     return `<div><h3>${esc(teamName(m,t))}</h3>`
       + (tit.length ? `<div class="lusub">Titulaires</div><ol>${tit.map(li).join('')}</ol>` : '')
@@ -853,7 +854,9 @@ async function consoleView(id, openCompo){
     $('undoGo').onclick = () => {
       stop();
       if (S.events.length) return toast('Des actions sont déjà notées : supprime-les d’abord');
-      patch({ status: 'prevu', period: 0, running: false, acc: 0, started_at: 0 }); render();
+      const adv = oppSide(S), r = rosterOf(S, adv);
+      const auto = r.length === 14 && r.every((p, k) => p.n === String(k + 1) && !p.name);   // numéros mis au coup d'envoi
+      patch({ status: 'prevu', period: 0, running: false, acc: 0, started_at: 0, ...(auto ? { rosters: { ...S.rosters, [adv]: [] } } : {}) }); render();
       toast('Coup d’envoi annulé · aucune notification envoyée');
     };
     const prev = cleanup;
@@ -863,6 +866,10 @@ async function consoleView(id, openCompo){
     $('btnClock').onclick = () => {
       const f = {}, coupEnvoi = S.period===0 && S.status==='prevu';
       if (S.period===0){ f.period = 1; f.status = 'direct'; }
+      // adversaire sans compo : numéros 1 à 14 (12 à 14 remplaçants) pour aider à la saisie
+      const adv = oppSide(S);
+      if (coupEnvoi && !rosterOf(S, adv).length)
+        f.rosters = { ...(S.rosters || {}), [adv]: Array.from({length: 14}, (_, k) => ({ n: String(k + 1), name: '', sub: k >= 11 })) };
       if (S.running){ f.acc = (+S.acc) + Date.now() - (+S.started_at); f.running = false; }
       else { f.started_at = Date.now(); f.running = true; }
       patch(f); renderClock();

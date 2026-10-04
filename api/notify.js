@@ -37,10 +37,14 @@ module.exports = async (req, res) => {
   const sc = s => goals.filter(g => g.t === s).length;
   const name = s => (s === 'H' ? m.home_name : m.away_name);
   const player = ev.n ? ((m.rosters?.[ev.t] || []).find(p => p.n === String(ev.n))?.name || '') : '';
-  const clubGoal = ev.t === m.club_side;
+  const clubGoal = ev.t === (m.club_side || 'H');
+  const nous = name(m.club_side || 'H');
+  const score = `${name('H')} ${sc('H')} – ${sc('A')} ${name('A')} · ${ev.min}`;
+  const qui = ev.n === 'CSC' ? ' · contre son camp' : ev.n && clubGoal ? ` · n°${ev.n}${player ? ' ' + player : ''}` : '';
+  // but de Mésanger ou but encaissé : ça doit se voir dès le titre
   const payload = JSON.stringify({
-    title: clubGoal ? `⚽ BUT pour ${name(ev.t)} !` : `But de ${name(ev.t)}`,
-    body: `${name('H')} ${sc('H')} – ${sc('A')} ${name('A')} · ${ev.min}` + (ev.n === 'CSC' ? ' · contre son camp' : ev.n ? ` · n°${ev.n}${player ? ' ' + player : ''}` : ''),
+    title: clubGoal ? `⚽ BUT DE MÉSANGER ! (${nous})` : `❌ But encaissé par ${nous}`,
+    body: (clubGoal ? '' : `${name(ev.t)} marque · `) + score + qui,
     url: `/#/match/${m.id}`,
     tag: `but-${ev.id}`,
     team: m.equipe || 1
