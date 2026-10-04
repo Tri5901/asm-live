@@ -1856,14 +1856,27 @@ async function statsViewFrom(playerArg, { ms, evs }){
       const c = m.club_side, p = ((m.rosters||{})[c] || []).find(x => playerKey(x.name) === key);
       if (!p) continue;
       const all = byMatchAll[m.id] || [], me = all.filter(e => e.t === c);
-      const inEv = me.find(e => e.k==='sub' && e.in_n===p.n), outEv = me.find(e => e.k==='sub' && e.out_n===p.n);
       const red = me.find(e => e.k==='red' && e.n===p.n);
-      const played = !p.sub || !!inEv;
-      const start = p.sub ? (inEv ? minOf(inEv) : 90) : 0;
-      const end = Math.min(90, outEv ? minOf(outEv) : red ? minOf(red) : 90);
+      // temps de jeu : toutes les entrées et sorties, dans l'ordre (un joueur peut sortir puis revenir) ; rouge = sortie définitive
+      const mouv = me.filter(e => (e.k==='sub' && (e.in_n===p.n || e.out_n===p.n)) || e === red).sort((a, b) => (+a.sort || 0) - (+b.sort || 0));
+      let on = !p.sub, depuis = 0, mins = 0, start = p.sub ? 90 : 0, entre = false;
+      const parcours = [];
+      mouv.forEach(e => {
+        const t = Math.min(90, minOf(e));
+        if (e.k==='sub' && e.in_n===p.n && !on){
+          on = true; depuis = t;
+          if (p.sub && !entre) start = t; else parcours.push(`revenu à la ${esc(e.min)}`);
+          entre = true;
+        } else if (on && (e === red || e.out_n===p.n)){
+          on = false; mins += Math.max(0, t - depuis);
+          if (e !== red) parcours.push(`sorti à la ${esc(e.min)}`);
+        }
+      });
+      if (on) mins += Math.max(0, 90 - depuis);
+      const played = !p.sub || entre;
       const gl = me.filter(e => e.k==='goal' && e.n===p.n);
-      hist.push({ m, p, played, start, mins: played ? Math.max(1, end - start) : 0, goals: gl, y: me.filter(e => e.k==='yellow' && e.n===p.n).length, w: me.filter(e => e.k==='white' && e.n===p.n).length, r: red ? 1 : 0,
-        res: resultOf(m, all), gf: goals(all, c), ga: goals(all, c==='H'?'A':'H'), outMin: outEv ? outEv.min : '' });
+      hist.push({ m, p, played, start, mins: played ? Math.max(1, mins) : 0, goals: gl, y: me.filter(e => e.k==='yellow' && e.n===p.n).length, w: me.filter(e => e.k==='white' && e.n===p.n).length, r: red ? 1 : 0,
+        res: resultOf(m, all), gf: goals(all, c), ga: goals(all, c==='H'?'A':'H'), parcours });
     }
     hist.sort((a, b) => b.m.kickoff.localeCompare(a.m.kickoff));
     const name = (hist[0] && hist[0].p.name) || 'Joueur';
@@ -1899,7 +1912,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
       <div class="sec">Historique des matchs</div>
       ${hist.map(h => {
         const m = h.m, role = !h.played ? 'Sur le banc, pas entré' : h.p.sub ? `Entré à la ${h.start}e` : 'Titulaire';
-        const detail = [role, h.played ? `${h.mins} min` : '', h.outMin ? `sorti à la ${esc(h.outMin)}` : ''].filter(Boolean).join(' · ');
+        const detail = [role, h.played ? `${h.mins} min` : '', ...h.parcours].filter(Boolean).join(' · ');
         const but = h.goals.length ? `<span class="pgoals">${h.goals.map(e => '⚽' + (e.min ? ' ' + esc(e.min) : '')).join(' ')}</span>` : '';
         const cards = (h.y ? '<i class="kc y"></i>'.repeat(h.y) : '') + (h.w ? '<i class="kc w"></i>'.repeat(h.w) : '') + (h.r ? '<i class="kc r"></i>' : '');
         return `<a class="phist" href="#/match/${esc(m.id)}">
