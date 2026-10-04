@@ -195,7 +195,7 @@ function joueursClub(ms){
 // bilan d'un joueur sur la saison en cours : matchs joués, buts, cartons
 function bilanJoueur(ms, evs, key){
   const saison = seasonOf(new Date().toISOString());
-  let mj = 0, buts = 0, jaunes = 0, rouges = 0; const eqs = {};
+  let mj = 0, buts = 0, jaunes = 0, blancs = 0, rouges = 0; const eqs = {};
   (ms || []).filter(m => seasonOf(m.kickoff) === saison).forEach(m => {
     const c = m.club_side, p = (((m.rosters || {})[c]) || []).find(x => x.name && playerKey(x.name) === key);
     if (!p) return;
@@ -203,10 +203,11 @@ function bilanJoueur(ms, evs, key){
     if (!p.sub || me.some(e => e.k === 'sub' && e.in_n === p.n)){ mj++; eqs[m.equipe || 1] = (eqs[m.equipe || 1] || 0) + 1; }
     buts += me.filter(e => e.k === 'goal' && e.n === p.n).length;
     jaunes += me.filter(e => e.k === 'yellow' && e.n === p.n).length;
+    blancs += me.filter(e => e.k === 'white' && e.n === p.n).length;
     rouges += me.filter(e => e.k === 'red' && e.n === p.n).length;
   });
   const eq = Object.entries(eqs).sort((a, b) => b[1] - a[1] || teamRank(+a[0]) - teamRank(+b[0]))[0];
-  return { saison, mj, buts, jaunes, rouges, eq: eq ? +eq[0] : null, eqs };
+  return { saison, mj, buts, jaunes, blancs, rouges, eq: eq ? +eq[0] : null, eqs };
 }
 
 // ---------- Session / profil ----------
@@ -1750,7 +1751,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
     const ids = new Set(list.map(m=>m.id));
     const byMatch = {}; evs.forEach(e => { if (ids.has(e.match_id)) (byMatch[e.match_id] ||= []).push(e); });
     const P = {}; let unknownGoals = 0, cscGoals = 0;
-    const get = name => { const k = playerKey(name); return P[k] ||= {k, name, mj:0, tit:0, goals:0, y:0, r:0, eqs:{}}; };
+    const get = name => { const k = playerKey(name); return P[k] ||= {k, name, mj:0, tit:0, goals:0, y:0, w:0, r:0, eqs:{}}; };
     let W=0, D=0, L=0, gf=0, ga=0;
     for (const m of list){
       const c = m.club_side, me = byMatch[m.id] || [];
@@ -1766,21 +1767,15 @@ async function statsViewFrom(playerArg, { ms, evs }){
         if (e.k==='goal' && e.n==='CSC'){ cscGoals++; return; }
         const x = e.n ? nm(e.n) : null;
         if (!x){ if (e.k==='goal') unknownGoals++; return; }
-        const s = get(x); if (e.k==='goal') s.goals++; if (e.k==='yellow') s.y++; if (e.k==='red') s.r++;
+        const s = get(x); if (e.k==='goal') s.goals++; if (e.k==='yellow') s.y++; if (e.k==='white') s.w++; if (e.k==='red') s.r++;
       });
     }
     const rows = Object.values(P).sort((a,b) => {
       const k = statSort.key;
       if (k==='name') return statSort.dir * a.name.localeCompare(b.name, 'fr');
-      if (k==='eq'){ const ra = eqPrincipale(a), rb = eqPrincipale(b); return statSort.dir * ((ra ? teamRank(+ra[0]) : 99) - (rb ? teamRank(+rb[0]) : 99)) || b.mj - a.mj; }
       return statSort.dir * (a[k]-b[k]) || b.goals-a.goals || b.mj-a.mj || a.name.localeCompare(b.name,'fr');
     });
-    const COLS = [['name','Joueur'],['eq','Éq.'],['mj','Matchs'],['tit','Titul.'],['goals','Buts'],['y','🟨'],['r','🟥']];
-    // équipe principale (la plus jouée ; à égalité, la plus haute) et autres équipes jouées
-    const eqPrincipale = p => Object.entries(p.eqs || {}).sort((a, b) => b[1] - a[1] || teamRank(+a[0]) - teamRank(+b[0]))[0];
-    const eqCell = p => { const e = Object.keys(p.eqs || {}); if (!e.length) return '<td class="zero">–</td>';
-      const pr = eqPrincipale(p)[0];   // seulement l'équipe principale (le détail est sur la fiche du joueur)
-      return `<td class="eqc" title="${esc(e.map(x => teamLabel(+x) + ' : ' + p.eqs[x] + ' match' + (p.eqs[x] > 1 ? 's' : '')).join(' · '))}"><b>${esc(teamLetter(+pr))}</b></td>`; };
+    const COLS = [['goals','Buts'],['name','Joueur'],['mj','Matchs'],['tit','Titul.'],['y','🟨'],['w','⬜'],['r','🟥']];
     const cell = (v) => `<td class="${v?'':'zero'}">${v}</td>`;
     // classement des buteurs, équipe par équipe (un joueur compte pour chaque équipe où il a marqué)
     const boards = {};
@@ -1820,7 +1815,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
       <input id="statQ" class="dpq statq" type="search" placeholder="🔍 Rechercher un joueur…" autocomplete="off" enterkeyhint="search" value="${esc(statQ)}" aria-label="Rechercher un joueur">
       <div class="empty" id="statNone" hidden>Aucun joueur ne correspond à cette recherche.</div>
       ${statMode === 'buteurs' ? (CATS.map(c => { const h = catTeams(c).map(boardHTML).join(''); return h ? `<div class="sec">${esc(c)}</div>` + h : ''; }).join('') || '<div class="empty">Aucun match avec ce filtre.</div>') : rows.length ? `<div class="tblwrap"><table class="stats"><thead><tr>${COLS.map(([k,l])=>`<th class="${statSort.key===k?'on':''}" aria-sort="${statSort.key===k?(statSort.dir<0?'descending':'ascending'):'none'}"><button data-k="${k}">${l}${statSort.key===k?(statSort.dir<0?' ▾':' ▴'):''}</button></th>`).join('')}</tr></thead>
-        <tbody>${rows.map(p=>`<tr class="prow${p.k === monJoueur() ? ' moi' : ''}" data-pk="${esc(p.k)}" data-nm="${esc(p.name)}" tabindex="0"><td>${esc(p.name)}</td>${eqCell(p)}${cell(p.mj)}${cell(p.tit)}${cell(p.goals)}${cell(p.y)}${cell(p.r)}</tr>`).join('')}${cscGoals ? `<tr class="csc"><td>CSC <small>(contre son camp adverse)</small></td><td></td><td></td><td></td>${cell(cscGoals)}<td></td><td></td></tr>` : ''}</tbody></table></div>`
+        <tbody>${rows.map(p=>`<tr class="prow${p.k === monJoueur() ? ' moi' : ''}" data-pk="${esc(p.k)}" data-nm="${esc(p.name)}" tabindex="0">${cell(p.goals)}<td>${esc(p.name)}</td>${cell(p.mj)}${cell(p.tit)}${cell(p.y)}${cell(p.w)}${cell(p.r)}</tr>`).join('')}${cscGoals ? `<tr class="csc">${cell(cscGoals)}<td>CSC <small>(contre son camp adverse)</small></td><td></td><td></td><td></td><td></td><td></td></tr>` : ''}</tbody></table></div>`
         : `<div class="empty">Les stats apparaîtront après le premier match dont la composition de l'${CLUB} a été saisie.</div>`}
       <p class="note">${statComp === 'coupe' ? 'Matchs de coupe uniquement. ' : statComp ? 'Matchs de championnat uniquement. ' : ''}Stats des joueurs de l'${CLUB}, calculées à partir des compositions et de la chronologie de chaque match.${unknownGoals ? ` ${unknownGoals} but${unknownGoals>1?'s':''} sans buteur identifié.` : ''}</p>`;
     view.querySelectorAll('th button').forEach(b => b.onclick = () => {
@@ -1867,7 +1862,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
       const start = p.sub ? (inEv ? minOf(inEv) : 90) : 0;
       const end = Math.min(90, outEv ? minOf(outEv) : red ? minOf(red) : 90);
       const gl = me.filter(e => e.k==='goal' && e.n===p.n);
-      hist.push({ m, p, played, start, mins: played ? Math.max(1, end - start) : 0, goals: gl, y: me.filter(e => e.k==='yellow' && e.n===p.n).length, r: red ? 1 : 0,
+      hist.push({ m, p, played, start, mins: played ? Math.max(1, end - start) : 0, goals: gl, y: me.filter(e => e.k==='yellow' && e.n===p.n).length, w: me.filter(e => e.k==='white' && e.n===p.n).length, r: red ? 1 : 0,
         res: resultOf(m, all), gf: goals(all, c), ga: goals(all, c==='H'?'A':'H'), outMin: outEv ? outEv.min : '' });
     }
     hist.sort((a, b) => b.m.kickoff.localeCompare(a.m.kickoff));
@@ -1875,7 +1870,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
     const pl = hist.filter(h => h.played);
     const nb = pl.length, g = pl.reduce((a, h) => a + h.goals.length, 0), mins = pl.reduce((a, h) => a + h.mins, 0);
     const tit = pl.filter(h => !h.p.sub).length, ent = nb - tit;
-    const y = pl.reduce((a, h) => a + h.y, 0), r = pl.reduce((a, h) => a + h.r, 0);
+    const y = pl.reduce((a, h) => a + h.y, 0), w = pl.reduce((a, h) => a + h.w, 0), r = pl.reduce((a, h) => a + h.r, 0);
     const W = pl.filter(h => h.res==='V').length, N = pl.filter(h => h.res==='N').length, L = pl.filter(h => h.res==='D').length;
     const multi = pl.filter(h => h.goals.length >= 2).length, scoring = pl.filter(h => h.goals.length).length;
     const best = pl.reduce((b, h) => !b || h.goals.length > b.goals.length ? h : b, null);
@@ -1890,7 +1885,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
         <p class="sub">${nb ? `${nb} match${nb>1?'s':''} joué${nb>1?'s':''}${teams ? ' · ' + esc(teams) : ''}` : 'Aucun match joué'} · saison ${esc(statSeason||'')}</p></div></div>
       <div class="chipbar compbar" role="group" aria-label="Compétition">${[['', 'Tout'], ['championnat', 'Championnat'], ['coupe', 'Coupes']].map(([v, l]) => `<button data-comp="${v}" class="${statComp===v?'on':''}" aria-pressed="${statComp===v}">${l}</button>`).join('')}</div>
       <div class="kpis">${kpi(g, 'Buts')}${kpi(nb, 'Matchs')}${kpi(nb ? fr(g/nb, 2) : '–', 'Buts / match')}${kpi(g ? fr(mins/g, 0) + '′' : '–', '1 but toutes les')}</div>
-      <div class="kpis">${kpi(fr(mins, 0) + '′', 'Temps de jeu')}${kpi(tit, 'Titulaire')}${kpi(ent, 'Entrées')}${kpi(`${y}<i class="kc y"></i> ${r}<i class="kc r"></i>`, 'Cartons')}</div>
+      <div class="kpis">${kpi(fr(mins, 0) + '′', 'Temps de jeu')}${kpi(tit, 'Titulaire')}${kpi(ent, 'Entrées')}${kpi(`${y}<i class="kc y"></i> ${w}<i class="kc w"></i> ${r}<i class="kc r"></i>`, 'Cartons')}</div>
       <div class="pfacts">
         ${eqTri.length ? `<div><span>Équipe principale</span><b>${esc(teamLabel(+eqTri[0][0]))} (${eqTri[0][1]} match${eqTri[0][1]>1?'s':''})</b></div>` : ''}
         ${eqTri.length > 1 ? `<div><span>Équipes jouées cette saison</span><b>${esc(eqTri.map(([e, n]) => teamLetter(+e) + ' : ' + n).join(' · '))}</b></div>` : ''}
@@ -1906,7 +1901,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
         const m = h.m, role = !h.played ? 'Sur le banc, pas entré' : h.p.sub ? `Entré à la ${h.start}e` : 'Titulaire';
         const detail = [role, h.played ? `${h.mins} min` : '', h.outMin ? `sorti à la ${esc(h.outMin)}` : ''].filter(Boolean).join(' · ');
         const but = h.goals.length ? `<span class="pgoals">${h.goals.map(e => '⚽' + (e.min ? ' ' + esc(e.min) : '')).join(' ')}</span>` : '';
-        const cards = (h.y ? '<i class="kc y"></i>'.repeat(h.y) : '') + (h.r ? '<i class="kc r"></i>' : '');
+        const cards = (h.y ? '<i class="kc y"></i>'.repeat(h.y) : '') + (h.w ? '<i class="kc w"></i>'.repeat(h.w) : '') + (h.r ? '<i class="kc r"></i>' : '');
         return `<a class="phist" href="#/match/${esc(m.id)}">
           <div class="phtop"><span class="tchip">${teamLetter(m.equipe)}</span><span class="mcomp">${esc(fmtDate(m.kickoff, false))} · ${esc(m.competition || '')}</span><span class="badge ${h.res==='V'?'w':h.res==='D'?'l':''}">${h.res==='V'?'V':h.res==='D'?'D':'N'} ${h.gf}–${h.ga}</span></div>
           <div class="phmid"><b>${m.club_side==='H' ? 'vs' : 'à'} ${esc(opp(m))}</b>${but}${cards}</div>
@@ -2067,7 +2062,7 @@ async function monJoueurBloc(){
       const b = bilanJoueur(data.ms, data.evs, k);
       box().innerHTML = `<h2>⚽ Mes stats</h2><p class="sub">Tu es <b>${esc(nom)}</b> dans les compos · saison ${esc(b.saison)}${b.eq ? ' · surtout en <b>' + esc(teamLabel(b.eq)) + '</b>' : ''}</p>
         <div class="kpis"><div class="kpi"><b>${b.mj}</b><span>Matchs</span></div><div class="kpi"><b>${b.buts}</b><span>Buts</span></div>
-        <div class="kpi"><b>${b.jaunes}<i class="kc y"></i> ${b.rouges}<i class="kc r"></i></b><span>Cartons</span></div></div>
+        <div class="kpi"><b>${b.jaunes}<i class="kc y"></i> ${b.blancs}<i class="kc w"></i> ${b.rouges}<i class="kc r"></i></b><span>Cartons</span></div></div>
         <a class="fbtn" href="#/stats/joueur/${encodeURIComponent(k)}" style="width:100%;margin-top:10px">Voir ma fiche complète</a>
         <button type="button" class="link" id="mjNon" style="width:100%;margin-top:8px">Ce n’est pas moi</button>`;
       $('mjNon').onclick = () => askConfirm('Retirer le lien ?', 'Tes stats ne seront plus affichées dans ton compte. Tu pourras choisir à nouveau ton nom.', 'Retirer', () => lier(null));
