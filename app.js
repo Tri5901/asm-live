@@ -800,13 +800,19 @@ async function partagerResume(m, evs){
   const url = URL.createObjectURL(blob); let apercu = url; try{ apercu = cv.toDataURL('image/png'); }catch(e){}
   // iPhone : un téléchargement finit dans Fichiers (ou rien dans l'appli installée) → seulement « Partager », qui propose « Enregistrer l'image » (Photos)
   const iphone = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  // « Copier » met une vraie image dans le presse-papiers (à coller dans WhatsApp, Instagram…) ; le « Copier » du menu de partage de l'iPhone copie un fichier
+  const peutCopier = !!(navigator.clipboard && navigator.clipboard.write && window.ClipboardItem);
   openSheet(`<h3 id="shTitle">Résumé du match</h3><img src="${apercu}" alt="Résumé du match" class="resumeimg" style="display:block;width:100%;max-width:360px;height:auto;margin:0 auto;border-radius:10px;-webkit-touch-callout:default;-webkit-user-select:auto;user-select:auto">
     <p class="note" style="margin:8px 0 0;text-align:center">${iphone && peutPartager ? 'Pour la garder dans tes photos : « Partager » puis « Enregistrer l’image », ou appui long sur l’image.' : 'Tu peux aussi faire un appui long sur l’image pour l’enregistrer.'}</p>
-    <div class="foot" style="margin-top:12px">${peutPartager ? '<button class="fbtn primary" id="resPartager">Partager</button>' : ''}${iphone && peutPartager ? '' : `<button class="fbtn${peutPartager ? '' : ' primary'}" id="resEnreg">Enregistrer</button>`}</div>`);
+    <div class="foot" style="margin-top:12px">${peutPartager ? '<button class="fbtn primary" id="resPartager">Partager</button>' : ''}${peutCopier ? '<button class="fbtn" id="resCopier">Copier</button>' : ''}${iphone && peutPartager ? '' : `<button class="fbtn${peutPartager ? '' : ' primary'}" id="resEnreg">Enregistrer</button>`}</div>`);
   if ($('resPartager')) $('resPartager').onclick = async () => {
     // l'image seule (sans titre ni texte) : sur iPhone, avec un texte, certaines applis ne reçoivent que le texte
     try{ await navigator.share({ files: [file] }); closeSheet(); }
     catch(e){ if (!e || e.name !== 'AbortError') toast(iphone ? 'Partage impossible : fais un appui long sur l’image pour l’enregistrer' : 'Partage impossible, utilise « Enregistrer »'); }
+  };
+  if ($('resCopier')) $('resCopier').onclick = async () => {
+    try{ await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); toast('Image copiée : tu peux la coller dans un message'); }
+    catch(e){ toast(iphone ? 'Copie impossible : fais un appui long sur l’image puis « Copier »' : 'Copie impossible, utilise « Enregistrer »'); }
   };
   if ($('resEnreg')) $('resEnreg').onclick = () => { const a = document.createElement('a'); a.href = url; a.download = nom; document.body.appendChild(a); a.click(); a.remove(); toast('Image enregistrée'); };
 }
