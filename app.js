@@ -85,6 +85,15 @@ const rosterOf = (m, t) => ((m.rosters||{})[t]||[]);
 const nameOf = (m, t, n) => { const p = rosterOf(m,t).find(p=>p.n===String(n)); return p ? p.name : ''; };
 const who = (m, t, n, none) => n === 'CSC' ? 'Contre son camp (CSC)' : n ? `n°${n}${nameOf(m,t,n) ? ' ' + nameOf(m,t,n) : ''}` : none;
 const rosterSorted = (m, t) => [...rosterOf(m,t)].sort((a,b)=>(+a.n || 999)-(+b.n || 999)); // sans numéro : à la fin
+// plus de 11 titulaires (ex. compo importée de la convocation, tous titulaires) : les plus grands numéros passent remplaçants.
+// Seulement si tous les titulaires ont un numéro, sinon on ne peut pas savoir qui est sur le banc.
+function onzeTitulaires(list){
+  const tit = (list || []).filter(p => !p.sub);
+  if (tit.length <= 11 || tit.some(p => !+p.n)) return { list, moved: [] };
+  const moved = [...tit].sort((a, b) => +a.n - +b.n).slice(11);
+  const r = list.map(p => moved.includes(p) ? { ...p, sub: true } : p);
+  return { list: [...r.filter(p => !p.sub), ...r.filter(p => p.sub)], moved: moved.map(p => p.n) };
+}
 
 function elapsedMs(m){ return (+m.acc||0) + (m.running ? Date.now() - (+m.started_at||0) : 0); }
 function currentMinute(m){
@@ -883,6 +892,12 @@ async function consoleView(id, openCompo){
       const adv = oppSide(S);
       if (coupEnvoi && !rosterOf(S, adv).length)
         f.rosters = { ...(S.rosters || {}), [adv]: Array.from({length: 14}, (_, k) => ({ n: String(k + 1), name: '', sub: k >= 11 })) };
+      // plus de 11 titulaires au coup d'envoi : les plus grands numéros passent remplaçants
+      if (coupEnvoi){
+        const ro = { ...(f.rosters || S.rosters || {}) }, bancs = [];
+        ['H', 'A'].forEach(t => { const r = onzeTitulaires(ro[t]); if (r.moved.length){ ro[t] = r.list; bancs.push(...r.moved.map(n => 'n°' + n)); } });
+        if (bancs.length){ f.rosters = ro; setTimeout(() => toast(`Plus de 11 titulaires : ${bancs.join(', ')} mis remplaçant${bancs.length > 1 ? 's' : ''}`), 1500); }
+      }
       if (S.running){ f.acc = (+S.acc) + Date.now() - (+S.started_at); f.running = false; }
       else { f.started_at = Date.now(); f.running = true; }
       patch(f); renderClock();
@@ -1000,9 +1015,11 @@ async function consoleView(id, openCompo){
       const onField = rosterSorted(S,t).filter(p=>pitch.has(p.n));
       const bench = rosterSorted(S,t).filter(p=>!pitch.has(p.n) && !off.has(p.n)).map(p=>({...p, bench:true}));
       askNumber('Joueur qui sort', tn, cm.label, (out, min) => {
+        // plus de 11 sur le terrain (compo mal réglée) : on propose aussi les autres joueurs, pour ne pas bloquer
+        const entrants = pitch.size > 11 ? [...bench, ...onField.filter(p => p.n !== String(out)).map(p => ({...p, bench:true}))] : bench;
         askNumber('Joueur qui entre', `${tn} · remplace ${who(S,t,out,'?')}`, min, (inn, min2) => {
           add({t, k, out_n:out, in_n:inn, min:min2, sort:cm.sort});
-        }, t, bench);
+        }, t, entrants);
       }, t, onField);
     } else {
       const pitch = onPitch(t);
@@ -1223,8 +1240,11 @@ async function consoleView(id, openCompo){
       }
       if (errs.size){ cur = [...errs][0][0]; draw(); return; }
       const sansNum = order.reduce((s, t) => s + out[t].filter(p => !p.n).length, 0);
+      const bancs = [];
+      for (const t of order){ const r = onzeTitulaires(out[t]); out[t] = r.list; if (r.moved.length) bancs.push(...r.moved.map(n => 'n°' + n)); }
       patch({rosters: out}); closeSheet(); render();
-      toast(sansNum ? `Compositions enregistrées · ${plural(sansNum, 'joueur')} sans numéro` : 'Compositions enregistrées');
+      toast(bancs.length ? `Plus de 11 titulaires : ${bancs.join(', ')} mis remplaçant${bancs.length > 1 ? 's' : ''}`
+        : sansNum ? `Compositions enregistrées · ${plural(sansNum, 'joueur')} sans numéro` : 'Compositions enregistrées');
     }
 
     draw();
