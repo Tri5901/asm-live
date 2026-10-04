@@ -502,7 +502,9 @@ function drawHome(matches, goalRows){
     return Date.now() < fin.getTime();
   };
   const doneAll = matches.filter(m=>m.status==='termine');
-  const doneToday = doneAll.filter(resteEnHaut).sort(desc);
+  // derniers résultats : le jour le plus récent d'abord, puis la A en haut et les autres équipes en dessous
+  const jourDe = m => new Date(m.kickoff).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+  const doneToday = doneAll.filter(resteEnHaut).sort((a, b) => jourDe(b).localeCompare(jourDe(a)) || teamRank(a.equipe) - teamRank(b.equipe) || a.kickoff.localeCompare(b.kickoff));
   const done = doneAll.filter(m => !resteEnHaut(m)).sort(desc);
   // demandes à valider : une ligne par match (équipe, adversaire, date, qui demande)
   const demParMatch = {};
