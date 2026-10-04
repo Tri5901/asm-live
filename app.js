@@ -1018,7 +1018,7 @@ async function consoleView(id, openCompo){
     e.sort = sortFromLabel(e.min, e.sort);
     if (S.status==='prevu') patch({status:'direct', period: S.period || 1});
     S.events.push(e); pushEv(e);
-    if (e.k==='goal') queue({kind:'notify', match:id, id:e.id});
+    if (['goal','yellow','white','red'].includes(e.k)) queue({kind:'notify', match:id, id:e.id});   // buts et cartons
     render();
     toast(`${LABEL[e.k]} noté · ${e.min}`);
   }
@@ -2088,7 +2088,7 @@ function openBell(preselect){
   if (preselect && !cur.size) cur.add(preselect);
   const denied = Notification.permission === 'denied';
   openSheet(`<h3 id="shTitle">Notifications de buts</h3>
-    <p>Reçois une notification à chaque but des équipes choisies, même appli fermée.</p>
+    <p>Reçois une notification à chaque but et chaque carton des équipes choisies, même appli fermée.</p>
     ${denied ? '<div class="msg err">Les notifications sont bloquées pour ce site. Autorise-les dans les réglages du téléphone (ou du navigateur), puis reviens ici.</div>' : ''}
     <div class="msg" id="bState">Vérification de ce téléphone…</div>
     <div class="follow">${CATS.map(c => `<div class="fcat">${esc(c)}</div>` + catTeams(c).map(n => `<label class="fl"><input type="checkbox" value="${n}"${cur.has(n)?' checked':''}><span>${esc(teamLabel(n))}</span></label>`).join('')).join('')}</div>

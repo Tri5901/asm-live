@@ -41,8 +41,18 @@ module.exports = async (req, res) => {
   const nous = name(m.club_side || 'H');
   const score = `${name('H')} ${sc('H')} – ${sc('A')} ${name('A')} · ${ev.min}`;
   const qui = ev.n === 'CSC' ? ' · contre son camp' : ev.n && clubGoal ? ` · n°${ev.n}${player ? ' ' + player : ''}` : '';
+  // carton : couleur, équipe et joueur
+  const CARTON = { yellow: ['🟨', 'Carton jaune'], white: ['⬜', 'Carton blanc'], red: ['🟥', 'Carton rouge'] };
+  const carton = CARTON[ev.k];
+  const joueur = ev.n ? `n°${ev.n}${player ? ' ' + player : ''}` : '';
   // but de Mésanger ou but encaissé : ça doit se voir dès le titre
-  const payload = JSON.stringify({
+  const payload = JSON.stringify(carton ? {
+    title: `${carton[0]} ${carton[1]} pour ${name(ev.t)}`,
+    body: (joueur ? joueur + ' · ' : '') + score,
+    url: `/#/match/${m.id}`,
+    tag: `carton-${ev.id}`,
+    team: m.equipe || 1
+  } : {
     title: clubGoal ? `⚽ BUT DE MÉSANGER ! (${nous})` : `❌ But encaissé par ${nous}`,
     body: (clubGoal ? '' : `${name(ev.t)} marque · `) + score + qui,
     url: `/#/match/${m.id}`,

@@ -17,7 +17,7 @@ module.exports = async (req, res) => {
     const APERCUS = {
       debut: { title: "▶️ C'est parti ! AS Mésanger C – Ancenis RCASG 2", body: "Coup d'envoi : suis le match en direct.", url: '/#/match/a927dc47-0726-4752-8b0e-fba9963c578c', tag: 'essai-debut' }
     };
-    const msg = APERCUS[req.body.apercu] || { title: '✅ Notifications activées', body: 'Tu recevras ici chaque but des équipes choisies.', url: '/', tag: 'essai' };
+    const msg = APERCUS[req.body.apercu] || { title: '✅ Notifications activées', body: 'Tu recevras ici chaque but et chaque carton des équipes choisies.', url: '/', tag: 'essai' };
     await webpush.sendNotification(sub, JSON.stringify(msg), { TTL: 60, urgency: 'high' });
     res.json({ ok: true });
   } catch (e) {
