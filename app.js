@@ -692,11 +692,16 @@ async function hdmRemplir(m, evs, box){
   let mien = null;
   if (myId()){ const { data } = await sb.from('votes_hdm').select('joueur').eq('match_id', m.id).maybeSingle(); mien = data && data.joueur; }
   if (!box.isConnected) return;
-  const R = res || [], total = R.reduce((a, x) => a + x.voix, 0), voix = n => (R.find(x => x.joueur === n) || {}).voix || 0;
+  // la base ne renvoie les voix qu'aux admins (pendant et après le vote) et aux responsables (après) ;
+  // les autres ne reçoivent que le(s) gagnant(s) une fois le vote terminé, sans les voix
+  const R = res || [], avecVoix = R.some(x => x.voix != null), total = R.reduce((a, x) => a + (x.voix || 0), 0);
+  const detail = () => `<div class="hdmlist">${R.map(x => { const pc = total ? Math.round(100 * x.voix / total) : 0;
+      return `<div class="hdmrow"><span class="hdmbar" style="width:${pc}%"></span><span class="hdmnom">${esc(x.joueur)}</span><b>${x.voix} voix</b></div>`; }).join('')}</div>`;
   if (!hdmOuvert(m)){
-    if (!total){ box.innerHTML = ''; return; }
-    const max = Math.max(...R.map(x => x.voix)), g = R.filter(x => x.voix === max).map(x => x.joueur);
-    box.innerHTML = `<section class="hdm"><h3>🏆 Homme du match</h3><p class="hdmwin">${esc(g.join(' et '))} <small>(${max} voix sur ${total})</small></p></section>`;
+    if (!R.length){ box.innerHTML = ''; return; }
+    const max = avecVoix ? Math.max(...R.map(x => x.voix)) : null, g = (avecVoix ? R.filter(x => x.voix === max) : R).map(x => x.joueur);
+    box.innerHTML = `<section class="hdm"><h3>🏆 Homme du match</h3><p class="hdmwin">${esc(g.join(' et '))}</p>
+      ${avecVoix ? `<p class="note" style="margin:10px 0 6px">Détail des votes (${total} vote${total > 1 ? 's' : ''}), visible par les admins et les responsables :</p>${detail()}` : ''}</section>`;
     return;
   }
   const peut = !!(myId() && profile && !['pending', 'supprime'].includes(profile.role));
@@ -704,6 +709,7 @@ async function hdmRemplir(m, evs, box){
     <p class="note">${peut ? (mien ? 'Ton vote : <b>' + esc(mien) + '</b>. Tu peux le changer jusqu’à ' + hdmFin(m) + '.' : 'Vote pour le meilleur joueur du match, jusqu’à ' + hdmFin(m) + '.') : myId() ? 'Vote en cours jusqu’à ' + hdmFin(m) + '. Ton compte doit d’abord être validé pour voter.' : 'Vote en cours jusqu’à ' + hdmFin(m) + '. Il faut un compte pour voter.'}</p>
     <div class="hdmlist">${joueurs.map(p => `<button type="button" class="hdmrow${mien === p.name ? ' on' : ''}" data-hdm="${esc(p.name)}"${peut ? '' : ' disabled'}><span class="hdmnom">${esc(p.name)}</span><b>${mien === p.name ? '✓' : ''}</b></button>`).join('')}</div>
     <p class="note" style="margin:8px 0 0">Les votes restent secrets : le résultat sera affiché ${esc(hdmFin(m))}.</p>
+    ${avecVoix ? `<p class="note" style="margin:12px 0 6px">Votes en cours (${total}), visible seulement par les admins :</p>${detail()}` : ''}
     ${!myId() ? '<a class="fbtn" href="#/connexion" style="width:100%;margin-top:8px">Se connecter pour voter</a>' : ''}</section>`;
   box.querySelectorAll('[data-hdm]').forEach(b => b.onclick = async () => {
     b.disabled = true;
