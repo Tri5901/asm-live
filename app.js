@@ -317,12 +317,14 @@ function renderAcct(){
 // ---------- File d'envoi (hors ligne) ----------
 // Toutes les écritures du délégué passent par cette file : si le réseau coupe, elles partent au retour.
 let outbox = lsGet('asm-outbox', []);
-let flushing = false, syncListeners = new Set();
+let flushing = false, enVol = null, syncListeners = new Set();
 const saveOutbox = () => { lsSet('asm-outbox', outbox); syncListeners.forEach(f=>f()); };
 const pendingFor = id => outbox.some(o => o.match === id);
 function queue(op){
   const last = outbox[outbox.length-1];
-  if (op.kind==='match' && last && last.kind==='match' && last.match===op.match){ Object.assign(last.fields, op.fields); }
+  // on regroupe les modifications d'un match… sauf dans un envoi déjà parti (sinon la dernière serait perdue :
+  // ex. +1 puis +1 sur le chrono, le 2e n'arrivait jamais à la base et le chrono reculait à la synchro)
+  if (op.kind==='match' && last && last !== enVol && last.kind==='match' && last.match===op.match){ Object.assign(last.fields, op.fields); }
   else outbox.push(op);
   saveOutbox(); flush();
 }
@@ -333,6 +335,7 @@ async function flush(){
   try{
     while (outbox.length){
       const op = outbox[0];
+      enVol = op;
       let res;
       if (op.kind==='match') res = await sb.from('matches').update({...op.fields, updated_at:new Date().toISOString()}).eq('id', op.match).select('id');
       else if (op.kind==='ev') res = await sb.from('events').upsert(op.row);
@@ -352,10 +355,10 @@ async function flush(){
         // la base a ignoré la modification : pas les droits sur ce match (ou match supprimé)
         toast('Refusé : seuls le responsable score, les responsables d’équipe et les admins peuvent modifier ce match');
       }
-      outbox.shift(); saveOutbox();
+      outbox.shift(); saveOutbox(); enVol = null;
     }
   }catch(e){ /* réseau : on réessaie plus tard */ }
-  flushing = false;
+  enVol = null; flushing = false;
   syncListeners.forEach(f=>f());
 }
 window.addEventListener('online', flush);
