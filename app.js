@@ -2679,6 +2679,27 @@ async function adminView(){
 // ---------- Notifications de buts ----------
 const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+// Guide : faire apparaître les notifications en pop-up en haut de l'écran (réglage du téléphone, le site ne peut pas le faire)
+function popupGuideHTML(){
+  const samsung = /samsung|SM-/i.test(navigator.userAgent);
+  const nomAppli = isStandalone() ? '« AS Mésanger »' : '« Chrome »';
+  const guideAndroid = `<ol>
+      <li><b>Le plus simple :</b> quand tu reçois une notif de l’appli, fais un <b>appui long</b> dessus, puis choisis <b>« Par défaut »</b> ou <b>« Alerte »</b> (pas « Silencieux »).</li>
+      <li>Touche ensuite <b>⚙️ Paramètres</b> (ou « Toutes les catégories ») et active <b>« Afficher en pop-up »</b>${samsung ? ' (sur Samsung : <b>« Notifications flottantes »</b>, style <b>« Bannière »</b>)' : ' / « Pop-up à l’écran »'}.</li>
+      <li>Sinon : <b>Paramètres du téléphone → Applications → ${nomAppli} → Notifications</b>${isStandalone() ? '' : ' → <b>Sites</b> → asm-live.vercel.app'}, puis active le pop-up et le son.</li>
+    </ol>`;
+  const guideIOS = `<ol>
+      <li>Ouvre <b>Réglages → Notifications → AS Mésanger</b>.</li>
+      <li>Active <b>« Autoriser les notifications »</b> et coche <b>« Bannières »</b>.</li>
+      <li>Style des bannières : <b>« Temporaire »</b> (ou <b>« Persistant »</b> pour qu’elle reste jusqu’à ce que tu la touches). Active aussi <b>« Sons »</b>.</li>
+      <li>En mode <b>Concentration</b> (Ne pas déranger, Sommeil…), ajoute AS Mésanger aux applis autorisées.</li>
+    </ol>`;
+  return `<details class="popguide"><summary>📲 Les voir en pop-up en haut de l’écran</summary>
+    <p>C’est le téléphone qui décide d’afficher les notifs en haut de l’écran. Ça se règle une seule fois :</p>
+    ${isIOS ? '<p class="pgt">Sur iPhone</p>' + guideIOS : '<p class="pgt">Sur Android</p>' + guideAndroid}
+    <details class="pgautre"><summary>${isIOS ? 'Sur Android' : 'Sur iPhone'}</summary>${isIOS ? guideAndroid : guideIOS}</details>
+    <p>Ensuite, une fois abonné, touche <b>« Envoyer une notification d’essai »</b> (en bas de cette fenêtre) pour vérifier qu’elle apparaît bien en haut.</p></details>`;
+}
 const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 function b64ToBytes(b64){ const p = '='.repeat((4 - b64.length % 4) % 4); const s = atob((b64 + p).replace(/-/g,'+').replace(/_/g,'/')); return Uint8Array.from(s, c => c.charCodeAt(0)); }
 async function saveFollow(teams, admin){
@@ -2715,6 +2736,7 @@ function openBell(preselect){
     <div class="follow">${CATS.map(c => `<div class="fcat">${esc(c)}</div>` + catTeams(c).map(n => `<label class="fl"><input type="checkbox" value="${n}"${cur.has(n)?' checked':''}><span>${esc(teamLabel(n))}</span></label>`).join('')).join('')}</div>
     ${isAdmin() ? `<label class="fl fladmin"><input type="checkbox" id="bAdmin"${lsGet('asm-follow-admin', false) ? ' checked' : ''}><span>👤 Nouveaux comptes à valider <small>(admins)</small></span></label>` : ''}
     <div class="foot" style="margin-top:12px"><button class="fbtn primary" id="bSave">Enregistrer</button><button class="fbtn" id="bNo">Annuler</button></div>
+    ${popupGuideHTML()}
     <button class="link" id="bTest" hidden style="width:100%">Envoyer une notification d’essai</button>`);
   $('bNo').onclick = closeSheet;
   // État réel, lu dans la base (et non dans la mémoire du téléphone)

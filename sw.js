@@ -1,6 +1,6 @@
 // Service worker AS Mésanger – Feuille de match
 // Incrémente VERSION à chaque mise en ligne pour que les téléphones récupèrent la nouvelle version.
-const VERSION = 'asm-v140';
+const VERSION = 'asm-v141';
 const APP_SHELL = [
   './',
   './index.html',
@@ -84,7 +84,8 @@ self.addEventListener('push', event => {
   try { d = event.data ? event.data.json() : {}; } catch (e) { d = { body: event.data && event.data.text() }; }
   event.waitUntil(self.registration.showNotification(d.title || 'AS Mésanger', {
     body: d.body || '', icon: 'icons/notif-192.png', badge: 'icons/badge-96.png',
-    tag: d.tag, data: { url: d.url || './' }, vibrate: [200, 100, 200]
+    // renotify : même si une notif remplace la précédente (même tag), le téléphone vibre et l'affiche à nouveau en pop-up
+    tag: d.tag, renotify: !!d.tag, silent: false, timestamp: Date.now(), data: { url: d.url || './' }, vibrate: [200, 100, 200, 100, 200]
   }));
 });
 self.addEventListener('notificationclick', event => {
