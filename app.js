@@ -697,18 +697,19 @@ async function hdmRemplir(m, evs, box, changer = false){
   let mien = null;
   if (myId()){ const { data } = await sb.from('votes_hdm').select('joueur').eq('match_id', m.id).maybeSingle(); mien = data && data.joueur; }
   if (!box.isConnected) return;
-  // la base ne renvoie les voix qu'aux admins (pendant et après le vote) et aux responsables (après) ;
-  // les autres ne reçoivent que le(s) gagnant(s) une fois le vote terminé, sans les voix
+  // la base ne renvoie les voix qu'aux admins, et seulement pendant le vote. Une fois le vote terminé, personne ne voit
+  // le nombre de voix : l'élu (elu) pour tous, et pour les admins et responsables les autres joueurs qui ont eu des voix
   const R = res || [], avecVoix = R.some(x => x.voix != null), total = R.reduce((a, x) => a + (x.voix || 0), 0);
   // numéro porté pendant ce match (si la compo l'a)
   const numDe = nom => { const p = roster.find(x => x.name === nom); return p && p.n ? `<b class="hdmn">${esc(p.n)}</b>` : ''; };
   const detail = () => `<div class="hdmlist">${R.map(x => { const pc = total ? Math.round(100 * x.voix / total) : 0;
       return `<div class="hdmrow"><span class="hdmbar" style="width:${pc}%"></span><span class="hdmnom">${numDe(x.joueur)}${esc(x.joueur)}</span><b>${x.voix} voix</b></div>`; }).join('')}</div>`;
   if (!hdmOuvert(m)){
-    if (!R.length){ box.innerHTML = ''; return; }
-    const max = avecVoix ? Math.max(...R.map(x => x.voix)) : null, g = (avecVoix ? R.filter(x => x.voix === max) : R).map(x => x.joueur);
-    box.innerHTML = `<section class="hdm"><h3>🏆 Homme du match</h3><p class="hdmwin">${esc(g.join(' et '))}</p>
-      ${avecVoix ? `<p class="note" style="margin:10px 0 6px">Détail des votes (${total} vote${total > 1 ? 's' : ''}), visible par les admins et les responsables :</p>${detail()}` : ''}</section>`;
+    const elus = R.filter(x => x.elu !== false), autres = R.filter(x => x.elu === false);
+    if (!elus.length){ box.innerHTML = ''; return; }
+    box.innerHTML = `<section class="hdm"><h3>🏆 Homme du match</h3><p class="hdmwin">${elus.map(x => numDe(x.joueur) + esc(x.joueur)).join(' et ')}</p>
+      ${autres.length ? `<p class="note" style="margin:10px 0 6px">Ont aussi reçu des voix, du plus au moins voté (visible par les admins et les responsables) :</p>
+        <div class="hdmautres">${autres.map(x => `<span>${numDe(x.joueur)}${esc(x.joueur)}</span>`).join('')}</div>` : ''}</section>`;
     return;
   }
   const peut = !!(myId() && profile && !['pending', 'supprime'].includes(profile.role));
