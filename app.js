@@ -690,7 +690,8 @@ async function hdmRemplir(m, evs, box, changer = false){
   if (!box) return;
   const c = clubSide(m), roster = rosterOf(m, c).filter(p => p.name);
   const entres = new Set(evs.filter(e => e.t === c && e.k === 'sub' && e.in_n).map(e => e.in_n));
-  const joueurs = roster.filter(p => !p.sub || entres.has(p.n));
+  const joueurs = roster.filter(p => !p.sub || entres.has(p.n))
+    .sort((a, b) => (parseInt(a.n, 10) || 999) - (parseInt(b.n, 10) || 999) || a.name.localeCompare(b.name, 'fr'));
   if (!joueurs.length) return;
   const { data: res } = await sb.rpc('hdm_resultats', { p_match: m.id });
   let mien = null;
@@ -699,8 +700,10 @@ async function hdmRemplir(m, evs, box, changer = false){
   // la base ne renvoie les voix qu'aux admins (pendant et après le vote) et aux responsables (après) ;
   // les autres ne reçoivent que le(s) gagnant(s) une fois le vote terminé, sans les voix
   const R = res || [], avecVoix = R.some(x => x.voix != null), total = R.reduce((a, x) => a + (x.voix || 0), 0);
+  // numéro porté pendant ce match (si la compo l'a)
+  const numDe = nom => { const p = roster.find(x => x.name === nom); return p && p.n ? `<b class="hdmn">${esc(p.n)}</b>` : ''; };
   const detail = () => `<div class="hdmlist">${R.map(x => { const pc = total ? Math.round(100 * x.voix / total) : 0;
-      return `<div class="hdmrow"><span class="hdmbar" style="width:${pc}%"></span><span class="hdmnom">${esc(x.joueur)}</span><b>${x.voix} voix</b></div>`; }).join('')}</div>`;
+      return `<div class="hdmrow"><span class="hdmbar" style="width:${pc}%"></span><span class="hdmnom">${numDe(x.joueur)}${esc(x.joueur)}</span><b>${x.voix} voix</b></div>`; }).join('')}</div>`;
   if (!hdmOuvert(m)){
     if (!R.length){ box.innerHTML = ''; return; }
     const max = avecVoix ? Math.max(...R.map(x => x.voix)) : null, g = (avecVoix ? R.filter(x => x.voix === max) : R).map(x => x.joueur);
@@ -712,10 +715,10 @@ async function hdmRemplir(m, evs, box, changer = false){
   const replie = peut && mien && !changer;   // déjà voté : on replie sur son choix
   const fin = esc(hdmFin(m));
   box.innerHTML = `<section class="hdm"><h3>🏆 Homme du match</h3>
-    ${replie ? `<div class="hdmmien"><span>Ton vote : <b>${esc(mien)}</b></span><button type="button" class="amod" id="hdmChanger">Changer</button></div>
+    ${replie ? `<div class="hdmmien"><span>Ton vote : ${numDe(mien)}<b>${esc(mien)}</b></span><button type="button" class="amod" id="hdmChanger">Changer</button></div>
       <p class="note" style="margin:8px 0 0">Tu peux le changer jusqu’à ${fin}. Les votes restent secrets : le résultat sera affiché ${fin}.</p>`
     : peut ? `<p class="note">Touche le meilleur joueur du match. Vote ouvert jusqu’à ${fin}, résultat affiché à ce moment-là.</p>
-      <div class="hdmgrid">${joueurs.map(p => `<button type="button" class="hdmrow${mien === p.name ? ' on' : ''}" data-hdm="${esc(p.name)}"><span class="hdmnom">${esc(p.name)}</span>${mien === p.name ? '<b>✓</b>' : ''}</button>`).join('')}</div>`
+      <div class="hdmgrid">${joueurs.map(p => `<button type="button" class="hdmrow${mien === p.name ? ' on' : ''}" data-hdm="${esc(p.name)}"><span class="hdmnom">${numDe(p.name)}${esc(p.name)}</span>${mien === p.name ? '<b>✓</b>' : ''}</button>`).join('')}</div>`
     : `<p class="note">Vote en cours jusqu’à ${fin}, résultat affiché à ce moment-là. ${myId() ? 'Ton compte doit d’abord être validé pour voter.' : 'Il faut un compte pour voter.'}</p>
       ${!myId() ? '<a class="fbtn" href="#/connexion" style="width:100%;margin-top:8px">Se connecter pour voter</a>' : ''}`}
     ${avecVoix ? `<details class="hdmadm"><summary>Votes en cours (${total}), visible seulement par les admins</summary>${detail()}</details>` : ''}</section>`;
