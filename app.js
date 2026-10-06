@@ -3026,7 +3026,7 @@ async function officielsView(){
     }).join('');
     const aPrevenir = M.some(m => (m.postes || []).some(p => p.statut === 'propose' && !p.notif));
     return `<div class="kpis"><div class="kpi"><b>${pourvus}</b><span>Postes pourvus</span></div><div class="kpi"><b class="${manque ? 'rouge' : ''}">${manque}</b><span>À pourvoir</span></div><div class="kpi"><b>${attente}</b><span>Pas encore confirmés</span></div><div class="kpi"><b class="${sansRep.length ? 'rouge' : ''}">${sansRep.length}</b><span>Sans dispo</span></div></div>
-      ${!B.length ? '<div class="msg">Aucun bénévole pour l’instant : chacun coche ce qu’il peut faire dans « Mon compte » (délégué, touche, central).</div>' : ''}
+      ${!B.length ? '<div class="msg">Le groupe arbitres est vide : ajoute les bénévoles et leurs postes dans l’onglet <a href="javascript:void 0" data-mode="groupe">« Groupe arbitres »</a>.</div>' : ''}
       ${alertes.length ? `<div class="msg err">${alertes.join('<br>')}</div>` : ''}
       ${sansRep.length && M.length ? `<div class="msg">Pas encore de dispos : ${sansRep.map(b => esc(b.nom)).join(', ')}. <button class="link" id="offRelance">Relancer</button> <small>(relance automatique le jeudi à 19 h)</small></div>` : ''}
       ${M.length ? `<div class="foot" style="margin:6px 0 14px"><button class="fbtn primary" id="offAuto">✨ Proposer automatiquement</button><button class="fbtn${aPrevenir ? ' club' : ''}" id="offPub"${aPrevenir ? '' : ' disabled'}>📣 Prévenir les désignés</button></div>` : '<div class="empty">Pas de match seniors ce week-end.</div>'}
@@ -3070,7 +3070,7 @@ async function officielsView(){
   function choisir(m, r){
     const cs = candidats(m, r), p = poste(m, r);
     openSheet(`<h3 id="shTitle">${OFF_ROLES[r]} · ${esc(offLib(m))}</h3><p>${esc(offJour(m))}. Du plus au moins adapté : dispo, choix de la personne, nombre de fois cette saison.</p>
-      <div class="alist">${cs.map(c => `<button type="button" class="arow ocand${c.ok ? '' : ' off'}" data-u="${c.b.id}"${c.ok ? '' : ' disabled'}><div class="who"><b>${esc(c.b.nom)}</b><small>${c.dj === 'oui' ? '✅ dispo' : c.dj === 'non' ? '❌ pas dispo' : '❔ pas répondu'} · ${c.b.saison || 0} fois cette saison${c.raisons.length ? ' · ' + esc(c.raisons.join(' · ')) : ''}</small></div></button>`).join('') || '<div class="empty">Personne n’a coché ce rôle dans son compte.</div>'}</div>
+      <div class="alist">${cs.map(c => `<button type="button" class="arow ocand${c.ok ? '' : ' off'}" data-u="${c.b.id}"${c.ok ? '' : ' disabled'}><div class="who"><b>${esc(c.b.nom)}</b><small>${c.dj === 'oui' ? '✅ dispo' : c.dj === 'non' ? '❌ pas dispo' : '❔ pas répondu'} · ${c.b.saison || 0} fois cette saison${c.raisons.length ? ' · ' + esc(c.raisons.join(' · ')) : ''}</small></div></button>`).join('') || '<div class="empty">Personne du groupe arbitres n’a ce poste : ajoute-le dans l’onglet « Groupe arbitres ».</div>'}</div>
       <div class="foot" style="margin-top:8px">${p ? '<button class="fbtn" id="offVide">Laisser vide</button>' : ''}<button class="fbtn" id="offNo">Annuler</button></div>`);
     view.ownerDocument.querySelectorAll('#shBody [data-u]').forEach(b => b.onclick = async () => {
       const { error } = await sb.rpc('officiels_affecter', { p_match: m.id, p_poste: r, p_user: b.dataset.u });
@@ -3088,7 +3088,7 @@ async function officielsView(){
     const joue = joueEn(D.moi);
     const role = { touche: '', delegue: '🧾 Accueil des officiels et des adversaires, tablette de la feuille de match, sécurité autour du terrain.', central: '📣 Sifflet, cartons, montre. Tu remplis la tablette avec le délégué.' };
     return `${mes.length ? `<div class="sec">Mes désignations</div>${mes.map(([m, p]) => `<section class="ocard moi"><b>${OFF_ROLES[p.poste]}</b> · ${esc(offLib(m))}<br><small>${esc(offJour(m))}${m.club_side === 'H' ? ' · à Mésanger' : m.lieu ? ' · ' + esc(m.lieu) : ''}</small>
-        ${role[p.poste] || !D.moi.licence ? `<p class="note" style="margin:6px 0">${role[p.poste]}${D.moi.licence ? '' : (role[p.poste] ? ' ' : '') + 'Pense à mettre ton numéro de licence dans Mon compte (feuille de match).'}</p>` : ''}
+        ${role[p.poste] ? `<p class="note" style="margin:6px 0">${role[p.poste]}</p>` : ''}
         ${p.statut === 'confirme' ? `<span class="ost confirme">Confirmé ✓</span> <button class="link" data-non="${m.id}|${p.poste}">Je ne peux plus</button>` : `<div class="foot" style="margin-top:6px"><button class="fbtn primary" data-oui="${m.id}|${p.poste}">Je confirme</button><button class="fbtn" data-non="${m.id}|${p.poste}">Je ne peux pas</button></div>`}</section>`).join('')}` : ''}
       ${M.length ? `<div class="sec">Mes dispos ce week-end</div>
       <section class="ocard">${jours.map(([k, l]) => `<div class="odispo"><span>${l}</span><div class="seg">${[['oui', 'Dispo'], ['non', 'Pas dispo']].map(([v, t]) => `<button type="button" data-d="${k}|${v}" class="${d[k] === v ? 'on' : ''}">${t}</button>`).join('')}</div></div>`).join('')}
