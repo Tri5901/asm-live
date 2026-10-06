@@ -3020,7 +3020,7 @@ async function officielsView(){
         return `<div class="oposte"><span class="orole">${OFF_ROLES[r]}</span>${etat}<button class="amod" data-choisir="${m.id}|${r}">${p && p.statut !== 'refuse' ? 'Changer' : 'Choisir'}</button></div>`;
       }).join('');
       return `<section class="ocard"><div class="ohead"><span class="tchip">${teamLetter(m.equipe)}</span><div><b>${m.club_side === 'H' ? '🏠 contre' : '🚌 à'} ${esc(offAdv(m))}</b><small>${esc(offJour(m))} · ${esc(m.competition || '')}${m.club_side !== 'H' && m.lieu ? ' · ' + esc(m.lieu) : ''}</small></div></div>
-        <label class="odesig">Désignation FFF (MyFFF)${m.officiels_saisi ? '' : ' <em>· par défaut, à vérifier</em>'}<select data-desig="${m.id}">${OFF_DESIG.map(([v, l]) => `<option value="${v}"${v === m.officiels ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label class="odesig">Désignation FFF (MyFFF)${m.officiels_fff ? ' <em class="offfff">· relevée sur la FFF</em>' : m.officiels_saisi ? '' : ' <em>· par défaut, à vérifier</em>'}<select data-desig="${m.id}">${OFF_DESIG.map(([v, l]) => `<option value="${v}"${v === m.officiels ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
         ${lignes || '<p class="note" style="margin:6px 0 0">Rien à fournir pour ce match 👍</p>'}
         ${m.officiels !== 'aucun' ? `<button class="link" data-absent="${m.id}">🚨 L’officiel ne vient pas</button>` : ''}</section>`;
     }).join('');
