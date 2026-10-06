@@ -392,6 +392,7 @@ async function route(){
     if (page==='compte') return accountView();
     if (page==='cgu') return cguView();
     if (page==='admin') return await (arg === 'stats' ? siteStatsView() : adminView());
+    if (page==='officiels') return await officielsView();
     location.hash = '#/';
   }catch(e){
     console.error(e);
@@ -2471,11 +2472,13 @@ function accountView(){
       ${isAdmin() ? '<a class="fbtn" href="#/admin">Gérer les accès</a><a class="fbtn" href="#/admin/stats">📊 Statistiques du site</a>' : ''}
     </div>
     <div class="foot" style="margin-top:10px"><button class="fbtn" id="logout">Se déconnecter</button></div>
+    ${isAdmin() ? '<p class="note appver" id="appVer"></p>' : ''}
     <a class="link" href="#/cgu" style="display:block;text-align:center;margin-top:14px">Conditions d’utilisation</a>
     <button class="link danger-link" id="delMe" style="width:100%;margin-top:8px">Supprimer mon compte</button>
   </div>
-  <div class="card monjoueur" id="monJoueur"><div class="loading">Chargement de tes stats…</div></div>`;
-  monJoueurBloc();
+  <div class="card monjoueur" id="monJoueur"><div class="loading">Chargement de tes stats…</div></div>
+  ${role !== 'pending' && role !== 'supprime' && profile && 'officiel_roles' in profile ? offCompteHTML() : ''}`;
+  monJoueurBloc(); offCompteBind(); if (isAdmin()) versionAdmin();
   $('editNom').onclick = () => nameView(false);
   $('delMe').onclick = () => askConfirm('Supprimer ton compte ?',
     'Tu ne pourras plus te connecter. Les matchs et actions que tu as saisis restent dans l’historique, avec ton nom. Cette suppression est définitive.',
@@ -2945,6 +2948,236 @@ async function siteStatsView(){
     view.querySelectorAll('[data-j]').forEach(b => b.onclick = () => { statsJours = +b.dataset.j; draw(); });
   };
   await draw();
+}
+
+// ---------- Officiels : délégués et arbitres bénévoles des matchs seniors ----------
+// Règles : à domicile toujours un délégué ; sans officiel désigné, le club qui reçoit fournit le central et chaque club
+// une touche ; central officiel → une touche ; trio → rien. Coordinateurs : admins et responsables.
+// Le bloc de « Mon compte » n'apparaît que si la base a les colonnes (supabase/officiels.sql exécuté).
+const OFF_ROLES = { delegue: 'Délégué', central: 'Arbitre central', touche: 'Arbitre de touche' };
+const OFF_DESIG = [['aucun', 'Aucun officiel'], ['central', 'Arbitre central officiel'], ['trio', 'Trio officiel']];
+const offBesoins = (m, desig) => { const dom = m.club_side === 'H', l = []; if (dom) l.push('delegue'); if (desig === 'aucun'){ if (dom) l.push('central'); l.push('touche'); } else if (desig === 'central') l.push('touche'); return l; };
+const offParis = iso => new Date(new Date(iso).toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
+const offCle = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+// samedi du week-end (le dimanche renvoie au samedi d'avant) ; les 4 prochains week-ends
+const offSamedi = iso => { const p = offParis(iso), s = new Date(p); s.setDate(p.getDate() + (p.getDay() === 0 ? -1 : 6 - p.getDay())); return offCle(s); };
+const offWeekends = () => { const l = [offSamedi(new Date().toISOString())]; for (let i = 1; i < 5; i++){ const d = new Date(l[0] + 'T12:00:00'); d.setDate(d.getDate() + 7 * i); l.push(offCle(d)); } return l; };
+const offEstSamedi = m => offParis(m.kickoff).getDay() === 6;
+// deux matchs impossibles à enchaîner : < 2 h 30 s'ils sont à Mésanger, < 3 h 30 s'il y a un déplacement
+const offChevauche = (a, b) => Math.abs(new Date(a.kickoff) - new Date(b.kickoff)) < (a.club_side === 'H' && b.club_side === 'H' ? 150 : 210) * 60000;
+const offAdv = m => m.club_side === 'H' ? m.away_name : m.home_name;
+const offLib = m => `${teamLetter(m.equipe)} ${m.club_side === 'H' ? 'contre' : 'à'} ${offAdv(m)}`;
+const offJour = m => new Date(m.kickoff).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Paris' }) + ' · ' + new Date(m.kickoff).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
+const offNotif = (match_id, type, users) => { if (session) return fetch('api/notify-officiels', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token }, body: JSON.stringify({ match_id, type, users }) }).then(r => r.ok ? r.json() : { sent: 0 }).catch(() => ({ sent: 0 })); return Promise.resolve({ sent: 0 }); };
+let offWk = null, offMode = null;
+
+async function officielsView(){
+  if (!session){ location.hash = '#/connexion'; return; }
+  const wks = offWeekends(); if (!wks.includes(offWk)) offWk = wks[0];
+  view.innerHTML = '<div class="loading">Chargement…</div>';
+  const { data: D, error } = await sb.rpc('officiels_semaine', { p_samedi: offWk });
+  if (!location.hash.startsWith('#/officiels')) return;
+  if (error || !D){ view.innerHTML = `<div class="empty">${isNetErr(error) ? 'Pas de réseau.' : /groupe arbitres/.test(error && error.message) ? 'Cette page est réservée au groupe arbitres. Ce sont les responsables qui y ajoutent les bénévoles.' : 'Impossible de charger les officiels.'}</div>`; return; }
+  const benevole = (D.moi.roles || []).length > 0;
+  if (!offMode || (offMode !== 'moi' && !D.staff) || (offMode === 'moi' && !benevole)) offMode = D.staff ? 'coord' : 'moi';
+  const M = D.matchs || [], B = D.benevoles || [];
+  const dispoDe = id => (D.dispos || []).find(d => d.user_id === id) || null;
+  const jour = m => offEstSamedi(m) ? 'sam' : 'dim';
+  const joueEn = b => M.filter(x => b.joueur && (x.joueurs || []).some(n => playerKey(n) === playerKey(b.joueur)));
+  const poste = (m, r) => (m.postes || []).find(p => p.poste === r);
+
+  function candidats(m, r, plan){
+    return B.filter(b => (b.roles || []).includes(r)).map(b => {
+      const d = dispoDe(b.id), dj = d ? d[jour(m)] : null, raisons = [];
+      let ok = true, score = 0;
+      if (dj === 'non'){ ok = false; raisons.push('pas dispo'); }
+      if (dj == null) score -= 2;
+      joueEn(b).forEach(x => { if (x.id === m.id || offChevauche(x, m)){ ok = false; raisons.push(x.id === m.id ? 'joue ce match' : 'joue en ' + teamLetter(x.equipe) + ' à ' + offJour(x).split(' · ')[1]); } });
+      M.forEach(x => (x.postes || []).concat((plan || []).filter(p => p.m === x.id).map(p => ({ poste: p.r, user_id: p.u, statut: 'propose' }))).forEach(p => {
+        if (p.user_id !== b.id || p.statut === 'refuse') return;
+        if (x.id === m.id && p.poste !== r){ ok = false; raisons.push('déjà ' + OFF_ROLES[p.poste].toLowerCase() + ' sur ce match'); }
+        else if (x.id !== m.id && offChevauche(x, m)){ ok = false; raisons.push('déjà pris en ' + teamLetter(x.equipe)); }
+      }));
+      const pr = ((d && d.prefs) || {})[m.id] || [];
+      if (pr.includes(r)){ score += 5; raisons.unshift('⭐ a demandé ce poste'); } else if (pr.length){ score += 2; raisons.unshift('veut ce match'); }
+      score -= (b.saison || 0) * 0.6;
+      return { b, ok, score, raisons, dj };
+    }).sort((a, c) => (c.ok - a.ok) || (c.score - a.score));
+  }
+  const recharger = () => officielsView();
+
+  // ----- Coordinateur -----
+  function coord(){
+    let manque = 0, pourvus = 0, attente = 0; const alertes = [];
+    const sansRep = B.filter(b => { const d = dispoDe(b.id); return !d || (d.sam == null && d.dim == null); });
+    const cartes = M.map(m => {
+      const b = offBesoins(m, m.officiels);
+      const lignes = b.map(r => {
+        const p = poste(m, r), libres = candidats(m, r).filter(c => c.ok);
+        if (!p || p.statut === 'refuse'){ manque++; if (!libres.length) alertes.push(`<b>${esc(offLib(m))}</b> : personne de libre pour ${OFF_ROLES[r].toLowerCase()}`); }
+        else { pourvus++; if (p.statut === 'propose') attente++; }
+        const etat = !p ? '<span class="ost vide">À pourvoir</span>' : p.statut === 'refuse' ? `<span class="ost vide">${esc(p.nom || '?')} ne peut pas</span>` : `<span class="ost ${p.statut}">${esc(p.nom || '?')} · ${p.statut === 'confirme' ? 'confirmé ✓' : p.notif ? 'prévenu, en attente' : 'pas encore prévenu'}</span>`;
+        return `<div class="oposte"><span class="orole">${OFF_ROLES[r]}</span>${etat}<button class="amod" data-choisir="${m.id}|${r}">${p && p.statut !== 'refuse' ? 'Changer' : 'Choisir'}</button></div>`;
+      }).join('');
+      return `<section class="ocard"><div class="ohead"><span class="tchip">${teamLetter(m.equipe)}</span><div><b>${m.club_side === 'H' ? '🏠 contre' : '🚌 à'} ${esc(offAdv(m))}</b><small>${esc(offJour(m))} · ${esc(m.competition || '')}${m.club_side !== 'H' && m.lieu ? ' · ' + esc(m.lieu) : ''}</small></div></div>
+        <label class="odesig">Désignation FFF (MyFFF)${m.officiels_saisi ? '' : ' <em>· par défaut, à vérifier</em>'}<select data-desig="${m.id}">${OFF_DESIG.map(([v, l]) => `<option value="${v}"${v === m.officiels ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+        ${lignes || '<p class="note" style="margin:6px 0 0">Rien à fournir pour ce match 👍</p>'}
+        ${m.officiels !== 'aucun' ? `<button class="link" data-absent="${m.id}">🚨 L’officiel ne vient pas</button>` : ''}</section>`;
+    }).join('');
+    const aPrevenir = M.some(m => (m.postes || []).some(p => p.statut === 'propose' && !p.notif));
+    return `<div class="kpis"><div class="kpi"><b>${pourvus}</b><span>Postes pourvus</span></div><div class="kpi"><b class="${manque ? 'rouge' : ''}">${manque}</b><span>À pourvoir</span></div><div class="kpi"><b>${attente}</b><span>Pas encore confirmés</span></div><div class="kpi"><b class="${sansRep.length ? 'rouge' : ''}">${sansRep.length}</b><span>Sans dispo</span></div></div>
+      ${!B.length ? '<div class="msg">Aucun bénévole pour l’instant : chacun coche ce qu’il peut faire dans « Mon compte » (délégué, touche, central).</div>' : ''}
+      ${alertes.length ? `<div class="msg err">${alertes.join('<br>')}</div>` : ''}
+      ${sansRep.length && M.length ? `<div class="msg">Pas encore de dispos : ${sansRep.map(b => esc(b.nom)).join(', ')}. <button class="link" id="offRelance">Relancer</button> <small>(relance automatique le jeudi à 19 h)</small></div>` : ''}
+      ${M.length ? `<div class="foot" style="margin:6px 0 14px"><button class="fbtn primary" id="offAuto">✨ Proposer automatiquement</button><button class="fbtn${aPrevenir ? ' club' : ''}" id="offPub"${aPrevenir ? '' : ' disabled'}>📣 Prévenir les désignés</button></div>` : '<div class="empty">Pas de match seniors ce week-end.</div>'}
+      ${cartes}
+      ${M.length ? `<details class="ocard"><summary><b>Règles utilisées</b></summary><table class="oregles"><tr><th>Désignation FFF</th><th>Domicile</th><th>Extérieur</th></tr><tr><td>Aucun officiel</td><td>délégué + central + 1 touche</td><td>1 touche</td></tr><tr><td>Central officiel</td><td>délégué + 1 touche</td><td>1 touche</td></tr><tr><td>Trio officiel</td><td>délégué</td><td>rien</td></tr></table><p class="note">Par défaut : trio en Régional et en Coupe des Pays de la Loire, aucun officiel en District ; à corriger selon MyFFF. Personne n’est proposé s’il joue ou s’il est déjà pris sur un match trop proche (2 h 30 d’écart à Mésanger, 3 h 30 avec un déplacement).</p></details>
+      <div class="foot" style="margin-top:10px"><button class="fbtn" id="offWa">📋 Texte pour WhatsApp</button></div>` : ''}`;
+  }
+  function bindCoord(){
+    view.querySelectorAll('[data-desig]').forEach(s => s.onchange = async () => {
+      const { data: retires, error } = await sb.rpc('officiels_set_designation', { p_match: s.dataset.desig, p_desig: s.value });
+      if (error){ toast(isNetErr(error) ? 'Pas de réseau' : 'Modification refusée'); return; }
+      if (retires && retires.length) offNotif(s.dataset.desig, 'retire', retires);
+      recharger();
+    });
+    view.querySelectorAll('[data-choisir]').forEach(b => b.onclick = () => { const [id, r] = b.dataset.choisir.split('|'); choisir(M.find(m => m.id === id), r); });
+    view.querySelectorAll('[data-absent]').forEach(b => b.onclick = () => askConfirm('L’officiel ne vient pas ?', 'Le match passe en « aucun officiel » : les postes de central et de touche s’ouvrent, et les bénévoles libres reçoivent une notification urgente.', 'Oui, prévenir', async () => {
+      const { error } = await sb.rpc('officiels_set_designation', { p_match: b.dataset.absent, p_desig: 'aucun' });
+      if (error){ toast('Modification refusée'); return; }
+      const r = await offNotif(b.dataset.absent, 'urgence'); toast(`Postes ouverts · ${r.sent || 0} notification(s) envoyée(s)`); recharger();
+    }));
+    if ($('offAuto')) $('offAuto').onclick = async () => {
+      const plan = [], postes = [];
+      M.forEach(m => offBesoins(m, m.officiels).forEach(r => { const p = poste(m, r); if (!p || p.statut === 'refuse') postes.push([m, r]); }));
+      postes.sort((a, c) => candidats(...a).filter(x => x.ok).length - candidats(...c).filter(x => x.ok).length);
+      postes.forEach(([m, r]) => { const c = candidats(m, r, plan).find(x => x.ok && x.dj === 'oui'); if (c) plan.push({ m: m.id, r, u: c.b.id }); });
+      for (const p of plan){ const { error } = await sb.rpc('officiels_affecter', { p_match: p.m, p_poste: p.r, p_user: p.u }); if (error){ toast('Modification refusée'); break; } }
+      toast(`${plan.length} poste(s) proposé(s) sur ${postes.length}${plan.length < postes.length ? ' · les autres n’ont personne de dispo' : ''}`); recharger();
+    };
+    if ($('offPub')) $('offPub').onclick = async () => {
+      let n = 0; for (const m of M) if ((m.postes || []).some(p => p.statut === 'propose' && !p.notif)){ const r = await offNotif(m.id, 'designe'); n += r.sent || 0; }
+      toast(`Désignés prévenus · ${n} notification(s)`); recharger();
+    };
+    if ($('offRelance')) $('offRelance').onclick = async () => { const r = await offNotif(M[0].id, 'relance'); toast(`${r.sent || 0} relance(s) envoyée(s)`); };
+    if ($('offWa')) $('offWa').onclick = () => {
+      const t = '⚽ Officiels du week-end\n' + M.map(m => `\n${offLib(m)} – ${offJour(m)}\n` + (offBesoins(m, m.officiels).map(r => { const p = poste(m, r); return `  • ${OFF_ROLES[r]} : ${p && p.statut !== 'refuse' ? (p.nom || '?') + (p.statut === 'confirme' ? ' ✅' : ' (à confirmer)') : '❓ on cherche quelqu’un'}`; }).join('\n') || '  • rien à fournir')).join('\n') + '\n\nDispos et réponses dans l’appli : asm-live.vercel.app/#/officiels';
+      openSheet(`<h3 id="shTitle">Texte pour WhatsApp</h3><textarea id="offTxt" style="width:100%;height:240px">${esc(t)}</textarea><div class="foot" style="margin-top:8px"><button class="fbtn primary" id="offCopy">Copier</button><button class="fbtn" id="offClose">Fermer</button></div>`);
+      $('offCopy').onclick = async () => { try{ await navigator.clipboard.writeText(t); toast('Texte copié'); closeSheet(); }catch(e){ $('offTxt').select(); } };
+      $('offClose').onclick = closeSheet;
+    };
+  }
+  function choisir(m, r){
+    const cs = candidats(m, r), p = poste(m, r);
+    openSheet(`<h3 id="shTitle">${OFF_ROLES[r]} · ${esc(offLib(m))}</h3><p>${esc(offJour(m))}. Du plus au moins adapté : dispo, choix de la personne, nombre de fois cette saison.</p>
+      <div class="alist">${cs.map(c => `<button type="button" class="arow ocand${c.ok ? '' : ' off'}" data-u="${c.b.id}"${c.ok ? '' : ' disabled'}><div class="who"><b>${esc(c.b.nom)}</b><small>${c.dj === 'oui' ? '✅ dispo' : c.dj === 'non' ? '❌ pas dispo' : '❔ pas répondu'} · ${c.b.saison || 0} fois cette saison${c.raisons.length ? ' · ' + esc(c.raisons.join(' · ')) : ''}</small></div></button>`).join('') || '<div class="empty">Personne n’a coché ce rôle dans son compte.</div>'}</div>
+      <div class="foot" style="margin-top:8px">${p ? '<button class="fbtn" id="offVide">Laisser vide</button>' : ''}<button class="fbtn" id="offNo">Annuler</button></div>`);
+    view.ownerDocument.querySelectorAll('#shBody [data-u]').forEach(b => b.onclick = async () => {
+      const { error } = await sb.rpc('officiels_affecter', { p_match: m.id, p_poste: r, p_user: b.dataset.u });
+      closeSheet(); if (error){ toast('Modification refusée'); return; } recharger();
+    });
+    if ($('offVide')) $('offVide').onclick = async () => { await sb.rpc('officiels_affecter', { p_match: m.id, p_poste: r, p_user: null }); closeSheet(); recharger(); };
+    $('offNo').onclick = closeSheet;
+  }
+
+  // ----- Bénévole (moi) -----
+  function moi(){
+    const d = dispoDe(D.moi.id) || { sam: null, dim: null, prefs: {} };
+    const jours = [['sam', 'Samedi'], ['dim', 'Dimanche']].filter(([k]) => M.some(m => (offEstSamedi(m)) === (k === 'sam')));
+    const mes = M.flatMap(m => (m.postes || []).filter(p => p.user_id === D.moi.id && p.statut !== 'refuse').map(p => [m, p]));
+    const joue = joueEn(D.moi);
+    const role = { touche: '', delegue: '🧾 Accueil des officiels et des adversaires, tablette de la feuille de match, sécurité autour du terrain.', central: '📣 Sifflet, cartons, montre. Tu remplis la tablette avec le délégué.' };
+    return `${mes.length ? `<div class="sec">Mes désignations</div>${mes.map(([m, p]) => `<section class="ocard moi"><b>${OFF_ROLES[p.poste]}</b> · ${esc(offLib(m))}<br><small>${esc(offJour(m))}${m.club_side === 'H' ? ' · à Mésanger' : m.lieu ? ' · ' + esc(m.lieu) : ''}</small>
+        ${role[p.poste] || !D.moi.licence ? `<p class="note" style="margin:6px 0">${role[p.poste]}${D.moi.licence ? '' : (role[p.poste] ? ' ' : '') + 'Pense à mettre ton numéro de licence dans Mon compte (feuille de match).'}</p>` : ''}
+        ${p.statut === 'confirme' ? `<span class="ost confirme">Confirmé ✓</span> <button class="link" data-non="${m.id}|${p.poste}">Je ne peux plus</button>` : `<div class="foot" style="margin-top:6px"><button class="fbtn primary" data-oui="${m.id}|${p.poste}">Je confirme</button><button class="fbtn" data-non="${m.id}|${p.poste}">Je ne peux pas</button></div>`}</section>`).join('')}` : ''}
+      ${M.length ? `<div class="sec">Mes dispos ce week-end</div>
+      <section class="ocard">${jours.map(([k, l]) => `<div class="odispo"><span>${l}</span><div class="seg">${[['oui', 'Dispo'], ['non', 'Pas dispo']].map(([v, t]) => `<button type="button" data-d="${k}|${v}" class="${d[k] === v ? 'on' : ''}">${t}</button>`).join('')}</div></div>`).join('')}
+        ${joue.length ? `<p class="note">⚽ Tu es dans la compo de la ${joue.map(x => teamLetter(x.equipe)).join(', ')} : tu ne seras pas proposé aux mêmes heures.</p>` : ''}
+        <p class="note">Tu peux faire : ${(D.moi.roles || []).map(r => OFF_ROLES[r].toLowerCase()).join(', ')} <small>(fixé par les responsables)</small></p></section>
+      <div class="sec">Où tu aimerais être (facultatif)</div>
+      ${M.map(m => { const b = offBesoins(m, m.officiels).filter(r => (D.moi.roles || []).includes(r)), pr = (d.prefs || {})[m.id] || [];
+        return `<section class="ocard"><div class="ohead"><span class="tchip">${teamLetter(m.equipe)}</span><div><b>${m.club_side === 'H' ? '🏠 contre' : '🚌 à'} ${esc(offAdv(m))}</b><small>${esc(offJour(m))}</small></div></div>
+          ${b.length ? `<div class="chipbar">${b.map(r => `<button type="button" data-pref="${m.id}|${r}" class="${pr.includes(r) ? 'on' : ''}">${OFF_ROLES[r]}</button>`).join('')}</div>` : '<p class="note" style="margin:6px 0 0">Pas de besoin pour toi sur ce match.</p>'}</section>`; }).join('')}` : '<div class="empty">Pas de match seniors ce week-end.</div>'}`;
+  }
+  function bindMoi(){
+    const d = dispoDe(D.moi.id) || { sam: null, dim: null, prefs: {} };
+    const enregistrer = async () => { const { error } = await sb.rpc('officiels_set_dispo', { p_samedi: offWk, p_sam: d.sam || '', p_dim: d.dim || '', p_prefs: d.prefs || {} }); if (error){ toast(isNetErr(error) ? 'Pas de réseau' : 'Enregistrement refusé'); return; } toast('Dispos enregistrées'); recharger(); };
+    view.querySelectorAll('[data-d]').forEach(b => b.onclick = () => { const [k, v] = b.dataset.d.split('|'); d[k] = d[k] === v ? null : v; enregistrer(); });
+    view.querySelectorAll('[data-pref]').forEach(b => b.onclick = () => { const [id, r] = b.dataset.pref.split('|'); d.prefs = d.prefs || {}; const l = d.prefs[id] || []; d.prefs[id] = l.includes(r) ? l.filter(x => x !== r) : [...l, r]; enregistrer(); });
+    view.querySelectorAll('[data-oui]').forEach(b => b.onclick = async () => { const [id, r] = b.dataset.oui.split('|'); const { error } = await sb.rpc('officiels_repondre', { p_match: id, p_poste: r, p_ok: true }); toast(error ? 'Refusé' : 'Merci, c’est noté !'); recharger(); });
+    view.querySelectorAll('[data-non]').forEach(b => b.onclick = () => askConfirm('Tu ne peux pas ?', 'Les responsables sont prévenus tout de suite pour trouver quelqu’un d’autre.', 'Je ne peux pas', async () => {
+      const [id, r] = b.dataset.non.split('|'); const { error } = await sb.rpc('officiels_repondre', { p_match: id, p_poste: r, p_ok: false });
+      if (error){ toast('Refusé'); return; } offNotif(id, 'refus'); toast('C’est noté, les responsables sont prévenus'); recharger();
+    }));
+  }
+
+  view.innerHTML = `<div class="offwrap">
+    <div class="acctop"><h1>Officiels</h1><a class="link" href="#/compte">← Mon compte</a></div>
+    ${D.staff ? `<div class="seg admtabs offtabs">${[['coord', 'Coordination'], ['groupe', 'Groupe arbitres']].concat(benevole ? [['moi', 'Mes dispos']] : []).map(([k, l]) => `<a href="javascript:void 0" data-mode="${k}" class="${offMode === k ? 'on' : ''}">${l}</a>`).join('')}</div>` : ''}
+    ${offMode === 'groupe' ? '<div id="offGrp"><div class="loading">Chargement…</div></div>' : `<select id="offWk" class="offsel">${wks.map(w => `<option value="${w}"${w === offWk ? ' selected' : ''}>Week-end du ${new Date(w + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}</option>`).join('')}</select>
+    ${offMode === 'coord' ? coord() : moi()}`}</div>`;
+  if ($('offWk')) $('offWk').onchange = e => { offWk = e.target.value; officielsView(); };
+  view.querySelectorAll('[data-mode]').forEach(a => a.onclick = () => { offMode = a.dataset.mode; officielsView(); });
+  if (offMode === 'groupe') offGroupe(); else if (offMode === 'coord') bindCoord(); else bindMoi();
+}
+
+// Groupe arbitres : les coordinateurs choisissent qui en fait partie et ce que chacun peut faire
+async function offGroupe(){
+  const box = $('offGrp'); if (!box) return;
+  const { data: C, error } = await sb.rpc('officiels_comptes');
+  if (!$('offGrp')) return;
+  if (error || !C){ box.innerHTML = '<div class="empty">Impossible de charger les comptes.</div>'; return; }
+  const membres = C.filter(c => (c.roles || []).length);
+  box.innerHTML = `<p class="note" style="margin:0 0 10px">Seuls les membres du groupe reçoivent le sondage des dispos et peuvent être désignés. Tu choisis pour chacun les postes qu’il peut tenir.</p>
+    <button class="fbtn primary" id="offAjout" style="width:100%;margin-bottom:12px">+ Ajouter au groupe</button>
+    <div class="sec">Membres · ${membres.length}</div>
+    ${membres.length ? '<div class="alist">' + membres.map(c => `<div class="arow"><div class="who"><b>${esc(c.nom)}</b><small>${c.roles.map(r => OFF_ROLES[r]).join(' · ')}${c.licence ? ' · licence ' + esc(c.licence) : ''}</small></div><button type="button" class="amod" data-grp="${c.id}">Modifier</button></div>`).join('') + '</div>' : '<div class="empty">Personne pour l’instant. Ajoute les bénévoles qui font délégué ou arbitre.</div>'}`;
+  const editer = c => {
+    const r = c.roles || [];
+    openSheet(`<h3 id="shTitle">${esc(c.nom)}</h3><p>Postes qu’il ou elle peut tenir :</p>
+      <div class="offroles">${Object.entries(OFF_ROLES).map(([k, l]) => `<label class="fl"><input type="checkbox" value="${k}"${r.includes(k) ? ' checked' : ''}><span>${l}</span></label>`).join('')}</div>
+      <label class="field"><span>Numéro de licence <small>(feuille de match, facultatif)</small></span><input id="grpLic" inputmode="numeric" autocomplete="off" value="${esc(c.licence || '')}"></label>
+      <div class="foot" style="margin-top:8px"><button class="fbtn primary" id="grpOk">Enregistrer</button>${r.length ? '<button class="fbtn danger" id="grpOut">Retirer du groupe</button>' : '<button class="fbtn" id="grpNo">Annuler</button>'}</div>`);
+    const save = async roles => {
+      const { error: e } = await sb.rpc('officiels_set_roles', { p_user: c.id, p_roles: roles, p_licence: $('grpLic').value });
+      closeSheet(); if (e){ toast(isNetErr(e) ? 'Pas de réseau' : 'Modification refusée'); return; }
+      toast(roles.length ? (r.length ? 'Postes mis à jour' : c.nom + ' ajouté au groupe') : c.nom + ' retiré du groupe'); offGroupe();
+    };
+    $('grpOk').onclick = () => { const roles = [...document.querySelectorAll('#shBody input[type=checkbox]:checked')].map(i => i.value); if (!roles.length){ toast('Coche au moins un poste (ou « Retirer du groupe »)'); return; } save(roles); };
+    if ($('grpOut')) $('grpOut').onclick = () => save([]);
+    if ($('grpNo')) $('grpNo').onclick = closeSheet;
+  };
+  box.querySelectorAll('[data-grp]').forEach(b => b.onclick = () => editer(C.find(c => c.id === b.dataset.grp)));
+  $('offAjout').onclick = () => {
+    const autres = C.filter(c => !(c.roles || []).length);
+    openSheet(`<h3 id="shTitle">Ajouter au groupe arbitres</h3><input id="grpQ" class="dpq" type="search" placeholder="Rechercher un nom…" autocomplete="off"><div class="alist dplist" id="grpList"></div><button class="cancel" id="grpNo2">Annuler</button>`);
+    const q = $('grpQ'), list = $('grpList');
+    const dessine = () => { const w = sansAccent(q.value).split(/\s+/).filter(Boolean);
+      list.innerHTML = autres.filter(c => w.every(x => sansAccent(c.nom).includes(x))).slice(0, 40).map(c => `<button type="button" class="arow dprow" data-add="${c.id}"><div class="who"><b>${esc(c.nom)}</b></div></button>`).join('') || '<div class="empty">Aucun compte ne correspond.</div>';
+      list.querySelectorAll('[data-add]').forEach(b => b.onclick = () => editer(autres.find(c => c.id === b.dataset.add))); };
+    q.oninput = dessine; dessine(); $('grpNo2').onclick = closeSheet;
+  };
+}
+
+// « Mon compte » : je peux aider comme délégué / arbitre
+function offCompteHTML(){
+  const roles = (profile && profile.officiel_roles) || [];
+  if (!roles.length && !isStaff()) return '';
+  return `<div class="card" id="offCard"><h2>🧑‍⚖️ Délégués et arbitres</h2>
+    ${roles.length ? `<p class="sub">Tu fais partie du groupe arbitres : ${roles.map(r => OFF_ROLES[r].toLowerCase()).join(', ')}. Donne tes dispos chaque semaine pour les matchs seniors.</p>` : '<p class="sub">Organise les délégués et arbitres des matchs seniors, et gère le groupe arbitres.</p>'}
+    <a class="fbtn primary" href="#/officiels" style="width:100%">${roles.length ? 'Mes dispos et désignations' : 'Officiels du week-end'}</a></div>`;
+}
+function offCompteBind(){}
+
+// Admins : version de l'appli installée sur ce téléphone et dernière version en ligne
+async function versionAdmin(){
+  const el = $('appVer'); if (!el) return;
+  const num = t => { const m = String(t || '').match(/asm-v(\d+)/); return m ? +m[1] : null; };
+  let ici = null, enLigne = null;
+  try{ ici = Math.max(...(await caches.keys()).map(num).filter(Boolean)); if (!isFinite(ici)) ici = null; }catch(e){}
+  try{ enLigne = num(await (await fetch('sw.js?v=' + Date.now(), { cache: 'no-store' })).text()); }catch(e){}
+  if (!$('appVer')) return;
+  el.innerHTML = `Version de l’appli : <b>${ici ? 'v' + ici : enLigne ? 'v' + enLigne : '?'}</b>` + (enLigne && ici && enLigne > ici ? ` · <span class="majdispo">v${enLigne} disponible : ferme et rouvre l’appli</span>` : enLigne && ici ? ' · à jour' : '');
 }
 
 // Accès : qui a activé les notifications (nombre d'appareils, équipes dont il suit les buts)
