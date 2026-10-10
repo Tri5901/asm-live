@@ -708,7 +708,7 @@ async function hdmRemplir(m, evs, box, changer = false){
   if (!hdmOuvert(m)){
     const elus = R.filter(x => x.elu !== false), autres = R.filter(x => x.elu === false);
     if (!elus.length){ box.innerHTML = ''; return; }
-    box.innerHTML = `<section class="hdm"><h3>🏆 Homme du match</h3><p class="hdmwin">${elus.map(x => numDe(x.joueur) + esc(x.joueur)).join(' et ')}</p>
+    box.innerHTML = `<section class="hdm"><h3>🏆 ${elus.length > 1 ? 'Hommes du match (ex aequo)' : 'Homme du match'}</h3><p class="hdmwin">${elus.map(x => numDe(x.joueur) + esc(x.joueur)).join(' et ')}</p>
       ${autres.length ? `<p class="note" style="margin:10px 0 6px">Ont aussi reçu des voix, du plus au moins voté (visible par les admins et les responsables) :</p>
         <div class="hdmautres">${autres.map(x => `<span>${numDe(x.joueur)}${esc(x.joueur)}</span>`).join('')}</div>` : ''}</section>`;
     return;
@@ -922,9 +922,13 @@ async function hdmSaisonRemplir(box, filtre){
   if (!box) return;
   if (!hdmSaisonCache){ const { data } = await sb.rpc('hdm_gagnants'); hdmSaisonCache = data || []; }
   if (!box.isConnected) return;
-  const C = {}; hdmSaisonCache.filter(filtre).forEach(x => { C[x.joueur] = (C[x.joueur] || 0) + 1; });
+  // ex aequo : 1 titre pour chacun, en signalant ceux obtenus à égalité
+  const L = hdmSaisonCache.filter(filtre), parMatch = {};
+  L.forEach(x => { parMatch[x.match_id] = (parMatch[x.match_id] || 0) + 1; });
+  const C = {}, E = {};
+  L.forEach(x => { C[x.joueur] = (C[x.joueur] || 0) + 1; if (parMatch[x.match_id] > 1) E[x.joueur] = (E[x.joueur] || 0) + 1; });
   const top = Object.entries(C).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'fr')).slice(0, 5);
-  box.innerHTML = top.length ? `<section class="hdm"><h3>🏆 Hommes du match</h3><ol class="hdmtop">${top.map(([nm, k]) => `<li><span>${esc(nm)}</span><b>${k}</b></li>`).join('')}</ol></section>` : '';
+  box.innerHTML = top.length ? `<section class="hdm"><h3>🏆 Hommes du match</h3><ol class="hdmtop">${top.map(([nm, k]) => `<li><span>${esc(nm)}${E[nm] ? `<small class="hdmeg">dont ${E[nm]} à égalité</small>` : ''}</span><b>${k}</b></li>`).join('')}</ol></section>` : '';
 }
 
 // Historique des modifications d'un match (écrit par la base à chaque changement)
