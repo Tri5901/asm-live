@@ -2723,7 +2723,8 @@ async function statsViewFrom(playerArg, { ms, evs }){
     };
     const modeBar = `<div class="seg statmode" role="group" aria-label="Affichage">${[['joueurs', 'Tous les joueurs'], ['buteurs', 'Buteurs par équipe']].map(([v, l]) => `<button type="button" data-mode="${v}" class="${statMode===v?'on':''}" aria-pressed="${statMode===v}">${l}</button>`).join('')}</div>`;
     view.innerHTML = modeBar + `
-      <div class="seasons">${seasons.length > 1 ? `<label>Saison <select id="season">${seasons.map(s=>`<option${s===statSeason?' selected':''}>${s}</option>`).join('')}</select></label> ` : (statSeason ? `<b>Saison ${statSeason}</b> ` : '')}<label>Équipe <select id="steam"><option value="">Tout le club</option>${CATS.map(c => `<optgroup label="${esc(c)}">${catTeams(c).length > 1 ? `<option value="c:${esc(c)}"${!statF.team && statF.cat===c?' selected':''}>Toutes les équipes ${esc(c)}</option>` : ''}${catTeams(c).map(n=>`<option value="${n}"${statF.team===n?' selected':''}>${esc(teamLabel(n))}</option>`).join('')}</optgroup>`).join('')}</select></label></div>
+      <div class="seasons">${seasons.length > 1 ? `<label>Saison <select id="season">${seasons.map(s=>`<option${s===statSeason?' selected':''}>${s}</option>`).join('')}</select></label> ` : (statSeason ? `<b>Saison ${statSeason}</b> ` : '')}</div>
+      ${teamFilterHTML(statF, true)}
       <div class="chipbar compbar" role="group" aria-label="Compétition">${[['', 'Tout'], ['championnat', 'Championnat'], ['coupe', 'Coupes']].map(([v, l]) => `<button data-comp="${v}" class="${statComp===v?'on':''}" aria-pressed="${statComp===v}">${l}</button>`).join('')}</div>
       <div class="kpis">
         <div class="kpi"><b>${list.length}</b><span>Matchs</span></div>
@@ -2744,7 +2745,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
     });
     hdmSaisonRemplir($('hdmSaison'), x => seasonOf(x.kickoff) === statSeason && inFilter(statF, x.equipe)).catch(() => {});
     const s = $('season'); if (s) s.onchange = () => { statSeason = s.value; draw(); };
-    $('steam').onchange = e => { const v = e.target.value; statF.team = /^\d+$/.test(v) ? +v : 0; statF.cat = v.startsWith('c:') ? v.slice(2) : statF.team ? catOf(statF.team) : ''; draw(); };
+    bindTeamFilter(view, statF, true, draw);
     view.querySelectorAll('[data-comp]').forEach(b => b.onclick = () => { statComp = b.dataset.comp; draw(); });
     view.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { statMode = b.dataset.mode; draw(); });
     view.querySelectorAll('[data-voir]').forEach(b => b.onclick = () => {
