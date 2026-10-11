@@ -115,8 +115,8 @@ function periodText(m){
   if (isMiTemps(m)) return 'Mi-temps';
   return (m.period===1 ? '1re mi-temps' : '2e mi-temps') + (m.running ? '' : (m.period===1 && elapsedMs(m) >= m.half*60000 ? ' · mi-temps' : ' · en pause'));
 }
-// en direct : couleur selon le score du moment (vert on mène, rouge menés, gris égalité)
-const RES_DIRECT = { V: ['w', ''], D: ['l', ''], N: ['n', ''] };
+// en direct : couleur et mot selon le score du moment (vert on mène, rouge menés, gris égalité)
+const RES_DIRECT = { V: ['w', 'On mène'], D: ['l', 'Menés'], N: ['n', 'Égalité'] };
 const liveTexte = (m, res) => (isMiTemps(m) ? 'Mi-temps' : m.period ? currentMinute(m).label : 'Direct') + (res ? ' · ' + res : '');
 function resultOf(m, evs){
   const c = goals(evs, clubSide(m)), o = goals(evs, oppSide(m));
@@ -596,7 +596,7 @@ function boardHTML(m, evs, staff){
   const c = clubSide(m), niv = niveaux(m);
   const tniv = t => niv && niv[t] ? `<span class="tniv">${esc(niv[t])}</span>` : '';
   return `<section class="board" aria-label="Tableau d'affichage">
-    <div class="bmeta"><span>${esc(teamLabel(m.equipe))} · ${esc(fmtDate(m.kickoff))}${m.competition ? ' · ' + esc(m.competition) : ''}</span>${m.status==='direct' ? (rd => `<span class="badge live ${rd[0]}">Direct</span>`)(RES_DIRECT[resultOf(m, evs)]) : ''}</div>
+    <div class="bmeta"><span>${esc(teamLabel(m.equipe))} · ${esc(fmtDate(m.kickoff))}${m.competition ? ' · ' + esc(m.competition) : ''}</span>${m.status==='direct' ? (rd => `<span class="badge live ${rd[0]}">Direct · ${rd[1]}</span>`)(RES_DIRECT[resultOf(m, evs)]) : ''}</div>
     <div class="teams">
       <div class="team">${logoImg(m,'H','blg')}<span class="tname${c==='H'?' club':''}">${esc(teamName(m,'H'))}</span>${tniv('H')}</div>
       <div class="score" aria-live="polite"><span id="scH">${goals(evs,'H')}</span><span class="sep">–</span><span id="scA">${goals(evs,'A')}</span></div>
