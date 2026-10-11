@@ -2715,7 +2715,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
       <div class="chipbar compbar" role="group" aria-label="Compétition">${[['', 'Tout'], ['championnat', 'Championnat'], ['coupe', 'Coupes']].map(([v, l]) => `<button data-comp="${v}" class="${statComp===v?'on':''}" aria-pressed="${statComp===v}">${l}</button>`).join('')}</div>
       <div class="kpis">
         <div class="kpi"><b>${list.length}</b><span>Matchs</span></div>
-        <div class="kpi"><b>${W}-${D}-${L}</b><span>V-N-D</span></div>
+        <div class="kpi"><b class="kvnd">${W}-${D}-${L}</b><span>V-N-D</span></div>
         <div class="kpi"><b>${gf}</b><span>Buts marqués</span></div>
         <div class="kpi"><b>${ga}</b><span>Encaissés</span></div>
       </div>
