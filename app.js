@@ -22,6 +22,9 @@ const catOf = n => teamOf(n).categorie;
 const catTeams = c => EQUIPES.filter(e => e.categorie === c).map(e => e.id);
 // nom court dans sa catégorie : « U18 A » → « A », « Seniors B » → « B », « Loisirs » → « Loisirs »
 const shortIn = n => { const t = teamOf(n); return t.nom.startsWith(t.categorie + ' ') ? t.nom.slice(t.categorie.length + 1) : t.nom === t.categorie ? t.nom : t.court; };
+// équipe féminine (catégorie « … F ») : « Femme du match », « Joueuse »
+const estFem = n => / F$/.test(teamOf(n).categorie || '');
+const hdmTitre = (eqs, pl) => (eqs.length && eqs.every(estFem) ? 'Femme' : 'Homme') + (pl ? 's' : '') + ' du match';
 const teamRank = n => { const i = TEAMS.indexOf(n || 1); return i < 0 ? 999 : i; };
 // « Seniors A, B, C · U18 » : liste d'équipes lisible, regroupée par catégorie
 function teamsText(ids){
@@ -49,7 +52,7 @@ const sb = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KE
 const $ = id => document.getElementById(id);
 const view = $('view');
 const LABEL = {goal:'But', sub:'Remplacement', yellow:'Carton jaune', white:'Carton blanc', red:'Carton rouge'};
-const HALF = 45; // durée d'une mi-temps : toujours 45 min, non modifiable
+const HALF = 45; // durée d'une mi-temps par défaut (equipes.mi_temps : 40 pour le foot à 8 des Senior F), non modifiable pendant un match
 
 function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 const lsGet = (k, d) => { try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } };
@@ -779,22 +782,30 @@ const TERRAIN_DISPOS = {
   '4-4-2': [[50,91,'Gardien',1],[14,72,'Arrière gauche',3],[38,75,'Défenseur central',4],[62,75,'Défenseur central',5],[86,72,'Arrière droit',2],[14,47,'Milieu gauche',11],[38,51,'Milieu central',6],[62,51,'Milieu central',8],[86,47,'Milieu droit',7],[36,22,'Attaquant',10],[64,22,'Attaquant',9]],
   '4-3-3': [[50,91,'Gardien',1],[14,72,'Arrière gauche',3],[38,75,'Défenseur central',4],[62,75,'Défenseur central',5],[86,72,'Arrière droit',2],[28,50,'Milieu',8],[50,56,'Milieu défensif',6],[72,50,'Milieu',10],[16,24,'Ailier gauche',11],[50,18,'Avant-centre',9],[84,24,'Ailier droit',7]],
   '4-2-3-1': [[50,91,'Gardien',1],[14,72,'Arrière gauche',3],[38,75,'Défenseur central',4],[62,75,'Défenseur central',5],[86,72,'Arrière droit',2],[36,57,'Milieu défensif',6],[64,57,'Milieu défensif',8],[16,36,'Ailier gauche',11],[50,38,'Meneur',10],[84,36,'Ailier droit',7],[50,16,'Avant-centre',9]],
-  '3-5-2': [[50,91,'Gardien',1],[26,74,'Défenseur central',4],[50,76,'Défenseur central',5],[74,74,'Défenseur central',6],[10,48,'Piston gauche',3],[32,54,'Milieu',8],[50,44,'Meneur',10],[68,54,'Milieu',7],[90,48,'Piston droit',2],[36,20,'Attaquant',9],[64,20,'Attaquant',11]]
+  '3-5-2': [[50,91,'Gardien',1],[26,74,'Défenseur central',4],[50,76,'Défenseur central',5],[74,74,'Défenseur central',6],[10,48,'Piston gauche',3],[32,54,'Milieu',8],[50,44,'Meneur',10],[68,54,'Milieu',7],[90,48,'Piston droit',2],[36,20,'Attaquant',9],[64,20,'Attaquant',11]],
+  // foot à 8 (Senior F)
+  '3-3-1': [[50,91,'Gardien',1],[20,72,'Défenseur gauche',3],[50,75,'Défenseur central',4],[80,72,'Défenseur droit',2],[20,46,'Milieu gauche',7],[50,50,'Milieu central',6],[80,46,'Milieu droit',8],[50,20,'Attaquant',9]],
+  '2-3-2': [[50,91,'Gardien',1],[32,74,'Défenseur',2],[68,74,'Défenseur',3],[16,48,'Milieu gauche',7],[50,52,'Milieu central',6],[84,48,'Milieu droit',8],[34,21,'Attaquant',9],[66,21,'Attaquant',10]],
+  '3-2-2': [[50,91,'Gardien',1],[20,73,'Défenseur gauche',3],[50,76,'Défenseur central',4],[80,73,'Défenseur droit',2],[34,50,'Milieu',6],[66,50,'Milieu',8],[34,21,'Attaquant',9],[66,21,'Attaquant',10]],
+  '2-4-1': [[50,91,'Gardien',1],[32,74,'Défenseur',2],[68,74,'Défenseur',3],[12,48,'Milieu gauche',7],[38,53,'Milieu',6],[62,53,'Milieu',8],[88,48,'Milieu droit',10],[50,20,'Attaquant',9]]
 };
+// nombre de joueurs sur le terrain de l'équipe (11, ou 8 pour le foot à 8) et dispositifs correspondants
+const nbTerrain = m => teamOf(m.equipe).joueurs || 11;
+const disposDe = m => Object.keys(TERRAIN_DISPOS).filter(f => TERRAIN_DISPOS[f].length === nbTerrain(m));
 const terrainActif = m => !!(m.terrain && m.terrain.on);
 const terrainVue = new Map();   // par match : { T (null = dernière minute connue), sel }
 // place de départ : chaque poste reçoit le titulaire qui porte son numéro « habituel », les autres complètent
 function terrainDepart(f, tit){
-  const res = Array(11).fill(null);
+  const res = Array(TERRAIN_DISPOS[f].length).fill(null);
   TERRAIN_DISPOS[f].forEach((s, i) => { const n = String(s[3]); if (tit.includes(n) && !res.includes(n)) res[i] = n; });
   const reste = tit.filter(n => !res.includes(n)); res.forEach((v, i) => { if (!v) res[i] = reste.shift() || null; });
   return res;
 }
 function terrainCfg(m){
   const cs = clubSide(m), tit = rosterOf(m, cs).filter(p => !p.sub && p.n).map(p => String(p.n));
-  const t = m.terrain || {}, f = TERRAIN_DISPOS[t.f] ? t.f : '4-3-3';
+  const t = m.terrain || {}, ds = disposDe(m), f = ds.includes(t.f) ? t.f : ds.includes('4-3-3') ? '4-3-3' : ds[0], nb = nbTerrain(m);
   // place de départ enregistrée, si elle a été faite pour ce dispositif (df) et correspond toujours aux titulaires
-  const d = t.df === f && Array.isArray(t.d) && t.d.length === 11 && t.d.every(n => tit.includes(n)) && new Set(t.d).size === 11 ? t.d.slice() : terrainDepart(f, tit);
+  const d = t.df === f && Array.isArray(t.d) && t.d.length === nb && t.d.every(n => tit.includes(n)) && new Set(t.d).size === nb ? t.d.slice() : terrainDepart(f, tit);
   return { f, d, p: Array.isArray(t.p) ? t.p : [], tit };
 }
 function terrainEtat(m, evs, cfg, T){
@@ -814,7 +825,7 @@ function terrainMonter(m, evs, box, save){
   if (!box || !terrainActif(m)) return;
   const cs = clubSide(m), gere = canManage(m), roster = rosterOf(m, cs);
   let cfg = terrainCfg(m);
-  if (cfg.tit.length < 11){ box.innerHTML = gere ? '<p class="note">Il faut 11 titulaires avec leur numéro dans la compo pour la vue terrain.</p>' : ''; return; }
+  if (cfg.tit.length < nbTerrain(m)){ box.innerHTML = gere ? '<p class="note">Il faut ' + nbTerrain(m) + ' titulaires avec leur numéro dans la compo pour la vue terrain.</p>' : ''; return; }
   const v = terrainVue.get(m.id) || { T: null, sel: null }; terrainVue.set(m.id, v);
   const nomDe = n => (roster.find(p => String(p.n) === String(n)) || {}).name || 'n°' + n;
   const court = n => { const s = nomDe(n).split(' '); return s.length > 1 ? s[0][0] + '. ' + s.slice(1).join(' ') : s[0]; };
@@ -847,7 +858,7 @@ function terrainMonter(m, evs, box, save){
     const banc = roster.filter(p => p.n && !pl.includes(String(p.n)));
     box.innerHTML = `<div class="ter">
       <div class="tertl"><button type="button" data-tm="-1" aria-label="Moment précédent">◀</button><b>${esc(titre)}</b><button type="button" data-tm="1" aria-label="Moment suivant">▶</button>
-        ${gere ? `<select id="terF" aria-label="Dispositif">${Object.keys(TERRAIN_DISPOS).map(f => `<option${f === cfg.f ? ' selected' : ''}>${f}</option>`).join('')}</select>` : `<span class="terf">${esc(cfg.f)}</span>`}</div>
+        ${gere ? `<select id="terF" aria-label="Dispositif">${disposDe(m).map(f => `<option${f === cfg.f ? ' selected' : ''}>${f}</option>`).join('')}</select>` : `<span class="terf">${esc(cfg.f)}</span>`}</div>
       ${cap ? `<div class="tercap">${cap}</div>` : ''}
       <div class="terpitch"><i class="tl1"></i><i class="tl2"></i><i class="tl3"></i><i class="tl4"></i>
         ${pl.map((n, i) => { const [x, y, role] = slots[i];
@@ -1082,7 +1093,7 @@ async function hdmRemplir(m, evs, box, changer = false){
   if (!hdmOuvert(m)){
     const elus = R.filter(x => x.elu !== false), autres = R.filter(x => x.elu === false);
     if (!elus.length){ box.innerHTML = ''; return; }
-    box.innerHTML = `<section class="hdm"><h3>🏆 ${elus.length > 1 ? 'Hommes du match (ex aequo)' : 'Homme du match'}</h3><p class="hdmwin">${elus.map(x => numDe(x.joueur) + esc(x.joueur)).join(' et ')}</p>
+    box.innerHTML = `<section class="hdm"><h3>🏆 ${elus.length > 1 ? hdmTitre([m.equipe], 1) + ' (ex aequo)' : hdmTitre([m.equipe])}</h3><p class="hdmwin">${elus.map(x => numDe(x.joueur) + esc(x.joueur)).join(' et ')}</p>
       ${autres.length ? `<p class="note" style="margin:10px 0 6px">Ont aussi reçu des voix, du plus au moins voté (visible par les admins et les responsables) :</p>
         <div class="hdmautres">${autres.map(x => `<span>${numDe(x.joueur)}${esc(x.joueur)}</span>`).join('')}</div>` : ''}</section>`;
     return;
@@ -1090,7 +1101,7 @@ async function hdmRemplir(m, evs, box, changer = false){
   const peut = !!(myId() && profile && !['pending', 'supprime'].includes(profile.role));
   const replie = peut && mien && !changer;   // déjà voté : on replie sur son choix
   const fin = esc(hdmFin(m));
-  box.innerHTML = `<section class="hdm"><h3>🏆 Homme du match</h3>
+  box.innerHTML = `<section class="hdm"><h3>🏆 ${hdmTitre([m.equipe])}</h3>
     ${replie ? `<div class="hdmmien"><span>Ton vote : ${numDe(mien)}<b>${esc(mien)}</b></span><button type="button" class="amod" id="hdmChanger">Changer</button></div>
       <p class="note" style="margin:8px 0 0">Tu peux le changer jusqu’à ${fin}. Les votes restent secrets : le résultat sera affiché ${fin}.</p>`
     : peut ? `<p class="note">Touche le meilleur joueur du match. Vote ouvert jusqu’à ${fin}, résultat affiché à ce moment-là.</p>
@@ -1302,7 +1313,7 @@ async function hdmSaisonRemplir(box, filtre){
   const C = {}, E = {};
   L.forEach(x => { C[x.joueur] = (C[x.joueur] || 0) + 1; if (parMatch[x.match_id] > 1) E[x.joueur] = (E[x.joueur] || 0) + 1; });
   const top = Object.entries(C).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'fr')).slice(0, 5);
-  box.innerHTML = top.length ? `<section class="hdm"><h3>🏆 Hommes du match</h3><ol class="hdmtop">${top.map(([nm, k]) => `<li><span>${esc(nm)}${E[nm] ? `<small class="hdmeg">dont ${E[nm]} à égalité</small>` : ''}</span><b>${k}</b></li>`).join('')}</ol></section>` : '';
+  box.innerHTML = top.length ? `<section class="hdm"><h3>🏆 ${hdmTitre([...new Set(L.map(x => x.equipe))], 1)}</h3><ol class="hdmtop">${top.map(([nm, k]) => `<li><span>${esc(nm)}${E[nm] ? `<small class="hdmeg">dont ${E[nm]} à égalité</small>` : ''}</span><b>${k}</b></li>`).join('')}</ol></section>` : '';
 }
 
 // Historique des modifications d'un match (écrit par la base à chaque changement)
@@ -1604,7 +1615,7 @@ async function newMatchView(){
     $('nfGo').disabled = true;
     const row = {
       id: uuid(), kickoff: new Date($('nfDate').value).toISOString(), competition: $('nfComp').value.trim(),
-      equipe, delegue_id: $('nfDel').dataset.value || null, delegue_nom: delegueNom($('nfDel').dataset.value || null), club_side: side, home_name: side==='H' ? clubTeamName(equipe) : opp, away_name: side==='H' ? opp : clubTeamName(equipe), half: HALF
+      equipe, delegue_id: $('nfDel').dataset.value || null, delegue_nom: delegueNom($('nfDel').dataset.value || null), club_side: side, home_name: side==='H' ? clubTeamName(equipe) : opp, away_name: side==='H' ? opp : clubTeamName(equipe), half: teamOf(equipe).mi_temps || HALF
     };
     const { error } = await sb.from('matches').insert(row);
     if (error){ $('nfGo').disabled = false; $('nfMsg').innerHTML = `<div class="msg err">${esc(isNetErr(error) ? 'Pas de réseau : il faut être connecté pour créer le match.' : error.message)}</div>`; return; }
@@ -2683,7 +2694,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
       if (k==='name') return statSort.dir * a.name.localeCompare(b.name, 'fr');
       return statSort.dir * (a[k]-b[k]) || b.goals-a.goals || b.mj-a.mj || a.name.localeCompare(b.name,'fr');
     });
-    const COLS = [['name','Joueur'],['goals','Buts'],['mj','Matchs'],['tit','Titul.'],['y','🟨'],['w','⬜'],['r','🟥']];
+    const COLS = [['name', statF.team && estFem(statF.team) || statF.cat && / F$/.test(statF.cat) ? 'Joueuse' : 'Joueur'],['goals','Buts'],['mj','Matchs'],['tit','Titul.'],['y','🟨'],['w','⬜'],['r','🟥']];
     const cell = (v) => `<td class="${v?'':'zero'}">${v}</td>`;
     // classement des buteurs, équipe par équipe (un joueur compte pour chaque équipe où il a marqué)
     const boards = {};

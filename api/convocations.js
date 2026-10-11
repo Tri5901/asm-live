@@ -4,7 +4,13 @@
 // ainsi que l'heure de rendez-vous au stade (« RDV au STADE à »).
 const SUPABASE_URL = 'https://xzzttulqlydcespgkpnx.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_VwLyp5ROGzidc4oHWehoLg_kIehYAcE';
-const FEUILLE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTRVvGcXBPj8hUXVcxWVH-9fnv0juykXnyFc79hu2C_J_dmNnZ209hxm1eqDdwjMsHfonsRB3dYjImv/pub?gid=1926192979&single=true&output=csv';
+// une feuille par catégorie : « Equipe A, B… » de la feuille Seniors = Senior A, B… ; « Equipe A » de la feuille Seniors F = Senior F
+const FEUILLES = [
+  { url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTRVvGcXBPj8hUXVcxWVH-9fnv0juykXnyFc79hu2C_J_dmNnZ209hxm1eqDdwjMsHfonsRB3dYjImv/pub?gid=1926192979&single=true&output=csv',
+    equipe: (equipes, l) => equipes.find(e => e.court === l && /^Seniors?( M)?$/.test(e.categorie)) },
+  { url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQTEKqydj3AM5AB6gvqEjItZY02MNngvkr7H5kGTvKoDFoTr8FjZGZgi-ooJsmWvDQnMvyMalJ_KXH1/pub?gid=977973456&single=true&output=csv',
+    equipe: (equipes, l) => l === 'A' ? equipes.find(e => e.categorie === 'Senior F') : null }
+];
 const H = { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' };
 
 // CSV simple (champs entre guillemets possibles)
@@ -52,14 +58,6 @@ module.exports = async (req, res) => {
     if (!ok) return res.json({ compos: 0, info: 'pas l’heure (' + jour + ' ' + h + ' h à Paris)' });
   }
 
-  const t = await (await fetch(FEUILLE)).text();
-  const rows = csv(t);
-  const tete = rows.find(r => r.some(c => /^Equipe\s+\S+/i.test(c)));
-  if (!tete) return res.json({ compos: 0, info: 'feuille illisible' });
-  const dateRow = rows.find(r => /^Date/i.test(r[0] || '')) || [];
-  const rdvRow = rows.find(r => /^RDV/i.test(r[0] || '')) || [];
-  const cols = tete.map((c, i) => [i, (c.match(/^Equipe\s+(\S+)/i) || [])[1]]).filter(x => x[1]);
-
   const [equipes, matchs, connus] = await Promise.all([
     fetch(SUPABASE_URL + '/rest/v1/equipes?select=id,court,categorie', { headers: H }).then(r => r.json()),
     fetch(SUPABASE_URL + '/rest/v1/matches?select=id,equipe,kickoff,status,club_side&status=eq.prevu', { headers: H }).then(r => r.json()),
@@ -73,8 +71,16 @@ module.exports = async (req, res) => {
   const nomConnu = s => { const e = vus.get(cle(s)); return e ? Object.entries(e).sort((a, b) => b[1] - a[1])[0][0] : prenomNom(s); };
 
   const data = [], detail = [];
-  for (const [c, court] of cols) {
-    const eq = equipes.find(e => e.court === court && /^Seniors?( M)?$/.test(e.categorie));
+  for (const F of FEUILLES) {
+  let rows;
+  try { rows = csv(await (await fetch(F.url)).text()); } catch (e) { detail.push('feuille illisible'); continue; }
+  const tete = rows.find(r => r.some(c => /^Equipe\s+\S+/i.test(c)));
+  if (!tete) { detail.push('feuille illisible'); continue; }
+  const dateRow = rows.find(r => /^Date/i.test(r[0] || '')) || [];
+  const rdvRow = rows.find(r => /^RDV/i.test(r[0] || '')) || [];
+  const cols = tete.map((c, i) => [i, (c.match(/^Equipe\s+(\S+)/i) || [])[1]]).filter(x => x[1]);
+  for (const [c, lettre] of cols) {
+    const eq = F.equipe(equipes, lettre), court = eq ? eq.court : lettre;
     const date = dateRow[c];
     if (!eq || !/^\d{2}\/\d{2}\/\d{4}$/.test(date || '')) continue;
     // le vendredi soir, la feuille peut encore montrer la convocation de la semaine passée :
@@ -86,6 +92,7 @@ module.exports = async (req, res) => {
     const joueurs = rows.filter(r => /^\d+$/.test(r[c] || '') && (r[c + 1] || '').length > 1).map(r => nomConnu(r[c + 1]));
     const rdv = rdvISO(date, rdvRow[c]);
     if (joueurs.length || rdv) { data.push({ match_id: m.id, joueurs, rdv }); detail.push(court + ' : ' + joueurs.length + ' joueurs' + (rdv ? ', RDV ' + rdvRow[c] : '')); }
+  }
   }
   if (!data.length) return res.json({ compos: 0, detail });
   const r = await fetch(SUPABASE_URL + '/rest/v1/rpc/convocations_compos', { method: 'POST', headers: H, body: JSON.stringify({ p_cle: k, p_data: data }) });
