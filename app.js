@@ -516,6 +516,8 @@ const homeF = lsGet('asm-filtre', null) || { cat: '', team: lsGet('asm-team', 0)
 if (homeF.team && !homeF.cat) homeF.cat = catOf(homeF.team);
 let showAllNext = false, demAtt = [];
 function drawHome(matches, goalRows){
+  // matchs d'une équipe désactivée (ex. match de test) : visibles seulement des admins
+  if (!isAdmin()) matches = matches.filter(m => EQUIPES.some(e => e.id === m.equipe));
   const byMatch = {};
   goalRows.forEach(g => { (byMatch[g.match_id] ||= []).push({k:'goal', t:g.t}); });
   const isMine = m => !!myId() && m.delegue_id === myId() && m.status !== 'termine';
