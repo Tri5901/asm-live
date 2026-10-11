@@ -9,7 +9,7 @@
 //        Un lieu à relever est signalé par « A_LIEU <adresse du match> » : on relève le lieu sur la page du match
 //        et on relance avec le fichier lieux { "<adresse du match>": { "lieu": ["STADE …", "RUE …", "44150 VILLE"], "surface": "PELOUSE NATURELLE" } }
 //        (l'ancien format, juste le tableau du lieu, marche encore ; « - » si pas de fichier niveaux).
-//        Le type de terrain (surface) est relevé pour nos matchs à l'extérieur des 7 jours, revérifié dans les 2 derniers jours.
+//        Le type de terrain (surface) est relevé pour nos matchs à l'extérieur des 3 semaines, revérifié dans les 2 derniers jours.
 // Format du JSON : { "1": [["DIM 07 FÉV 2027 - 15H00", "Régional 3 - Senior Journée 12", "516995", "MESANGER AS", "502138", "THOUARE US", "/competition/club/…/equipe/…", "/competition/club/…/equipe/…", "/competition/match/…"], ...], ... }
 //   (date, compétition, code club et nom du recevant, code club et nom du visiteur, pages FFF des deux équipes, page du match ;
 //    l'ancien format [date, "A - B", compétition] est encore accepté)
@@ -143,11 +143,10 @@ async function ecarts(file, fichNiv, fichLieux) {
       }
       // lieu des matchs à l'extérieur : relevé dans les 3 semaines, revérifié dans les 4 derniers jours (terrain changé)
       const dans = new Date(site.kickoff).getTime() - maintenant;
-      // type de terrain : nos matchs à l'extérieur de la semaine (pas à domicile : presque toujours le synthétique),
+      // type de terrain : nos matchs à l'extérieur des 3 semaines (pas à domicile : presque toujours le synthétique),
       // revérifié dans les 2 derniers jours (repli sur synthétique)
-      // (limité à 7 jours : chaque page de match ouverte sur la FFF prend du temps)
       const besoinLieu = !domNous && (!site.adresse || dans < 4 * 86400000);
-      const besoinSurface = !domNous && ((!site.surface && dans < 7 * 86400000) || dans < 2 * 86400000);
+      const besoinSurface = !domNous && ((!site.surface && dans < 21 * 86400000) || dans < 2 * 86400000);
       if (uMatch && dans < 21 * 86400000 && (besoinLieu || besoinSurface)) {
         const l = lieux[pageMatch(uMatch)];
         if (!l) out.push({ type: 'chercher_lieu', url: 'https://epreuves.fff.fr' + pageMatch(uMatch) });

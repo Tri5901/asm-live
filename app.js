@@ -625,13 +625,15 @@ function niveauHTML(m){
 }
 // matchs à l'extérieur : lieu discret, qui ouvre l'adresse puis Waze ou Google Maps
 function lieuHTML(m){
-  if (clubSide(m) !== 'A' || !m.adresse || m.status === 'termine') return '';
+  if (clubSide(m) !== 'A') return '';
+  // match terminé (ou lieu inconnu) : plus d'itinéraire, mais le type de terrain reste affiché
+  if (!m.adresse || m.status === 'termine') return surfaceHTML(m);
   const ville = m.adresse.split(', ').pop().replace(/^\d{5}\s*/, '');
   return `<button class="lieu" id="btnLieu">📍 ${esc(m.lieu || 'Lieu du match')}${ville ? ' · ' + esc(ville) : ''}</button>${surfaceHTML(m)}`;
 }
 // type de terrain relevé sur la FFF (seulement à l'extérieur : à domicile, c'est presque toujours le synthétique)
 function surfaceHTML(m){
-  if (clubSide(m) !== 'A' || !m.surface || m.status === 'termine') return '';
+  if (clubSide(m) !== 'A' || !m.surface) return '';
   const s = m.surface, ic = /synth/i.test(s) ? '🟩' : /stabil|sable|terre/i.test(s) ? '🟫' : '🌱';
   return `<div class="surface">${ic} ${esc(s)}</div>`;
 }
