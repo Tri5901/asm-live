@@ -670,8 +670,8 @@ function terrainDepart(f, tit){
 function terrainCfg(m){
   const cs = clubSide(m), tit = rosterOf(m, cs).filter(p => !p.sub && p.n).map(p => String(p.n));
   const t = m.terrain || {}, f = TERRAIN_DISPOS[t.f] ? t.f : '4-3-3';
-  // place de départ enregistrée, si elle correspond toujours aux titulaires de la compo
-  const d = Array.isArray(t.d) && t.d.length === 11 && t.d.every(n => tit.includes(n)) && new Set(t.d).size === 11 ? t.d.slice() : terrainDepart(f, tit);
+  // place de départ enregistrée, si elle a été faite pour ce dispositif (df) et correspond toujours aux titulaires
+  const d = t.df === f && Array.isArray(t.d) && t.d.length === 11 && t.d.every(n => tit.includes(n)) && new Set(t.d).size === 11 ? t.d.slice() : terrainDepart(f, tit);
   return { f, d, p: Array.isArray(t.p) ? t.p : [], tit };
 }
 function terrainEtat(m, evs, cfg, T){
@@ -689,7 +689,8 @@ function terrainEtat(m, evs, cfg, T){
 }
 function terrainMonter(m, evs, box, save){
   if (!box || !terrainActif(m)) return;
-  const cs = clubSide(m), cfg = terrainCfg(m), gere = canManage(m), roster = rosterOf(m, cs);
+  const cs = clubSide(m), gere = canManage(m), roster = rosterOf(m, cs);
+  let cfg = terrainCfg(m);
   if (cfg.tit.length < 11){ box.innerHTML = gere ? '<p class="note">Il faut 11 titulaires avec leur numéro dans la compo pour la vue terrain.</p>' : ''; return; }
   const v = terrainVue.get(m.id) || { T: null, sel: null }; terrainVue.set(m.id, v);
   const nomDe = n => (roster.find(p => String(p.n) === String(n)) || {}).name || 'n°' + n;
@@ -697,6 +698,7 @@ function terrainMonter(m, evs, box, save){
   const fin = m.status === 'termine', direct = m.status === 'direct';
   const fmt = s => s === 0 ? "0'" : (evs.find(e => Math.abs((+e.sort || 0) - s) < 0.01) || {}).min || (Math.floor(s) + "'");
   const enreg = async t => {
+    t = { ...t, df: t.f };
     // console « Gérer » : file d'envoi (marche aussi sans réseau)
     if (save){ save(t); return dessine(); }
     const avant = m.terrain;
@@ -706,6 +708,7 @@ function terrainMonter(m, evs, box, save){
     dessine();
   };
   const dessine = () => {
+    cfg = terrainCfg(m);   // toujours d'après ce qui est enregistré (dispositif, place de départ, changements)
     const tous = terrainEtat(m, evs, cfg, Infinity), maxi = tous.moments[tous.moments.length - 1] || 0;
     const T = v.T == null ? (m.status === 'prevu' ? 0 : Infinity) : v.T;
     const { pl, sortis, rouges, der } = terrainEtat(m, evs, cfg, T), slots = TERRAIN_DISPOS[cfg.f];
@@ -737,7 +740,8 @@ function terrainMonter(m, evs, box, save){
       const nx = +b.dataset.tm > 0 ? ms.find(x => x > cur + 1e-9) : ms.filter(x => x < cur - 1e-9).pop();
       v.T = nx == null ? (+b.dataset.tm > 0 ? null : 0) : nx; v.sel = null; dessine();
     });
-    if ($('terF')) $('terF').onchange = e => enreg({ ...(m.terrain || {}), on: true, f: e.target.value, d: cfg.d, p: cfg.p });
+    // autre dispositif : chacun reprend la case de son numéro habituel
+    if ($('terF')) $('terF').onchange = e => enreg({ ...(m.terrain || {}), on: true, f: e.target.value, d: terrainDepart(e.target.value, cfg.tit), p: cfg.p });
     box.querySelectorAll('[data-terdel]').forEach(b => b.onclick = () => { cfg.p = cfg.p.filter(x => x.s !== +b.dataset.terdel); enreg({ ...(m.terrain || {}), on: true, f: cfg.f, d: cfg.d, p: cfg.p }); });
     if (gere) box.querySelectorAll('.tp[data-n]').forEach(el => el.onclick = () => {
       const n = el.dataset.n;
@@ -1235,7 +1239,7 @@ async function matchView(id){
     if ($('terrainTog')) $('terrainTog').onclick = async () => {
       const on = !terrainActif(m), cfg = terrainCfg(m);
       $('terrainTog').disabled = true;
-      const t = { ...(m.terrain || {}), on, f: cfg.f, d: cfg.d, p: cfg.p };
+      const t = { ...(m.terrain || {}), on, f: cfg.f, df: cfg.f, d: cfg.d, p: cfg.p };
       const { data: upd, error } = await sb.from('matches').update({ terrain: t }).eq('id', m.id).select('id');
       if (error || !upd || !upd.length){ toast(isNetErr(error) ? 'Pas de réseau' : 'Modification refusée'); draw(); return; }
       m.terrain = t; toast(on ? 'Vue terrain activée' : 'Vue terrain désactivée'); draw();
@@ -1423,7 +1427,7 @@ async function consoleView(id, openCompo){
     const has = rosterOf(S, clubSide(S)).length;
     if (!has){ box.innerHTML = ''; return; }
     box.innerHTML = `<div class="visrow" style="margin-top:12px"><button type="button" class="vistog${terrainActif(S) ? '' : ' off'}" id="terrainTogCo" aria-pressed="${terrainActif(S)}"><i></i>Vue terrain</button><small>${terrainActif(S) ? 'Visible sur la page du match. Touche deux joueurs pour noter un changement de poste.' : 'Affiche nos joueurs sur le terrain et sur le banc, minute par minute.'}</small></div><div id="terrainBoxCo"></div>`;
-    $('terrainTogCo').onclick = () => { const cfg = terrainCfg(S); save({ ...(S.terrain || {}), on: !terrainActif(S), f: cfg.f, d: cfg.d, p: cfg.p }); toast(terrainActif(S) ? 'Vue terrain activée' : 'Vue terrain désactivée'); terrainCo(); };
+    $('terrainTogCo').onclick = () => { const cfg = terrainCfg(S); save({ ...(S.terrain || {}), on: !terrainActif(S), f: cfg.f, df: cfg.f, d: cfg.d, p: cfg.p }); toast(terrainActif(S) ? 'Vue terrain activée' : 'Vue terrain désactivée'); terrainCo(); };
     if (terrainActif(S)) terrainMonter(S, S.events, $('terrainBoxCo'), save);
   }
   function renderSync(){
