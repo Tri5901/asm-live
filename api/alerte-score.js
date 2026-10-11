@@ -4,7 +4,8 @@
 //  - rappel ~15 min avant le match si notre compo n'est pas saisie ou s'il manque des numéros (responsables de l'équipe) ;
 //  - rappel « Mi-temps ? » / « Match terminé ? » si le chrono dépasse 55 min en 1re ou 105 min en 2e mi-temps ;
 //  - « Tu es l'homme du match » au(x) gagnant(s) du vote (compte lié au joueur), à la fin du vote ;
-//  - officiels : relance des dispos le jeudi 19 h, rappel aux désignés la veille à 18 h.
+//  - officiels : relance des dispos le jeudi 19 h, rappel aux désignés la veille à 18 h ;
+//  - match encore en direct 2 h 15 après le coup d'envoi : clôturé, le responsable score est prévenu.
 // La base choisit les matchs et les destinataires (une seule notification de chaque sorte par match).
 const webpush = require('web-push');
 
@@ -23,9 +24,9 @@ module.exports = async (req, res) => {
     headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify({ p_cle: cle })
   });
-  const [r1, r2, r3, r4, r5, r6] = await Promise.all([appel('alerte_score_targets'), appel('debut_targets'), appel('compo_targets'), appel('chrono_targets'), appel('hdm_targets'), appel('officiels_auto_targets')]);
+  const [r1, r2, r3, r4, r5, r6, r7] = await Promise.all([appel('alerte_score_targets'), appel('debut_targets'), appel('compo_targets'), appel('chrono_targets'), appel('hdm_targets'), appel('officiels_auto_targets'), appel('cloture_auto_targets')]);
   if (!r1.ok || !r2.ok) return res.status(403).json({ error: 'refusé' });
-  const targets = [...await r1.json(), ...await r2.json(), ...(r3.ok ? await r3.json() : []), ...(r4.ok ? await r4.json() : []), ...(r5.ok ? await r5.json() : []), ...(r6.ok ? await r6.json() : [])];
+  const targets = [...await r1.json(), ...await r2.json(), ...(r3.ok ? await r3.json() : []), ...(r4.ok ? await r4.json() : []), ...(r5.ok ? await r5.json() : []), ...(r6.ok ? await r6.json() : []), ...(r7.ok ? await r7.json() : [])];
   if (!Array.isArray(targets) || !targets.length) return res.json({ sent: 0 });
 
   webpush.setVapidDetails('https://asm-live.vercel.app', VAPID_PUBLIC, process.env.VAPID_PRIVATE_KEY);

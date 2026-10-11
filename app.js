@@ -119,6 +119,8 @@ function periodText(m){
 // en direct : couleur et mot selon le score du moment (vert on mène, rouge menés, gris égalité)
 const RES_DIRECT = { V: ['w', 'On mène'], D: ['l', 'Menés'], N: ['n', 'Égalité'] };
 const liveTexte = (m, res) => (isMiTemps(m) ? 'Mi-temps' : m.period ? currentMinute(m).label : 'Direct') + (res ? ' · ' + res : '');
+// après la 96e minute (2 × mi-temps + 6) de la 2e période, n'importe quel compte peut arrêter le chrono
+const finPossible = m => m.status === 'direct' && m.period === 2 && elapsedMs(m) / 60000 + (m.half || 45) >= 2 * (m.half || 45) + 6;
 function resultOf(m, evs){
   const c = goals(evs, clubSide(m)), o = goals(evs, oppSide(m));
   return c > o ? 'V' : c < o ? 'D' : 'N';
@@ -151,10 +153,13 @@ function timelineHTML(m, evs, editable){
       return `<div class="empty" style="text-align:left">Buts sans minute (feuille de match FFF incomplète)${lines}</div>` + (rest.length ? timelineHTML(m, rest, false) : '');
     }
   }
+  // match arrêté par un compte après la 96e, ou clôturé automatiquement : affiché en tête de la chronologie
+  const finLigne = m.status === 'termine' && (m.fin_par_nom || m.fin_auto) ? `<div class="ev ro fin"><div class="min">${esc(m.fin_min || '')}</div><span class="evi">🏁</span><div class="txt"><b>Fin du match</b><div>${m.fin_auto ? 'Clôture automatique (2 h 15 après le coup d’envoi)' : 'Chrono arrêté par ' + esc(m.fin_par_nom)}</div></div></div>` : '';
+  if (!evs.length && finLigne) return finLigne;
   if (!evs.length) return `<div class="empty">${editable ? 'Lance le chrono puis touche une action : la minute est notée toute seule.' : 'Aucune action pour le moment.'}</div>`;
   const list = [...evs].sort((a,b)=> b.sort - a.sort || String(b.created_at||'').localeCompare(String(a.created_at||'')));
   const ICON = {goal:'<span class="evi goal">⚽</span>', yellow:'<span class="evi"><i class="kc y"></i></span>', white:'<span class="evi"><i class="kc w"></i></span>', red:'<span class="evi"><i class="kc r"></i></span>', sub:'<span class="evi sub">⇄</span>'};
-  let lastP = null, html = '';
+  let lastP = null, html = finLigne;
   for (const e of list){
     if (lastP !== null && e.p !== lastP) html += '<div class="period-mark">Mi-temps</div>';
     lastP = e.p;
@@ -1215,13 +1220,14 @@ async function matchView(id){
       loadDem();
     });
   };
-  let advCache = '', hdmCache = '';
+  let advCache = '', hdmCache = '', finTimer = null;
   const draw = () => {
     // match terminé : l'homme du match prend la place du responsable score, qui passe tout en bas
     const fini = m.status === 'termine';
     const delegHTML = isStaff() || m.delegue_nom ? `<div class="field deleg"><span>Responsable score</span>${delegPickHTML('delSel', m.delegue_id, m.delegue_nom, !isTeamManager(m.equipe))}${canManage(m) && !isTeamManager(m.equipe) ? '<small>Seul le responsable de l’équipe (ou un admin) peut changer le responsable score.</small>' : isStaff() && !canManage(m) ? '<small>Seuls le responsable de l’équipe, le responsable score ou un admin peuvent modifier ce match.</small>' : ''}</div>` : '';
     view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false) + niveauHTML(m) + lieuHTML(m)
       + `<div class="mactions"><button class="pill" id="btnBell">🔔 Buts des ${esc(teamLabel(m.equipe))}</button><button class="pill" id="btnShareLive">↗ Partager</button>${m.status==='termine' && !m._partiel ? '<button class="pill" id="btnResume">📸 Résumé</button>' : ''}</div>`
+      + (finPossible(m) && session ? '<div class="demcard fincard"><b>⏱️ Le chrono dépasse la ' + (2 * (m.half || 45) + 6) + 'e minute</b><small>Le match est sûrement fini. Tu peux arrêter le chrono : ton nom sera noté dans la chronologie.</small><button type="button" class="fbtn primary" id="finStop" style="width:100%;margin-top:8px">🏁 Arrêter le chrono</button></div>' : '')
       + (!m._partiel && canManage(m) && (rosterOf(m, clubSide(m)).length || terrainActif(m)) ? `<div class="visrow terrow"><button type="button" class="vistog${terrainActif(m) ? '' : ' off'}" id="terrainTog" aria-pressed="${terrainActif(m)}"><i></i>Vue terrain</button><small>${terrainActif(m) ? 'Visible par tous. Touche deux joueurs pour noter un changement de poste.' : 'Affiche nos joueurs sur le terrain et sur le banc, minute par minute.'}</small></div>` : '')
       + (terrainActif(m) && !m._partiel ? '<div id="terrainBox"></div>' : '')
       + demHTML()
@@ -1242,6 +1248,19 @@ async function matchView(id){
     if ($('btnLieu')) $('btnLieu').onclick = () => openLieu(m);
     if ($('rdvBox')) { const ms = new Date(m.kickoff).getTime() - Date.now(); if (ms < 864e5) setTimeout(() => $('rdvBox')?.remove(), ms); }
     $('btnBell').onclick = () => openBell(m.equipe || 1);
+    if ($('finStop')) $('finStop').onclick = () => askConfirm('Arrêter le chrono ?', 'Le match passe en « Terminé ». Ton nom sera affiché dans la chronologie.', 'Arrêter le chrono', async () => {
+      const { error } = await sb.rpc('arreter_chrono', { p_match: m.id });
+      if (error){ toast(isNetErr(error) ? 'Pas de réseau' : /trop tôt/.test(error.message) ? 'Pas encore : attends la ' + (2 * (m.half || 45) + 6) + 'e minute' : 'Impossible d’arrêter le chrono'); return; }
+      toast('Chrono arrêté, merci !');
+      try{ const r = await fetchMatch(m.id); if (r.m){ m = r.m; evs = r.evs; matchCache.set(id, r); } }catch(e){}
+      if (here()) draw();
+    });
+    // le bouton « Arrêter le chrono » apparaît tout seul quand le chrono passe la 96e
+    clearTimeout(finTimer);
+    if (m.status === 'direct' && m.period === 2 && m.running && !finPossible(m)){
+      const reste = (2 * (m.half || 45) + 6 - (m.half || 45)) * 60000 - elapsedMs(m);
+      if (reste > 0 && reste < 3 * 3600e3) finTimer = setTimeout(() => { if (here()) draw(); }, reste + 1000);
+    }
     if ($('terrainTog')) $('terrainTog').onclick = async () => {
       const on = !terrainActif(m), cfg = terrainCfg(m);
       $('terrainTog').disabled = true;
