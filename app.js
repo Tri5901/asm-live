@@ -1484,7 +1484,7 @@ async function matchView(id){
   const poll = fallbackPoll(off, reload); // filet de sécurité si le temps réel décroche ou est complet
   const vis = () => { if (document.visibilityState==='visible') reload(); };
   document.addEventListener('visibilitychange', vis);
-  cleanup = () => { off(); clearInterval(tick); clearInterval(poll); document.removeEventListener('visibilitychange', vis); document.title = 'AS Mésanger – Matchs en direct'; };
+  cleanup = () => { off(); clearInterval(tick); clearInterval(poll); document.removeEventListener('visibilitychange', vis); document.title = 'AS Mésanger Live – matchs en direct, résultats et classements'; };
 }
 async function shareLink(m){
   const url = location.origin + location.pathname + '#/match/' + m.id;
