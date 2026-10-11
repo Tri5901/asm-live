@@ -487,7 +487,7 @@ async function homeView(){
   if (cache) drawHome(cache.matches, cache.goals); else view.innerHTML = '<div class="loading">Chargement…</div>';
   const load = async () => {
     const [{ data: matches, error }, { data: g }] = await Promise.all([
-      sb.from('matches').select('id,kickoff,competition,equipe,opp_logo,delegue_id,delegue_nom,club_side,home_name,away_name,half,period,running,started_at,acc,status,tab').order('kickoff', {ascending:false}).limit(1000),
+      sb.from('matches').select('id,kickoff,competition,equipe,opp_logo,delegue_id,delegue_nom,club_side,home_name,away_name,half,period,running,started_at,acc,status,tab,live_par,live_at').order('kickoff', {ascending:false}).limit(1000),
       sb.from('events').select('match_id,t').eq('k','goal')
     ]);
     if (error) { if (!cache) throw error; return; }
@@ -525,7 +525,7 @@ function drawHome(matches, goalRows){
     const c = clubSide(m);
     let badge = '', mid;
     if (m.status==='prevu') mid = `<span class="mtime">${esc(hhmm(m.kickoff))}</span>`;
-    else mid = `<span class="msc">${goals(evs,'H')}<i>–</i>${goals(evs,'A')}</span>${m.tab ? (b => `<small class="mtab">tab ${b.b.H}-${b.b.A}</small>`)(tabBilan(m.tab)) : ''}`;
+    else mid = `<span class="msc">${goals(evs,'H')}<i>–</i>${goals(evs,'A')}</span>${m.tab ? (b => `<small class="mtab">tab ${b.b.H}-${b.b.A}</small>`)(tabBilan(m.tab)) : ''}${liveActif(m) ? '<small class="mlive">🎥 vidéo en direct</small>' : ''}`;
     const rd = m.status === 'direct' ? RES_DIRECT[resultOf(m, evs)] : null;
     if (m.status==='direct') badge = `<span class="badge live ${rd[0]}" data-res="${rd[1]}" data-live='${esc(JSON.stringify({status:m.status,period:m.period,half:m.half,running:m.running,started_at:m.started_at,acc:m.acc}))}'>${liveTexte(m, rd[1])}</span>`;
     else if (m.status==='termine'){ const r = resultOf(m, evs); badge = `<span class="badge ${r==='V'?'w':r==='D'?'l':''}">${r==='V'?'Victoire':r==='D'?'Défaite':'Nul'}</span>`; }
@@ -812,6 +812,134 @@ function terrainMonter(m, evs, box, save){
     });
   };
   dessine();
+}
+// ---------- Live vidéo des tirs au but (LiveKit) ----------
+// Pendant la séance, n'importe quel compte peut filmer (une seule personne à la fois) ; tout le monde peut regarder,
+// même sans compte, avec par-dessus le score et les tirs (tirés de la saisie du responsable score).
+// Le lecteur est au-dessus de la page (#liveHost) : il ne bouge pas quand la page du match se redessine.
+const LK_SRC = 'https://cdn.jsdelivr.net/npm/livekit-client@2.22.4/dist/livekit-client.umd.js';
+let lkCharge = null, LIVE = null;   // LIVE = { id, role: 'filmer' | 'regarder', room, tracks, battement, wake }
+const chargerLK = () => lkCharge || (lkCharge = new Promise((ok, ko) => {
+  const s = document.createElement('script'); s.src = LK_SRC; s.onload = () => ok(window.LivekitClient); s.onerror = () => { lkCharge = null; ko(new Error('chargement')); }; document.head.appendChild(s);
+}));
+const liveActif = m => !!(m.live_par && m.live_at && Date.now() - new Date(m.live_at).getTime() < 60000);
+const liveLien = id => location.origin + location.pathname + '#/match/' + id + '/live';
+function liveHost(){
+  let h = $('liveHost');
+  if (!h){ h = document.createElement('div'); h.id = 'liveHost'; view.parentNode.insertBefore(h, view); }
+  return h;
+}
+async function liveApi(m, action){
+  const headers = { 'Content-Type': 'application/json' };
+  if (session) headers.Authorization = 'Bearer ' + session.access_token;
+  const r = await fetch('api/live', { method: 'POST', headers, body: JSON.stringify({ match: m.id, action }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || 'refusé');
+  return j;
+}
+function livePartager(m){
+  const titre = `🎥 En direct : tirs au but ${teamName(m, 'H')} – ${teamName(m, 'A')}`;
+  const url = liveLien(m.id);
+  if (navigator.share) navigator.share({ title: titre, text: titre, url }).catch(() => {});
+  else navigator.clipboard.writeText(titre + '\n' + url).then(() => toast('Lien du live copié'), () => toast(url));
+}
+// incrustation : score, tirs au but (ronds avec le numéro du tireur), dernier tir
+function liveIncrustation(m, evs){
+  const o = $('liveOver'); if (!o || !m) return;
+  const bl = m.tab ? tabBilan(m.tab) : null, tirs = (m.tab && m.tab.tirs) || [];
+  const ronds = t => { const ks = tirs.filter(x => x.t === t); return Array.from({ length: Math.max(5, ks.length) }, (_, i) => { const x = ks[i];
+    return `<i class="${x ? (x.ok ? 'ok' : 'ko') : ''}">${x && x.n ? esc(x.n) : ''}</i>`; }).join(''); };
+  const der = tirs[tirs.length - 1];
+  o.innerHTML = `<div class="lvtop"><span class="lvdot">LIVE</span><b>${esc(teamName(m, 'H'))} ${goals(evs, 'H')}–${goals(evs, 'A')} ${esc(teamName(m, 'A'))}</b></div>`
+    + (bl ? `<div class="lvtab"><div class="lvl"><span>${esc(teamName(m, 'H'))}</span><span class="lvr">${ronds('H')}</span><b>${bl.b.H}</b></div><div class="lvl"><span>${esc(teamName(m, 'A'))}</span><span class="lvr">${ronds('A')}</span><b>${bl.b.A}</b></div>`
+      + (bl.gagnant ? `<div class="lvwin">🏆 ${esc(teamName(m, bl.gagnant))} gagne ${bl.b[bl.gagnant]}-${bl.b[bl.gagnant === 'H' ? 'A' : 'H']}</div>`
+        : der ? `<div class="lvder">Dernier tir : ${esc(teamName(m, der.t))}${der.n ? ' · ' + esc(who(m, der.t, der.n, 'n°' + der.n)) : ''} ${der.ok ? '✅' : '❌'}</div>` : '') + '</div>' : '');
+}
+function liveCadre(m, filmeur){
+  const h = liveHost();
+  h.innerHTML = `<div class="lv"><video id="liveVid" playsinline autoplay muted></video><div id="liveOver" class="lvover"></div>
+    <div class="lvbar">${filmeur ? '<button type="button" id="lvCam">🔄 Caméra</button><button type="button" id="lvStop" class="stop">⏹ Arrêter le live</button>'
+      : '<button type="button" id="lvSon">🔊 Activer le son</button><button type="button" id="lvQuit">✕ Fermer</button>'}<button type="button" id="lvShare" class="share">↗ Partager le live</button></div></div>`;
+  $('lvShare').onclick = () => livePartager(m);
+  return $('liveVid');
+}
+async function liveStop(couper){
+  const L = LIVE; LIVE = null;
+  if (!L) return;
+  clearInterval(L.battement);
+  try{ L.wake && L.wake.release(); }catch(e){}
+  try{ (L.tracks || []).forEach(t => t.stop()); }catch(e){}
+  try{ await L.room.disconnect(); }catch(e){}
+  if (couper && L.m) liveApi(L.m, 'couper').catch(() => {});
+  const h = $('liveHost'); if (h) h.innerHTML = '';
+}
+async function liveFilmer(m, evs, redessiner){
+  try{
+    const LK = await chargerLK();
+    const { url, token } = await liveApi(m, 'filmer');
+    const tracks = await LK.createLocalTracks({ audio: true, video: { facingMode: 'environment', resolution: LK.VideoPresets.h720.resolution } });
+    const room = new LK.Room({ adaptiveStream: false, dynacast: true });
+    await room.connect(url, token);
+    for (const t of tracks) await room.localParticipant.publishTrack(t);
+    const vid = liveCadre(m, true);
+    tracks.find(t => t.kind === 'video')?.attach(vid);
+    LIVE = { id: m.id, m, role: 'filmer', room, tracks, facing: 'environment' };
+    try{ LIVE.wake = await navigator.wakeLock.request('screen'); }catch(e){}
+    // battement : si quelqu'un a coupé le live, on s'arrête
+    LIVE.battement = setInterval(async () => { const { data } = await sb.rpc('live_battement', { p_match: m.id }); if (data === false){ toast('Le live a été coupé'); liveStop(false); redessiner(); } }, 20000);
+    $('lvStop').onclick = () => askConfirm('Arrêter le live ?', 'Les spectateurs ne verront plus la vidéo.', 'Arrêter', () => { liveStop(true); redessiner(); });
+    $('lvCam').onclick = async () => { const v = tracks.find(t => t.kind === 'video'); LIVE.facing = LIVE.facing === 'environment' ? 'user' : 'environment'; try{ await v.restartTrack({ facingMode: LIVE.facing }); }catch(e){ toast('Impossible de changer de caméra'); } };
+    room.on(LK.RoomEvent.Disconnected, () => { if (LIVE && LIVE.room === room){ liveStop(false); toast('Live terminé'); redessiner(); } });
+    liveIncrustation(m, evs);
+    toast('Tu es en live ! Partage le lien 👇');
+    redessiner();
+  }catch(e){
+    toast(/NotAllowed|Permission/i.test(e.name + e.message) ? 'Autorise la caméra et le micro pour filmer' : e.message || 'Live impossible');
+    liveStop(false);
+  }
+}
+async function liveRegarder(m, evs, redessiner){
+  try{
+    const LK = await chargerLK();
+    const { url, token } = await liveApi(m, 'regarder');
+    const room = new LK.Room({ adaptiveStream: true });
+    const vid = liveCadre(m, false);
+    LIVE = { id: m.id, m, role: 'regarder', room };
+    room.on(LK.RoomEvent.TrackSubscribed, track => {
+      if (track.kind === 'video') track.attach(vid);
+      else { const a = track.attach(); a.id = 'liveAudio'; liveHost().appendChild(a); }
+    });
+    room.on(LK.RoomEvent.Disconnected, () => { if (LIVE && LIVE.room === room){ liveStop(false); toast('Live terminé'); redessiner(); } });
+    await room.connect(url, token);
+    $('lvSon').onclick = async () => { try{ await room.startAudio(); vid.muted = false; $('lvSon').remove(); }catch(e){} };
+    $('lvQuit').onclick = () => { liveStop(false); redessiner(); };
+    liveIncrustation(m, evs);
+    redessiner();
+  }catch(e){ toast(/pas de live/.test(e.message) ? 'Le live est terminé' : 'Impossible de lancer la vidéo'); liveStop(false); }
+}
+// en quittant la page du match (ou sa page « Gérer »), on quitte le live
+window.addEventListener('hashchange', () => { if (LIVE && !location.hash.includes(LIVE.id)) liveStop(LIVE.role === 'filmer'); });
+// encart sur la page du match (le lecteur, lui, est au-dessus)
+function liveCarteHTML(m){
+  if (m._partiel) return '';
+  const actif = liveActif(m), moi = LIVE && LIVE.id === m.id;
+  if (moi) return `<div class="demcard livecard"><b>${LIVE.role === 'filmer' ? '🔴 Tu es en live' : '🔴 Live des tirs au but'}</b><small>${LIVE.role === 'filmer' ? 'Garde l’appli ouverte et l’écran allumé.' : 'Filmé par ' + esc(m.live_nom || 'un supporter') + '.'}</small>
+    <button type="button" class="fbtn primary" id="liveShare2" style="width:100%;margin-top:8px">↗ Partager le live</button>${LIVE.role !== 'filmer' && canManage(m) && actif ? '<button type="button" class="link" id="liveCut">Couper le live</button>' : ''}</div>`;
+  if (actif) return `<div class="demcard livecard"><b>🔴 Live des tirs au but</b><small>Filmé par ${esc(m.live_nom || 'un supporter')}.</small>
+    <div class="foot" style="margin-top:8px"><button type="button" class="fbtn primary" id="liveWatch">▶ Regarder</button><button type="button" class="fbtn" id="liveShare2">↗ Partager</button></div>${canManage(m) ? '<button type="button" class="link" id="liveCut">Couper le live</button>' : ''}</div>`;
+  if (m.status === 'direct' && m.tab) return `<div class="demcard livecard"><b>🎥 Tirs au but en cours</b><small>Tu es au stade ? Filme la séance en direct pour ceux qui ne sont pas là (image et son).</small>
+    <button type="button" class="fbtn primary" id="${session ? 'liveGo' : 'liveLogin'}" style="width:100%;margin-top:8px">${session ? '🎥 Filmer en direct' : '🎥 Se connecter pour filmer'}</button></div>`;
+  return '';
+}
+function liveCarteBind(m, evs, redessiner, auto){
+  if ($('liveGo')) $('liveGo').onclick = () => askConfirm('Filmer en direct ?', 'Tout le monde pourra voir l’image et entendre le son de ton téléphone. Pense à demander l’accord des personnes que tu filmes de près.', 'Lancer le live', () => liveFilmer(m, evs, redessiner));
+  if ($('liveLogin')) $('liveLogin').onclick = () => { location.hash = '#/connexion'; };
+  if ($('liveWatch')) $('liveWatch').onclick = () => liveRegarder(m, evs, redessiner);
+  if ($('liveShare2')) $('liveShare2').onclick = () => livePartager(m);
+  if ($('liveCut')) $('liveCut').onclick = () => askConfirm('Couper le live ?', 'La vidéo s’arrête pour tout le monde.', 'Couper', async () => { try{ await liveApi(m, 'couper'); toast('Live coupé'); }catch(e){ toast('Refusé'); } if (LIVE && LIVE.id === m.id) liveStop(false); redessiner(); });
+  // lien partagé (#/match/<id>/live) : la vidéo démarre toute seule (sans le son, que le navigateur bloque)
+  if (auto && liveActif(m) && !LIVE) liveRegarder(m, evs, redessiner);
+  if (LIVE && LIVE.id === m.id){ LIVE.m = m; liveIncrustation(m, evs); }
 }
 // ---------- Match à venir : l'adversaire (classement, forme, match aller) ----------
 const numEquipe = s => (String(s || '').trim().match(/\s(\d+)$/) || [])[1] || null;
@@ -1258,13 +1386,14 @@ async function matchView(id){
       loadDem();
     });
   };
-  let advCache = '', hdmCache = '', finTimer = null;
+  let advCache = '', hdmCache = '', finTimer = null, liveAuto = /\/live$/.test(location.hash);
   const draw = () => {
     // match terminé : l'homme du match prend la place du responsable score, qui passe tout en bas
     const fini = m.status === 'termine';
     const delegHTML = isStaff() || m.delegue_nom ? `<div class="field deleg"><span>Responsable score</span>${delegPickHTML('delSel', m.delegue_id, m.delegue_nom, !isTeamManager(m.equipe))}${canManage(m) && !isTeamManager(m.equipe) ? '<small>Seul le responsable de l’équipe (ou un admin) peut changer le responsable score.</small>' : isStaff() && !canManage(m) ? '<small>Seuls le responsable de l’équipe, le responsable score ou un admin peuvent modifier ce match.</small>' : ''}</div>` : '';
     view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false) + niveauHTML(m) + lieuHTML(m)
       + `<div class="mactions"><button class="pill" id="btnBell">🔔 Buts des ${esc(teamLabel(m.equipe))}</button><button class="pill" id="btnShareLive">↗ Partager</button>${m.status==='termine' && !m._partiel ? '<button class="pill" id="btnResume">📸 Résumé</button>' : ''}</div>`
+      + liveCarteHTML(m)
       + (finPossible(m) && session ? '<div class="demcard fincard"><b>⏱️ Le chrono dépasse la ' + (2 * (m.half || 45) + 6) + 'e minute</b><small>Le match est sûrement fini. Tu peux arrêter le chrono : ton nom sera noté dans la chronologie.</small><button type="button" class="fbtn primary" id="finStop" style="width:100%;margin-top:8px">🏁 Arrêter le chrono</button></div>' : '')
       + (!m._partiel && canManage(m) && (rosterOf(m, clubSide(m)).length || terrainActif(m)) ? `<div class="visrow terrow"><button type="button" class="vistog${terrainActif(m) ? '' : ' off'}" id="terrainTog" aria-pressed="${terrainActif(m)}"><i></i>Vue terrain</button><small>${terrainActif(m) ? 'Visible par tous. Touche deux joueurs pour noter un changement de poste.' : 'Affiche nos joueurs sur le terrain et sur le banc, minute par minute.'}</small></div>` : '')
       + (terrainActif(m) && !m._partiel ? '<div id="terrainBox"></div>' : '')
@@ -1308,6 +1437,7 @@ async function matchView(id){
       m.terrain = t; toast(on ? 'Vue terrain activée' : 'Vue terrain désactivée'); draw();
     };
     terrainMonter(m, evs, $('terrainBox'));
+    liveCarteBind(m, evs, () => { if (here()) draw(); }, liveAuto); liveAuto = false;
     if ($('compoVis')) $('compoVis').onclick = async () => {
       const hide = !m.compo_cachee;
       $('compoVis').disabled = true;
@@ -2669,7 +2799,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
 const CGU_VERSION = '2026-10-11';
 function cguHTML(){
   return `<h2>Conditions générales d’utilisation</h2>
-  <p class="note">Version du 11 octobre 2026</p>
+  <p class="note">Version du 11 octobre 2026 (vidéo en direct)</p>
   <h3>1. L’appli</h3>
   <p>« AS Mésanger Live » (asm-live.vercel.app) est une appli indépendante pour suivre en direct les matchs des équipes de l’AS Mésanger : scores, buteurs, cartons, remplacements, compositions, classements et statistiques des joueurs. <b>Ce n’est pas l’appli officielle de l’AS Mésanger</b> : elle est réalisée et gérée bénévolement par des personnes proches du club, et elle n’engage pas le club. Elle est gratuite, sans garantie de disponibilité ni d’exactitude : les informations officielles restent celles de la FFF et du club.</p>
   <h3>2. Utilisation sans compte</h3>
@@ -2681,9 +2811,11 @@ function cguHTML(){
   <p>Après un match, chaque compte peut voter une fois pour l’homme du match, pendant 24 h, et peut changer son vote pendant ce temps. Le vote est secret : personne ne voit pour qui tu as voté. Pendant le vote, seuls les administrateurs voient le nombre de voix ; ensuite, tout le monde voit le ou les élus (ex aequo possibles), sans le nombre de voix, et les responsables et administrateurs voient aussi les autres joueurs qui ont reçu des voix. Le joueur élu peut être prévenu par une notification.</p>
   <h3>5. Délégués et arbitres</h3>
   <p>Les responsables et les administrateurs ajoutent au « groupe arbitres » les bénévoles qui font délégué ou arbitre pour les matchs seniors, avec les postes qu’ils peuvent tenir et, si besoin, leur numéro de licence. Les membres du groupe indiquent leurs disponibilités et leurs préférences chaque semaine ; les responsables et administrateurs les voient pour organiser les désignations. Les membres reçoivent des notifications (désignation, relance pour les dispos, rappel la veille du match, poste devenu inutile). Les officiels désignés par la FFF sont relevés sur la page publique du match pour savoir de quels postes on a besoin ; leurs noms ne sont pas enregistrés.</p>
-  <h3>6. Bon usage</h3>
+  <h3>6. Vidéo en direct des tirs au but</h3>
+  <p>Pendant une séance de tirs au but, un compte peut filmer en direct (image et son) depuis son téléphone ; tout le monde peut regarder, même sans compte. La vidéo n’est pas enregistrée : elle passe par le service LiveKit (serveurs en Europe) et disparaît à la fin du live. Celui qui filme s’engage à respecter les personnes filmées (demander leur accord pour les plans rapprochés, ne pas filmer de mineurs sans l’accord de leurs parents). Le responsable score, les responsables d’équipe et les administrateurs peuvent couper un live à tout moment.</p>
+  <h3>7. Bon usage</h3>
   <p>Tu t’engages à saisir des informations exactes (scores, buteurs, cartons, compositions), à ne pas noter d’actions en double avec une autre personne, et à respecter les joueurs, les adversaires et les arbitres. Chaque modification d’un match est enregistrée avec son auteur et son heure (historique visible par les responsables et les administrateurs de l’appli).</p>
-  <h3>7. Données personnelles</h3>
+  <h3>8. Données personnelles</h3>
   <p><b>Ce qui est enregistré :</b> pour un compte, ton prénom, ton nom, ton email, ton rôle, les équipes que tu gères, le joueur auquel tu as lié ton compte, la date d’acceptation de ces conditions, les saisies que tu fais sur les matchs, tes demandes pour être responsable score et tes votes pour l’homme du match ; pour les membres du groupe arbitres, leurs postes, leur numéro de licence s’il est indiqué, leurs disponibilités et leurs désignations. Pour tous les visiteurs : l’abonnement aux notifications si tu l’actives (les administrateurs voient quels comptes les ont activées, sur combien d’appareils et pour quelles équipes), et, pendant que l’appli est ouverte, la page consultée et le fait d’être connecté ou non (pour compter les personnes en ligne).</p>
   <p><b>Mesure d’audience :</b> pour compter les visites, ton téléphone garde un identifiant tiré au hasard ; l’appli note, par jour, le nombre d’ouvertures et le type de pages consultées (accueil, match, classements…), et le compte s’il est connecté. Ni adresse IP, ni localisation, ni outil de publicité ou de suivi extérieur. Seuls les administrateurs voient ces statistiques.</p>
   <p><b>Compositions et matchs :</b> les noms des joueurs apparaissent dans les compositions, la chronologie et les stats des matchs. Les compos de l’AS Mésanger peuvent être reprises automatiquement des convocations publiées par le club (avec l’heure de rendez-vous au stade) ; les compos et résultats des adversaires, les horaires et les classements viennent des pages publiques de la FFF.</p>
@@ -2692,7 +2824,7 @@ function cguHTML(){
   <p><b>Où elles sont :</b> chez les hébergeurs de l’appli (Supabase pour la base de données, Vercel pour le site et l’envoi des notifications).</p>
   <p><b>Combien de temps :</b> tant que ton compte existe. Si ton compte est supprimé (par toi ou par un administrateur), ton accès et ton email sont effacés et tu ne peux plus te connecter ; ton prénom et ton nom restent dans l’historique des matchs et actions que tu as saisis (et dans les compos où tu as joué).</p>
   <p><b>Tes droits :</b> tu peux consulter, corriger ton nom (« Mon compte »), supprimer ton compte (« Mon compte » → « Supprimer mon compte »), demander à un responsable de te retirer du groupe arbitres, ou à un administrateur de l’appli de corriger ou retirer ton nom d’une composition ou de l’historique. Tu peux aussi saisir la CNIL (cnil.fr).</p>
-  <h3>8. Évolutions</h3>
+  <h3>9. Évolutions</h3>
   <p>Ces conditions peuvent évoluer ; la date de version ci-dessus change alors.</p>`;
 }
 function cguView(){
