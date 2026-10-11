@@ -627,7 +627,66 @@ function niveauHTML(m){
 function lieuHTML(m){
   if (clubSide(m) !== 'A' || !m.adresse || m.status === 'termine') return '';
   const ville = m.adresse.split(', ').pop().replace(/^\d{5}\s*/, '');
-  return `<button class="lieu" id="btnLieu">📍 ${esc(m.lieu || 'Lieu du match')}${ville ? ' · ' + esc(ville) : ''}</button>`;
+  return `<button class="lieu" id="btnLieu">📍 ${esc(m.lieu || 'Lieu du match')}${ville ? ' · ' + esc(ville) : ''}</button>${surfaceHTML(m)}`;
+}
+// type de terrain relevé sur la FFF (seulement à l'extérieur : à domicile, c'est presque toujours le synthétique)
+function surfaceHTML(m){
+  if (clubSide(m) !== 'A' || !m.surface || m.status === 'termine') return '';
+  const s = m.surface, ic = /synth/i.test(s) ? '🟩' : /stabil|sable|terre/i.test(s) ? '🟫' : '🌱';
+  return `<div class="surface">${ic} ${esc(s)}</div>`;
+}
+// ---------- Météo du match (Open-Meteo, gratuit, sans compte) ----------
+// Avant le match : prévision à l'heure du coup d'envoi (jusqu'à 16 jours avant) ; pendant : la météo du moment.
+// Lieu : l'adresse du stade à l'extérieur (base d'adresses nationale), Mésanger à domicile.
+const METEO = { 0: ['☀️', 'Ensoleillé'], 1: ['🌤️', 'Plutôt ensoleillé'], 2: ['⛅', 'Éclaircies'], 3: ['☁️', 'Couvert'], 45: ['🌫️', 'Brouillard'], 48: ['🌫️', 'Brouillard givrant'],
+  51: ['🌦️', 'Bruine'], 53: ['🌦️', 'Bruine'], 55: ['🌧️', 'Forte bruine'], 56: ['🌧️', 'Bruine verglaçante'], 57: ['🌧️', 'Bruine verglaçante'],
+  61: ['🌦️', 'Pluie faible'], 63: ['🌧️', 'Pluie'], 65: ['🌧️', 'Forte pluie'], 66: ['🌧️', 'Pluie verglaçante'], 67: ['🌧️', 'Pluie verglaçante'],
+  71: ['🌨️', 'Neige faible'], 73: ['🌨️', 'Neige'], 75: ['🌨️', 'Forte neige'], 77: ['🌨️', 'Grains de neige'],
+  80: ['🌦️', 'Averses'], 81: ['🌧️', 'Averses'], 82: ['⛈️', 'Fortes averses'], 85: ['🌨️', 'Averses de neige'], 86: ['🌨️', 'Averses de neige'],
+  95: ['⛈️', 'Orage'], 96: ['⛈️', 'Orage et grêle'], 99: ['⛈️', 'Orage et grêle'] };
+const meteoUtile = m => !m._partiel && (m.status === 'direct' || (m.status === 'prevu' && new Date(m.kickoff).getTime() - Date.now() < 15.5 * 864e5));
+async function meteoPosition(m){
+  const ext = clubSide(m) === 'A' && m.adresse;
+  const q = ext ? m.adresse : 'Mésanger 44522';
+  const cache = lsGet('asm-geo', {});
+  if (cache[q] && cache[q].ville) return cache[q];
+  const r = await fetch('https://api-adresse.data.gouv.fr/search/?limit=1&q=' + encodeURIComponent(q));
+  const f = ((await r.json()).features || [])[0];
+  if (!f) throw new Error('adresse');
+  // nom de la commune bien orthographié (« Ligné », et non « LIGNE » comme sur la FFF)
+  const ville = ext ? (f.properties.city || m.adresse.split(', ').pop().replace(/^\d{5}\s*/, '')) : 'Mésanger';
+  const pos = { lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], ville };
+  cache[q] = pos; lsSet('asm-geo', cache);
+  return pos;
+}
+async function meteoRemplir(m, box){
+  if (!box) return '';
+  const cle = 'asm-meteo-' + m.id + '-' + m.status, c = lsGet(cle, null);
+  let d = c && Date.now() - c.t < 30 * 60000 ? c.d : null;
+  const pos = await meteoPosition(m);
+  if (!d){
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${pos.lat}&longitude=${pos.lon}&timezone=Europe%2FParis&forecast_days=16`
+      + '&current=temperature_2m,weather_code,wind_speed_10m&hourly=temperature_2m,weather_code,precipitation_probability,wind_speed_10m');
+    const j = await r.json(); if (!j || !j.hourly) throw new Error('météo');
+    d = { current: j.current, hourly: j.hourly };
+    lsSet(cle, { t: Date.now(), d });
+  }
+  let html = '';
+  if (m.status === 'direct' && d.current){
+    const [ic, lib] = METEO[d.current.weather_code] || ['🌡️', ''];
+    html = `<div class="meteo"><span class="meteoic">${ic}</span><div><b>En ce moment à ${esc(pos.ville)} : ${Math.round(d.current.temperature_2m)}°</b><small>${esc(lib)} · vent ${Math.round(d.current.wind_speed_10m)} km/h</small></div></div>`;
+  } else {
+    // heure du coup d'envoi à Paris, arrondie à l'heure la plus proche, au format d'Open-Meteo (2026-10-18T15:00)
+    const k = new Date(new Date(m.kickoff).getTime() + 30 * 60000);
+    const p = Object.fromEntries(new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(k).map(x => [x.type, x.value]));
+    const i = d.hourly.time.indexOf(`${p.year}-${p.month}-${p.day}T${p.hour}:00`);
+    if (i < 0) return '';
+    const [ic, lib] = METEO[d.hourly.weather_code[i]] || ['🌡️', ''];
+    const pluie = d.hourly.precipitation_probability[i];
+    html = `<div class="meteo"><span class="meteoic">${ic}</span><div><b>Météo prévue au coup d’envoi : ${Math.round(d.hourly.temperature_2m[i])}°</b><small>${esc(lib)}${pluie != null && pluie >= 10 ? ' · pluie ' + pluie + ' %' : ''} · vent ${Math.round(d.hourly.wind_speed_10m[i])} km/h · ${esc(pos.ville)}</small></div></div>`;
+  }
+  if (box.isConnected) box.innerHTML = html;
+  return html;
 }
 function openLieu(m){
   const a = encodeURIComponent(m.adresse);
@@ -1398,12 +1457,13 @@ async function matchView(id){
       loadDem();
     });
   };
-  let advCache = '', hdmCache = '', finTimer = null, liveAuto = /\/live$/.test(location.hash);
+  let advCache = '', hdmCache = '', meteoCache = '', finTimer = null, liveAuto = /\/live$/.test(location.hash);
   const draw = () => {
     // match terminé : l'homme du match prend la place du responsable score, qui passe tout en bas
     const fini = m.status === 'termine';
     const delegHTML = isStaff() || m.delegue_nom ? `<div class="field deleg"><span>Responsable score</span>${delegPickHTML('delSel', m.delegue_id, m.delegue_nom, !isTeamManager(m.equipe))}${canManage(m) && !isTeamManager(m.equipe) ? '<small>Seul le responsable de l’équipe (ou un admin) peut changer le responsable score.</small>' : isStaff() && !canManage(m) ? '<small>Seuls le responsable de l’équipe, le responsable score ou un admin peuvent modifier ce match.</small>' : ''}</div>` : '';
     view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false) + niveauHTML(m) + lieuHTML(m)
+      + (meteoUtile(m) ? `<div id="meteoBox">${meteoCache}</div>` : '')
       + `<div class="mactions"><button class="pill" id="btnBell">🔔 Buts des ${esc(teamLabel(m.equipe))}</button><button class="pill" id="btnShareLive">↗ Partager</button>${m.status==='termine' && !m._partiel ? '<button class="pill" id="btnResume">📸 Résumé</button>' : ''}</div>`
       + liveCarteHTML(m)
       + (finPossible(m) && session ? '<div class="demcard fincard"><b>⏱️ Le chrono dépasse la ' + (2 * (m.half || 45) + 6) + 'e minute</b><small>Le match est sûrement fini. Tu peux arrêter le chrono : ton nom sera noté dans la chronologie.</small><button type="button" class="fbtn primary" id="finStop" style="width:100%;margin-top:8px">🏁 Arrêter le chrono</button></div>' : '')
@@ -1425,6 +1485,7 @@ async function matchView(id){
     if ($('rempBtn')) $('rempBtn').onclick = () => { const v = !lsGet('asm-voir-remp', false); lsSet('asm-voir-remp', v); view.querySelector('.lineups')?.classList.toggle('remp', v); $('rempBtn').textContent = v ? 'Masquer les remplacements' : 'Afficher les remplacements'; };
     if ($('histoBox')) $('histoBox').ontoggle = () => { if ($('histoBox').open) histoCharger(m, $('histoList')); };
     if ($('btnLieu')) $('btnLieu').onclick = () => openLieu(m);
+    if ($('meteoBox')) meteoRemplir(m, $('meteoBox')).then(h => { if (h) meteoCache = h; }).catch(e => console.warn('météo indisponible', e));
     if ($('rdvBox')) { const ms = new Date(m.kickoff).getTime() - Date.now(); if (ms < 864e5) setTimeout(() => $('rdvBox')?.remove(), ms); }
     $('btnBell').onclick = () => openBell(m.equipe || 1);
     if ($('finStop')) $('finStop').onclick = () => askConfirm('Arrêter le chrono ?', 'Le match passe en « Terminé ». Ton nom sera affiché dans la chronologie.', 'Arrêter le chrono', async () => {

@@ -7,7 +7,9 @@
 //        Un niveau introuvable est signalé par une ligne « A_CHERCHER <adresse> » : on relève le championnat sur
 //        cette page FFF et on relance avec le fichier niveaux { "<adresse>": "<texte relevé>" }.
 //        Un lieu à relever est signalé par « A_LIEU <adresse du match> » : on relève le lieu sur la page du match
-//        et on relance avec le fichier lieux { "<adresse du match>": ["STADE …", "RUE …", "44150 VILLE"] } (« - » si pas de fichier niveaux).
+//        et on relance avec le fichier lieux { "<adresse du match>": { "lieu": ["STADE …", "RUE …", "44150 VILLE"], "surface": "PELOUSE NATURELLE" } }
+//        (l'ancien format, juste le tableau du lieu, marche encore ; « - » si pas de fichier niveaux).
+//        Le type de terrain (surface) est relevé pour nos matchs à l'extérieur des 7 jours, revérifié dans les 2 derniers jours.
 // Format du JSON : { "1": [["DIM 07 FÉV 2027 - 15H00", "Régional 3 - Senior Journée 12", "516995", "MESANGER AS", "502138", "THOUARE US", "/competition/club/…/equipe/…", "/competition/club/…/equipe/…", "/competition/match/…"], ...], ... }
 //   (date, compétition, code club et nom du recevant, code club et nom du visiteur, pages FFF des deux équipes, page du match ;
 //    l'ancien format [date, "A - B", compétition] est encore accepté)
@@ -76,10 +78,15 @@ async function ecarts(file, fichNiv, fichLieux) {
   const data = JSON.parse(fs.readFileSync(file, 'utf8'));
   const niv = fichNiv && fichNiv !== '-' ? JSON.parse(fs.readFileSync(fichNiv, 'utf8')) : {};
   const lieux = {};
-  if (fichLieux) Object.entries(JSON.parse(fs.readFileSync(fichLieux, 'utf8'))).forEach(([u, l]) => { lieux[pageMatch(u)] = lieuDe(l); });
+  // « PELOUSE NATURELLE » → « Pelouse naturelle »
+  const surfaceDe = x => { const t = String(x || '').replace(/\s+/g, ' ').trim(); return t ? t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() : ''; };
+  if (fichLieux) Object.entries(JSON.parse(fs.readFileSync(fichLieux, 'utf8'))).forEach(([u, v]) => {
+    const brut = Array.isArray(v) ? { lieu: v } : (v || {});
+    lieux[pageMatch(u)] = { ...(lieuDe(brut.lieu || []) || {}), surface: surfaceDe(brut.surface) };
+  });
   // équipes des poules de nos équipes (classements) : leur niveau est celui de notre équipe dans cette poule
   const cls = await (await fetch(URL_ + '/rest/v1/classements?select=equipe,lignes', { headers: H })).json();
-  const r = await fetch(URL_ + '/rest/v1/matches?select=id,equipe,competition,kickoff,status,club_side,home_name,away_name,opp_logo,opp_niveau,lieu,adresse,fff_match', { headers: H });
+  const r = await fetch(URL_ + '/rest/v1/matches?select=id,equipe,competition,kickoff,status,club_side,home_name,away_name,opp_logo,opp_niveau,lieu,adresse,surface,fff_match', { headers: H });
   const tous = await r.json();
   const champDe = eq => ((tous.find(x => x.equipe === eq && / · J\d+$/.test(x.competition)) || {}).competition || '').replace(/ · J\d+$/, '') || null;
   // nom des adversaires déjà connus sur le site, par code club FFF (sans le numéro d'équipe réserve)
@@ -136,11 +143,20 @@ async function ecarts(file, fichNiv, fichLieux) {
       }
       // lieu des matchs à l'extérieur : relevé dans les 3 semaines, revérifié dans les 4 derniers jours (terrain changé)
       const dans = new Date(site.kickoff).getTime() - maintenant;
-      if (!domNous && uMatch && dans < 21 * 86400000 && (!site.adresse || dans < 4 * 86400000)) {
+      // type de terrain : nos matchs à l'extérieur de la semaine (pas à domicile : presque toujours le synthétique),
+      // revérifié dans les 2 derniers jours (repli sur synthétique)
+      // (limité à 7 jours : chaque page de match ouverte sur la FFF prend du temps)
+      const besoinLieu = !domNous && (!site.adresse || dans < 4 * 86400000);
+      const besoinSurface = !domNous && ((!site.surface && dans < 7 * 86400000) || dans < 2 * 86400000);
+      if (uMatch && dans < 21 * 86400000 && (besoinLieu || besoinSurface)) {
         const l = lieux[pageMatch(uMatch)];
         if (!l) out.push({ type: 'chercher_lieu', url: 'https://epreuves.fff.fr' + pageMatch(uMatch) });
-        else if (l.lieu !== site.lieu || l.adresse !== site.adresse)
-          out.push({ type: 'lieu', id: site.id, eq, comp: appComp, lieu: l.lieu, adresse: l.adresse, equipes: site.home_name + ' – ' + site.away_name });
+        else {
+          if (besoinLieu && l.lieu && (l.lieu !== site.lieu || l.adresse !== site.adresse))
+            out.push({ type: 'lieu', id: site.id, eq, comp: appComp, lieu: l.lieu, adresse: l.adresse, equipes: site.home_name + ' – ' + site.away_name });
+          if (l.surface && l.surface !== site.surface)
+            out.push({ type: 'surface', id: site.id, eq, comp: appComp, surface: l.surface, equipes: site.home_name + ' – ' + site.away_name });
+        }
       }
       if (!site.opp_logo && cAdv)
         out.push({ type: 'logo', id: site.id, eq, comp: appComp, opp_logo: LOGO(cAdv), equipes: site.home_name + ' – ' + site.away_name });
@@ -160,6 +176,7 @@ async function comparer(file, corriger, fichNiv, fichLieux) {
     : x.type === 'ajout' ? `NOUVEAU équipe ${x.eq} ${x.comp} ${x.home_name} – ${x.away_name} (${fmt(x.kickoff)})${x.opp_niveau ? ', adversaire en ' + x.opp_niveau : ''}`
     : x.type === 'niveau' ? `NIVEAU équipe ${x.eq} ${x.comp} ${x.equipes} : adversaire en ${x.opp_niveau}`
     : x.type === 'lieu' ? `LIEU équipe ${x.eq} ${x.comp} ${x.equipes} : ${x.lieu}, ${x.adresse}`
+    : x.type === 'surface' ? `SURFACE équipe ${x.eq} ${x.comp} ${x.equipes} : ${x.surface}`
     : `LOGO équipe ${x.eq} ${x.comp} ${x.equipes} : logo de l’adversaire ajouté`));
   chercher.forEach(u => console.log('A_CHERCHER ' + u));
   chercherLieu.forEach(u => console.log('A_LIEU ' + u));
@@ -172,6 +189,7 @@ async function comparer(file, corriger, fichNiv, fichLieux) {
       : x.type === 'horaire' ? { type: 'horaire', id: x.id, kickoff: x.kickoff }
       : x.type === 'niveau' ? { type: 'niveau', id: x.id, opp_niveau: x.opp_niveau }
       : x.type === 'lieu' ? { type: 'lieu', id: x.id, lieu: x.lieu, adresse: x.adresse }
+      : x.type === 'surface' ? { type: 'surface', id: x.id, surface: x.surface }
       : x.type === 'fff' ? { type: 'fff', id: x.id, fff_match: x.fff_match } : { type: 'logo', id: x.id, opp_logo: x.opp_logo });
     const r = await fetch(URL_ + '/rest/v1/rpc/maj_matchs', { method: 'POST', headers: H, body: JSON.stringify({ p_secret: secret, p_data }) });
     const t = await r.text();
