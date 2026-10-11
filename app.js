@@ -115,6 +115,9 @@ function periodText(m){
   if (isMiTemps(m)) return 'Mi-temps';
   return (m.period===1 ? '1re mi-temps' : '2e mi-temps') + (m.running ? '' : (m.period===1 && elapsedMs(m) >= m.half*60000 ? ' · mi-temps' : ' · en pause'));
 }
+// en direct : couleur selon le score du moment (vert on mène, rouge menés, gris égalité)
+const RES_DIRECT = { V: ['w', ''], D: ['l', ''], N: ['n', ''] };
+const liveTexte = (m, res) => (isMiTemps(m) ? 'Mi-temps' : m.period ? currentMinute(m).label : 'Direct') + (res ? ' · ' + res : '');
 function resultOf(m, evs){
   const c = goals(evs, clubSide(m)), o = goals(evs, oppSide(m));
   return c > o ? 'V' : c < o ? 'D' : 'N';
@@ -458,7 +461,7 @@ async function homeView(){
   const reload = debounce(load, 400);
   const off = liveChannel('home', reload, [{event:'*', table:'matches'}, {event:'*', table:'events'}]);
   const tick = setInterval(() => document.querySelectorAll('[data-live]').forEach(el => {
-    const m = JSON.parse(el.dataset.live); el.textContent = isMiTemps(m) ? 'Mi-temps' : m.status==='direct' && m.period ? 'Direct · ' + currentMinute(m).label : 'Direct';
+    const m = JSON.parse(el.dataset.live); el.textContent = liveTexte(m, el.dataset.res);
   }), 5000);
   const vis = () => { if (document.visibilityState==='visible') reload(); };
   document.addEventListener('visibilitychange', vis);
@@ -480,10 +483,12 @@ function drawHome(matches, goalRows){
     let badge = '', mid;
     if (m.status==='prevu') mid = `<span class="mtime">${esc(hhmm(m.kickoff))}</span>`;
     else mid = `<span class="msc">${goals(evs,'H')}<i>–</i>${goals(evs,'A')}</span>`;
-    if (m.status==='direct') badge = `<span class="badge live" data-live='${esc(JSON.stringify({status:m.status,period:m.period,half:m.half,running:m.running,started_at:m.started_at,acc:m.acc}))}'>${isMiTemps(m) ? 'Mi-temps' : 'Direct' + (m.period ? ' · ' + esc(currentMinute(m).label) : '')}</span>`;
+    const rd = m.status === 'direct' ? RES_DIRECT[resultOf(m, evs)] : null;
+    if (m.status==='direct') badge = `<span class="badge live ${rd[0]}" data-res="${rd[1]}" data-live='${esc(JSON.stringify({status:m.status,period:m.period,half:m.half,running:m.running,started_at:m.started_at,acc:m.acc}))}'>${liveTexte(m, rd[1])}</span>`;
     else if (m.status==='termine'){ const r = resultOf(m, evs); badge = `<span class="badge ${r==='V'?'w':r==='D'?'l':''}">${r==='V'?'Victoire':r==='D'?'Défaite':'Nul'}</span>`; }
     const side = t => `<div class="mside${c===t?' club':''}">${logoOf(m,t) ? logoImg(m,t,'mlg') : '<span class="mlg ph"></span>'}<span>${esc(teamName(m,t))}</span></div>`;
-    return `<a class="mcard${m.status==='direct' ? ' live' : ''}${me ? ' mine' : ''}" href="#/match/${esc(m.id)}">
+    const rf = m.status === 'termine' ? ' f' + ({ V: 'w', D: 'l', N: 'n' })[resultOf(m, evs)] : '';
+    return `<a class="mcard${m.status==='direct' ? ' live ' + rd[0] : ''}${rf}${me ? ' mine' : ''}" href="#/match/${esc(m.id)}">
       <div class="mtop"><span class="tchip" title="${esc(teamLabel(m.equipe))}">${teamLetter(m.equipe)}</span><span class="mcomp">${CATS.length > 1 ? esc(catOf(m.equipe)) + (m.competition ? " · " : "") : ""}${esc(m.competition || (CATS.length > 1 ? "" : teamLabel(m.equipe)))}</span>${canManage(m) && !me ? `<span class="gerer" role="link" tabindex="0" data-href="#/gerer/${esc(m.id)}" aria-label="Gérer ce match">✎ Gérer</span>` : ''}${badge}</div>
       <div class="mrow">${side('H')}<div class="mmid">${mid}</div>${side('A')}</div>
       ${m.status === 'termine' ? '' /* match fini : plus de responsable score sur l'accueil (il reste sur la page du match) */
@@ -591,7 +596,7 @@ function boardHTML(m, evs, staff){
   const c = clubSide(m), niv = niveaux(m);
   const tniv = t => niv && niv[t] ? `<span class="tniv">${esc(niv[t])}</span>` : '';
   return `<section class="board" aria-label="Tableau d'affichage">
-    <div class="bmeta"><span>${esc(teamLabel(m.equipe))} · ${esc(fmtDate(m.kickoff))}${m.competition ? ' · ' + esc(m.competition) : ''}</span>${m.status==='direct' ? '<span class="badge live">Direct</span>' : ''}</div>
+    <div class="bmeta"><span>${esc(teamLabel(m.equipe))} · ${esc(fmtDate(m.kickoff))}${m.competition ? ' · ' + esc(m.competition) : ''}</span>${m.status==='direct' ? (rd => `<span class="badge live ${rd[0]}">Direct</span>`)(RES_DIRECT[resultOf(m, evs)]) : ''}</div>
     <div class="teams">
       <div class="team">${logoImg(m,'H','blg')}<span class="tname${c==='H'?' club':''}">${esc(teamName(m,'H'))}</span>${tniv('H')}</div>
       <div class="score" aria-live="polite"><span id="scH">${goals(evs,'H')}</span><span class="sep">–</span><span id="scA">${goals(evs,'A')}</span></div>
