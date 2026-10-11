@@ -1031,7 +1031,7 @@ async function matchView(id){
       lsSet('asm-apres-connexion', null);
       if (!m.delegue_id && m.status !== 'termine' && !isTeamManager(m.equipe)){
         const { data, error } = await sb.rpc('demander_score', { p_match: m.id });
-        if (!error){ notifDem(data); toast('Demande envoyée aux responsables de l’équipe'); }
+        if (!error){ notifDem(data); await apresDemande(); return; }
       }
     }
     const { data } = await sb.from('demandes_score').select('*').eq('match_id', id).order('created_at');
@@ -1050,11 +1050,21 @@ async function matchView(id){
         <button type="button" class="pill ok" data-dok="${esc(d.id)}">Accepter</button><button type="button" class="pill" data-dno="${esc(d.id)}">Refuser</button></div>`).join('')}</div>`;
     }
     const mine = dem.filter(d => d.user_id === myId()).pop();
+    // moins d'1 h avant le coup d'envoi (ou match commencé) : le premier qui le demande devient responsable score tout de suite
+    const direct = m.status !== 'prevu' || Date.now() >= new Date(m.kickoff).getTime() - 3600e3;
     if (mine && mine.statut === 'attente')
-      return `<div class="demcard"><b>⏳ Ta demande pour être responsable score est en attente</b><small>Un responsable de l’équipe ou un admin va l’accepter ou la refuser.</small>
+      return direct ? `<div class="demcard"><b>⏳ Ta demande est toujours en attente</b><small>Le match approche et personne n’a été choisi : tu peux prendre le score tout de suite.</small>
+        <button type="button" class="fbtn primary" id="demAsk" style="width:100%;margin-top:8px">🙋 Je prends le score</button></div>`
+        : `<div class="demcard"><b>⏳ Ta demande pour être responsable score est en attente</b><small>Un responsable de l’équipe ou un admin va l’accepter ou la refuser. À 1 h du match, si personne n’a été choisi, tu pourras prendre le score directement.</small>
         <button type="button" class="link" data-dann="${esc(mine.id)}">Retirer ma demande</button></div>`;
-    return `<div class="demcard"><b>Pas encore de responsable score pour ce match</b>${mine && mine.statut === 'refusee' ? '<small>Ta précédente demande a été refusée.</small>' : '<small>Tu peux proposer de saisir le score et les remplacements.</small>'}
+    return `<div class="demcard"><b>Pas encore de responsable score pour ce match</b>${direct ? '<small>Le match approche : en appuyant, tu deviens responsable score tout de suite.</small>' : mine && mine.statut === 'refusee' ? '<small>Ta précédente demande a été refusée.</small>' : '<small>Tu peux proposer de saisir le score et les remplacements.</small>'}
       <button type="button" class="fbtn primary" id="demAsk" style="width:100%;margin-top:8px">🙋 Je veux être responsable score</button></div>`;
+  };
+  // à moins d'1 h du match, la base nomme directement le demandeur : on recharge le match pour le savoir
+  const apresDemande = async () => {
+    try{ const r = await fetchMatch(m.id); if (r.m){ m = r.m; evs = r.evs; matchCache.set(id, r); } }catch(e){}
+    if (m.delegue_id && m.delegue_id === myId()){ delegues = null; toast('C’est toi le responsable score !'); if (here()) draw(); return; }
+    toast('Demande envoyée aux responsables de l’équipe'); loadDem();
   };
   const notifDem = id2 => { if (session) fetch('api/notify-demande', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token }, body: JSON.stringify({ id: id2 }) }).catch(() => {}); };
   const bindDem = () => {
@@ -1067,7 +1077,7 @@ async function matchView(id){
       $('demAsk').disabled = true;
       const { data, error } = await sb.rpc('demander_score', { p_match: m.id });
       if (error){ toast(isNetErr(error) ? 'Pas de réseau' : /déjà un responsable/.test(error.message) ? 'Ce match a déjà un responsable score' : 'Demande refusée'); loadDem(); return; }
-      notifDem(data); toast('Demande envoyée aux responsables de l’équipe'); loadDem();
+      notifDem(data); await apresDemande();
     };
     view.querySelectorAll('[data-dann]').forEach(b => b.onclick = async () => {
       await sb.rpc('annuler_demande_score', { p_id: b.dataset.dann }); toast('Demande retirée'); loadDem();
