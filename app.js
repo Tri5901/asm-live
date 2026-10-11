@@ -2732,7 +2732,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
         <div class="kpi"><b>${ga}</b><span>Encaissés</span></div>
       </div>
       ${isStaff() ? aCompleterHTML(list.filter(m => m.status === 'termine'), byMatch) : ''}
-      ${statMode === 'joueurs' ? '<div id="hdmSaison"></div>' : ''}
+      ${statMode === 'joueurs' && (statF.cat || statF.team) ? '<div id="hdmSaison"></div>' : ''}
       <input id="statQ" class="dpq statq" type="search" placeholder="🔍 Rechercher un joueur…" autocomplete="off" enterkeyhint="search" value="${esc(statQ)}" aria-label="Rechercher un joueur">
       <div class="empty" id="statNone" hidden>Aucun joueur ne correspond à cette recherche.</div>
       ${statMode === 'buteurs' ? (CATS.map(c => { const h = catTeams(c).map(boardHTML).join(''); return h ? `<div class="sec">${esc(c)}</div>` + h : ''; }).join('') || '<div class="empty">Aucun match avec ce filtre.</div>') : rows.length ? `<div class="tblwrap"><table class="stats"><thead><tr>${COLS.map(([k,l])=>`<th class="${statSort.key===k?'on':''}" aria-sort="${statSort.key===k?(statSort.dir<0?'descending':'ascending'):'none'}"><button data-k="${k}">${l}${statSort.key===k?(statSort.dir<0?' ▾':' ▴'):''}</button></th>`).join('')}</tr></thead>
