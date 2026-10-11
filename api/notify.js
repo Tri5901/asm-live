@@ -39,13 +39,14 @@ module.exports = async (req, res) => {
   const player = ev.n ? ((m.rosters?.[ev.t] || []).find(p => p.n === String(ev.n))?.name || '') : '';
   const clubGoal = ev.t === (m.club_side || 'H');
   const nous = name(m.club_side || 'H');
-  const score = `${name('H')} ${sc('H')} – ${sc('A')} ${name('A')} · ${ev.min}`;
+  // le score d'abord, à part des noms d'équipe (« Mauves 2 0 – 1 Mésanger B » se lisait mal)
+  const score = `Score ${sc('H')}-${sc('A')} · ${name('H')} contre ${name('A')} · ${ev.min}`;
   const qui = ev.n === 'CSC' ? ' · contre son camp' : ev.n && clubGoal ? ` · n°${ev.n}${player ? ' ' + player : ''}` : '';
   // carton : une phrase claire, le joueur dès le titre (« 🟨 Carton jaune pour Valentin Gicqueau »)
   const CARTON = { yellow: ['🟨', 'Carton jaune', 'prend un carton jaune'], white: ['⬜', 'Carton blanc', 'prend un carton blanc'], red: ['🟥', 'Carton rouge', 'est exclu (carton rouge)'] };
   const carton = CARTON[ev.k];
   const qui2 = player || (ev.n ? `Le n°${ev.n}` : '');
-  const scoreSeul = `${name('H')} ${sc('H')} – ${sc('A')} ${name('A')}`;
+  const scoreSeul = `Score ${sc('H')}-${sc('A')} · ${name('H')} contre ${name('A')}`;
   // but de Mésanger ou but encaissé : ça doit se voir dès le titre
   const payload = JSON.stringify(carton ? {
     title: `${carton[0]} ${carton[1]} pour ${player || name(ev.t)}`,
