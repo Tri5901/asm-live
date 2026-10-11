@@ -669,7 +669,7 @@ function terrainDepart(f, tit){
 }
 function terrainCfg(m){
   const cs = clubSide(m), tit = rosterOf(m, cs).filter(p => !p.sub && p.n).map(p => String(p.n));
-  const t = m.terrain || {}, f = TERRAIN_DISPOS[t.f] ? t.f : '4-4-2';
+  const t = m.terrain || {}, f = TERRAIN_DISPOS[t.f] ? t.f : '4-3-3';
   // place de départ enregistrée, si elle correspond toujours aux titulaires de la compo
   const d = Array.isArray(t.d) && t.d.length === 11 && t.d.every(n => tit.includes(n)) && new Set(t.d).size === 11 ? t.d.slice() : terrainDepart(f, tit);
   return { f, d, p: Array.isArray(t.p) ? t.p : [], tit };
