@@ -114,15 +114,40 @@ function periodText(m){
   if (m.status==='termine') return 'Match terminé';
   if (m.period===0) return 'Avant match';
   if (isMiTemps(m)) return 'Mi-temps';
+  if (m.tab) return 'Tirs au but';
   return (m.period===1 ? '1re mi-temps' : '2e mi-temps') + (m.running ? '' : (m.period===1 && elapsedMs(m) >= m.half*60000 ? ' · mi-temps' : ' · en pause'));
 }
 // en direct : couleur et mot selon le score du moment (vert on mène, rouge menés, gris égalité)
 const RES_DIRECT = { V: ['w', 'On mène'], D: ['l', 'Menés'], N: ['n', 'Égalité'] };
-const liveTexte = (m, res) => (isMiTemps(m) ? 'Mi-temps' : m.period ? currentMinute(m).label : 'Direct') + (res ? ' · ' + res : '');
+const liveTexte = (m, res) => (isMiTemps(m) ? 'Mi-temps' : m.tab ? 'Tirs au but' : m.period ? currentMinute(m).label : 'Direct') + (res ? ' · ' + res : '');
 // après la 96e minute (2 × mi-temps + 6) de la 2e période, n'importe quel compte peut arrêter le chrono
-const finPossible = m => m.status === 'direct' && m.period === 2 && elapsedMs(m) / 60000 + (m.half || 45) >= 2 * (m.half || 45) + 6;
+const finPossible = m => m.status === 'direct' && m.period === 2 && !m.tab && elapsedMs(m) / 60000 + (m.half || 45) >= 2 * (m.half || 45) + 6;
+// ---------- Tirs au but (matchs de coupe à égalité après le temps réglementaire) ----------
+// matches.tab = { premier: 'H' | 'A', tirs: [{ t: 'H' | 'A', ok: bool, n: numéro du tireur }] }
+const estCoupe = m => /coupe|challenge|troph/i.test(m.competition || '');
+// 5 tirs chacun en alternance, fini dès qu'un écart ne peut plus être comblé, puis mort subite
+function tabBilan(tab){
+  const n = { H: 0, A: 0 }, b = { H: 0, A: 0 };
+  const tirs = (tab && tab.tirs) || [], premier = (tab && tab.premier) || 'H', second = premier === 'H' ? 'A' : 'H';
+  tirs.forEach(x => { n[x.t]++; if (x.ok) b[x.t]++; });
+  let gagnant = null;
+  if (n.H <= 5 && n.A <= 5){
+    if (b.H > b.A + (5 - n.A)) gagnant = 'H'; else if (b.A > b.H + (5 - n.H)) gagnant = 'A';
+  } else if (n.H === n.A && b.H !== b.A) gagnant = b.H > b.A ? 'H' : 'A';
+  return { n, b, gagnant, prochain: gagnant ? null : (n[premier] === n[second] ? premier : second), mortSubite: n.H >= 5 && n.A >= 5 };
+}
+// joueurs d'une équipe encore sur le terrain à la fin du match (seuls autorisés à tirer)
+function surTerrainFin(m, evs, t){
+  const r = rosterOf(m, t).filter(p => p.n), on = new Set(r.filter(p => !p.sub).map(p => String(p.n)));
+  [...evs].filter(e => e.t === t).sort((a, b) => (+a.sort || 0) - (+b.sort || 0)).forEach(e => {
+    if (e.k === 'sub'){ if (e.out_n) on.delete(String(e.out_n)); if (e.in_n) on.add(String(e.in_n)); }
+    if (e.k === 'red' && e.n) on.delete(String(e.n));
+  });
+  return r.filter(p => on.has(String(p.n))).sort((a, b) => (+a.n) - (+b.n));
+}
 function resultOf(m, evs){
   const c = goals(evs, clubSide(m)), o = goals(evs, oppSide(m));
+  if (c === o && m.tab){ const g = tabBilan(m.tab).gagnant; if (g) return g === clubSide(m) ? 'V' : 'D'; }
   return c > o ? 'V' : c < o ? 'D' : 'N';
 }
 function fmtDate(iso, withTime=true){
@@ -154,7 +179,15 @@ function timelineHTML(m, evs, editable){
     }
   }
   // match arrêté par un compte après la 96e, ou clôturé automatiquement : affiché en tête de la chronologie
-  const finLigne = m.status === 'termine' && (m.fin_par_nom || m.fin_auto) ? `<div class="ev ro fin"><div class="min">${esc(m.fin_min || '')}</div><span class="evi">🏁</span><div class="txt"><b>Fin du match</b><div>${m.fin_auto ? 'Clôture automatique (2 h 15 après le coup d’envoi)' : 'Chrono arrêté par ' + esc(m.fin_par_nom)}</div></div></div>` : '';
+  let finLigne = m.status === 'termine' && (m.fin_par_nom || m.fin_auto) ? `<div class="ev ro fin"><div class="min">${esc(m.fin_min || '')}</div><span class="evi">🏁</span><div class="txt"><b>Fin du match</b><div>${m.fin_auto ? 'Clôture automatique (2 h 15 après le coup d’envoi)' : 'Chrono arrêté par ' + esc(m.fin_par_nom)}</div></div></div>` : '';
+  // tirs au but : le vainqueur puis chaque tir (le plus récent en haut), avant les actions du match
+  if (m.tab){
+    const bl = tabBilan(m.tab), tirs = m.tab.tirs || [], rang = {};
+    const lignes = tirs.map(x => { rang[x.t] = (rang[x.t] || 0) + 1;
+      return `<div class="ev ro tabev${x.t===clubSide(m) ? ' club' : ''}"><div class="min">TAB ${rang[x.t]}</div><span class="evi">${x.ok ? '✅' : '❌'}</span><div class="txt"><b>${x.ok ? 'Tir au but réussi' : 'Tir au but manqué'}</b> <span class="evteam">${esc(teamName(m, x.t))}</span><div>${x.n ? esc(who(m, x.t, x.n, 'n°' + x.n)) : ''}</div></div></div>`; }).reverse().join('');
+    const gagne = bl.gagnant ? `<div class="ev ro tabev"><div class="min">TAB</div><span class="evi">🏆</span><div class="txt"><b>${esc(teamName(m, bl.gagnant))}</b> gagne aux tirs au but (${bl.b[bl.gagnant]}-${bl.b[bl.gagnant === 'H' ? 'A' : 'H']})</div></div>` : '';
+    finLigne += gagne + lignes + '<div class="period-mark">Tirs au but</div>';
+  }
   if (!evs.length && finLigne) return finLigne;
   if (!evs.length) return `<div class="empty">${editable ? 'Lance le chrono puis touche une action : la minute est notée toute seule.' : 'Aucune action pour le moment.'}</div>`;
   const list = [...evs].sort((a,b)=> b.sort - a.sort || String(b.created_at||'').localeCompare(String(a.created_at||'')));
@@ -186,7 +219,7 @@ function estMoi(m, e){
 // matchs joués et actions (même copie que la page Stats)
 async function chargerStats(){
   const [{ data: ms, error }, { data: evs, error: e2 }] = await Promise.all([
-    sb.from('matches').select('id,kickoff,equipe,club_side,rosters,status,competition,home_name,away_name,opp_logo').neq('status','prevu'),
+    sb.from('matches').select('id,kickoff,equipe,club_side,rosters,status,competition,home_name,away_name,opp_logo,tab').neq('status','prevu'),
     sb.from('events').select('match_id,t,k,n,in_n,out_n,min,sort')
   ]);
   if (error || e2) throw (error || e2);
@@ -338,6 +371,9 @@ function queue(op){
   saveOutbox(); flush();
 }
 const isNetErr = err => !navigator.onLine || /fetch|network|load failed|timeout/i.test(String(err && (err.message||err)));
+// heure de la dernière modification d'un match envoyée (ou en attente) : une relecture du serveur lancée avant
+// cette heure peut renvoyer l'ancien état, elle ne doit pas écraser ce qui vient d'être saisi
+const matchEcritAt = {};
 async function flush(){
   if (flushing || !sb || !outbox.length) return;
   flushing = true;
@@ -364,6 +400,7 @@ async function flush(){
         // la base a ignoré la modification : pas les droits sur ce match (ou match supprimé)
         toast('Refusé : seuls le responsable score, les responsables d’équipe et les admins peuvent modifier ce match');
       }
+      if (op.kind === 'match') matchEcritAt[op.match] = Date.now();
       outbox.shift(); saveOutbox(); enVol = null;
     }
   }catch(e){ /* réseau : on réessaie plus tard */ }
@@ -450,7 +487,7 @@ async function homeView(){
   if (cache) drawHome(cache.matches, cache.goals); else view.innerHTML = '<div class="loading">Chargement…</div>';
   const load = async () => {
     const [{ data: matches, error }, { data: g }] = await Promise.all([
-      sb.from('matches').select('id,kickoff,competition,equipe,opp_logo,delegue_id,delegue_nom,club_side,home_name,away_name,half,period,running,started_at,acc,status').order('kickoff', {ascending:false}).limit(1000),
+      sb.from('matches').select('id,kickoff,competition,equipe,opp_logo,delegue_id,delegue_nom,club_side,home_name,away_name,half,period,running,started_at,acc,status,tab').order('kickoff', {ascending:false}).limit(1000),
       sb.from('events').select('match_id,t').eq('k','goal')
     ]);
     if (error) { if (!cache) throw error; return; }
@@ -488,7 +525,7 @@ function drawHome(matches, goalRows){
     const c = clubSide(m);
     let badge = '', mid;
     if (m.status==='prevu') mid = `<span class="mtime">${esc(hhmm(m.kickoff))}</span>`;
-    else mid = `<span class="msc">${goals(evs,'H')}<i>–</i>${goals(evs,'A')}</span>`;
+    else mid = `<span class="msc">${goals(evs,'H')}<i>–</i>${goals(evs,'A')}</span>${m.tab ? (b => `<small class="mtab">tab ${b.b.H}-${b.b.A}</small>`)(tabBilan(m.tab)) : ''}`;
     const rd = m.status === 'direct' ? RES_DIRECT[resultOf(m, evs)] : null;
     if (m.status==='direct') badge = `<span class="badge live ${rd[0]}" data-res="${rd[1]}" data-live='${esc(JSON.stringify({status:m.status,period:m.period,half:m.half,running:m.running,started_at:m.started_at,acc:m.acc}))}'>${liveTexte(m, rd[1])}</span>`;
     else if (m.status==='termine'){ const r = resultOf(m, evs); badge = `<span class="badge ${r==='V'?'w':r==='D'?'l':''}">${r==='V'?'Victoire':r==='D'?'Défaite':'Nul'}</span>`; }
@@ -608,6 +645,7 @@ function boardHTML(m, evs, staff){
       <div class="score" aria-live="polite"><span id="scH">${goals(evs,'H')}</span><span class="sep">–</span><span id="scA">${goals(evs,'A')}</span></div>
       <div class="team">${logoImg(m,'A','blg')}<span class="tname${c==='A'?' club':''}">${esc(teamName(m,'A'))}</span>${tniv('A')}</div>
     </div>
+    ${m.tab ? (b => `<div class="btab">Tirs au but : ${b.b.H} – ${b.b.A}</div>`)(tabBilan(m.tab)) : ''}
     <div class="clockrow">
       <div>${staff ? `<button class="clock" id="clock" aria-label="Régler le chrono">${clockText(m)}</button>` : `<div class="clock" id="clock">${m.status==='prevu' ? '--:--' : clockText(m)}</div>`}<div class="period" id="period">${esc(periodText(m))}</div></div>
       ${staff ? `<div class="clockbtns"><button class="cbtn ghost" id="btnPeriod"></button><button class="cbtn" id="btnClock"></button></div>` : ''}
@@ -1112,7 +1150,7 @@ function prefetch(){
     try{ const { data } = await sb.from('classements').select('*').order('equipe'); if (data) lsSet('asm-cls', data); }catch(e){}
     try{
       const [{ data: ms }, { data: evs }] = await Promise.all([
-        sb.from('matches').select('id,kickoff,equipe,club_side,rosters,status,competition,home_name,away_name,opp_logo').neq('status','prevu'),
+        sb.from('matches').select('id,kickoff,equipe,club_side,rosters,status,competition,home_name,away_name,opp_logo,tab').neq('status','prevu'),
         sb.from('events').select('match_id,t,k,n,in_n,out_n,min,sort')
       ]);
       if (ms && evs) lsSet('asm-stats', { ms, evs });
@@ -1381,7 +1419,7 @@ async function consoleView(id, openCompo){
   }
   S.rosters = S.rosters || {H:[],A:[]};
   const saveLocal = () => lsSet(CK, S);
-  const patch = fields => { Object.assign(S, fields); saveLocal(); queue({kind:'match', match:id, fields}); };
+  const patch = fields => { Object.assign(S, fields); matchEcritAt[id] = Date.now(); saveLocal(); queue({kind:'match', match:id, fields}); };
   const evRow = e => ({id:e.id, match_id:id, t:e.t, k:e.k, n:e.n||null, out_n:e.out_n||null, in_n:e.in_n||null, min:e.min, sort:e.sort, p:e.p});
   const pushEv = e => { saveLocal(); queue({kind:'ev', match:id, row:evRow(e)}); };
   saveLocal();
@@ -1390,6 +1428,7 @@ async function consoleView(id, openCompo){
     <div id="boardBox"></div>
     <div class="cobar" id="coBar" hidden></div>
     <div class="syncrow"><span class="sync" id="sync">Envoyé</span><button class="link" id="btnShareLive" style="padding:0">Partager le direct</button></div>
+    <div id="tabCo"></div>
     <section class="actions">
       ${['H','A'].map(t => `<div class="col ${t===clubSide(S)?'home':'away'}">
         <h2>${esc(teamName(S,t))}</h2>
@@ -1435,8 +1474,10 @@ async function consoleView(id, openCompo){
     $('count').textContent = S.events.length ? `${S.events.length} action${S.events.length>1?'s':''}` : '';
     const box = $('events');
     box.innerHTML = timelineHTML(S, S.events, true);
-    box.querySelectorAll('.ev').forEach(row => {
+    // seulement les vraies actions (pas les lignes « fin du match » ou « tir au but », non modifiables ici)
+    box.querySelectorAll('.ev[data-id]').forEach(row => {
       const e = S.events.find(x => x.id === row.dataset.id);
+      if (!e || !row.querySelector('.del')) return;
       row.onclick = ev => { if (!ev.target.closest('.del')) editEvent(e); };
       row.querySelector('.del').onclick = () => askConfirm('Supprimer cette action ?', `${LABEL[e.k]} · ${teamName(S,e.t)} · ${e.min}`, 'Supprimer', () => {
         S.events = S.events.filter(x=>x.id!==e.id); saveLocal(); queue({kind:'evdel', match:id, id:e.id}); render();
@@ -1444,11 +1485,63 @@ async function consoleView(id, openCompo){
     });
     bindClock(); renderClock();
     terrainCo();
+    tabCo();
+  }
+  // notification des tirs au but (début, puis vainqueur) : une seule de chaque, contrôlé par la base
+  function notifTab(type){
+    if (session) fetch('api/notify-tab', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token }, body: JSON.stringify({ match: id, type }) }).catch(() => {});
+  }
+  // séance de tirs au but : le tireur se choisit au moment où il s'avance (obligatoire pour les deux équipes)
+  let tabSel = null, tabAutres = false;
+  function tabCo(){
+    const box = $('tabCo'); if (!box) return;
+    if (!S.tab){ box.innerHTML = ''; return; }
+    const tab = S.tab, bl = tabBilan(tab), t1 = tab.premier, t2 = t1 === 'H' ? 'A' : 'H';
+    const ligne = t => { const ks = tab.tirs.filter(x => x.t === t), tot = Math.max(5, ks.length + (bl.prochain === t ? 1 : 0));
+      return `<div class="tabl"><div class="tabnm${t === clubSide(S) ? ' club' : ''}">${esc(teamName(S, t))}</div><div class="tabdots">${Array.from({length: tot}, (_, i) => { const x = ks[i];
+        return `<span class="tabdot ${x ? (x.ok ? 'ok' : 'ko') : (bl.prochain === t && i === ks.length ? 'next' : '')}" title="${x && x.n ? 'n°' + esc(x.n) : ''}">${x ? (x.n ? esc(x.n) : (x.ok ? '✓' : '✕')) : ''}</span>`; }).join('')}</div><div class="tabtot">${bl.b[t]}</div></div>`; };
+    let h = `<section class="tabbox"><div class="tabtitre">🎯 Tirs au but${bl.mortSubite && !bl.gagnant ? ' · mort subite' : ''}</div>${ligne(t1)}${ligne(t2)}`;
+    if (bl.gagnant){
+      h += `<div class="tabfin${bl.gagnant === clubSide(S) ? '' : ' perdu'}">${bl.gagnant === clubSide(S) ? '🏆 ' : ''}${esc(teamName(S, bl.gagnant))} gagne aux tirs au but (${bl.b[bl.gagnant]}-${bl.b[bl.gagnant === 'H' ? 'A' : 'H']})</div>`
+        + (S.status !== 'termine' ? '<button class="fbtn primary" id="tabFin" style="width:100%;margin-top:8px">Terminer le match</button>' : '');
+    } else {
+      const t = bl.prochain, joueurs = surTerrainFin(S, S.events, t), deja = new Set(tab.tirs.filter(x => x.t === t && x.n).map(x => String(x.n)));
+      // pas de compo (souvent l'adversaire) : numéros 1 à 16 à toucher ; « autres » : remplaçants ou autre numéro
+      const surTerrain = new Set(joueurs.map(p => String(p.n)));
+      const autres = rosterOf(S, t).filter(p => p.n && !surTerrain.has(String(p.n))).sort((a, b) => (+a.n) - (+b.n));
+      const chip = (n, label, cls = '') => `<button type="button" class="tabchip${cls}${tabSel === String(n) ? ' on' : ''}${deja.has(String(n)) && tabSel !== String(n) ? ' deja' : ''}" data-tabn="${esc(n)}">${esc(label)}</button>`;
+      const principaux = joueurs.length ? joueurs.map(p => chip(p.n, p.n + ' ' + (p.name || '').split(' ').slice(-1)[0]))
+        : Array.from({ length: 16 }, (_, i) => chip(i + 1, 'n°' + (i + 1)));
+      const horsListe = tabSel && !joueurs.some(p => String(p.n) === tabSel) && !(!joueurs.length && +tabSel >= 1 && +tabSel <= 16);
+      h += `<div class="tabqui">Tir n°${bl.n[t] + 1} · <b>${esc(teamName(S, t))}</b> · qui tire ?</div>`
+        + `<div class="tabchips">${principaux.join('')}</div>`
+        + `<details class="tabautres"${tabAutres || horsListe ? ' open' : ''}><summary>${joueurs.length ? 'Un remplaçant ou un autre joueur' : 'Un autre numéro'}</summary>
+            ${autres.length ? `<div class="tabchips">${autres.map(p => chip(p.n, p.n + ' ' + (p.name || '').split(' ').slice(-1)[0], ' remp')).join('')}</div>` : ''}
+            <label class="field" style="margin:6px 0 0"><span>Numéro</span><input id="tabNum" inputmode="numeric" pattern="[0-9]*" maxlength="3" value="${horsListe ? esc(tabSel) : ''}" placeholder="n°"></label></details>`
+        + `<div class="foot" style="margin-top:8px"><button type="button" class="fbtn tabok" id="tabOk"${tabSel ? '' : ' disabled'}>⚽ Marqué</button><button type="button" class="fbtn tabko" id="tabKo"${tabSel ? '' : ' disabled'}>✕ Raté</button></div>`
+        + (tabSel ? '' : '<p class="note" style="margin:4px 0 0">Choisis d’abord le tireur.</p>');
+    }
+    h += `<div class="tablinks">${tab.tirs.length && S.status !== 'termine' ? '<button type="button" class="link" id="tabUndo">Annuler le dernier tir</button>' : ''}${!tab.tirs.length && S.status !== 'termine' ? '<button type="button" class="link" id="tabAnnule">Pas de tirs au but finalement</button>' : ''}</div></section>`;
+    box.innerHTML = h;
+    const maj = tirs => { patch({ tab: { ...S.tab, tirs } }); tabSel = null; tabAutres = false; render(); };
+    const det = box.querySelector('.tabautres'); if (det) det.ontoggle = () => { tabAutres = det.open; };
+    box.querySelectorAll('[data-tabn]').forEach(b => b.onclick = () => { tabSel = tabSel === b.dataset.tabn ? null : b.dataset.tabn; tabCo(); });
+    if ($('tabNum')) $('tabNum').oninput = e => { const v = e.target.value.replace(/\D/g, ''); const avant = !!tabSel; tabSel = v || null; if (avant !== !!tabSel){ tabCo(); const i = $('tabNum'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); } };
+    const tir = ok => { if (!tabSel) return toast('Choisis d’abord le tireur'); const b2 = tabBilan(S.tab); if (!b2.prochain) return; maj([...S.tab.tirs, { t: b2.prochain, ok, n: tabSel }]); if (tabBilan(S.tab).gagnant) toast('Séance terminée : touche « Terminer le match »'); };
+    if ($('tabOk')) $('tabOk').onclick = () => tir(true);
+    if ($('tabKo')) $('tabKo').onclick = () => tir(false);
+    if ($('tabUndo')) $('tabUndo').onclick = () => maj(S.tab.tirs.slice(0, -1));
+    if ($('tabAnnule')) $('tabAnnule').onclick = () => { patch({ tab: null }); tabSel = null; render(); };
+    if ($('tabFin')) $('tabFin').onclick = () => terminerTab();
+  }
+  function terminerTab(){
+    patch({ status: 'termine', running: false }); render(); toast('Match terminé');
+    notifTab('fin');
   }
   // vue terrain dans la console : bouton pour l'activer, puis le terrain (changements de poste par la file d'envoi)
   function terrainCo(){
     const box = $('terrainCo'); if (!box) return;
-    const save = t => { S.terrain = t; saveLocal(); queue({kind:'match', match:id, fields:{terrain:t}}); };
+    const save = t => { S.terrain = t; matchEcritAt[id] = Date.now(); saveLocal(); queue({kind:'match', match:id, fields:{terrain:t}}); };
     const has = rosterOf(S, clubSide(S)).length;
     if (!has){ box.innerHTML = ''; return; }
     box.innerHTML = `<div class="visrow" style="margin-top:12px"><button type="button" class="vistog${terrainActif(S) ? '' : ' off'}" id="terrainTogCo" aria-pressed="${terrainActif(S)}"><i></i>Vue terrain</button><small>${terrainActif(S) ? 'Visible sur la page du match. Touche deux joueurs pour noter un changement de poste.' : 'Affiche nos joueurs sur le terrain et sur le banc, minute par minute.'}</small></div><div id="terrainBoxCo"></div>`;
@@ -1509,12 +1602,29 @@ async function consoleView(id, openCompo){
       if (S.period===1) return askConfirm('Mi-temps', 'Le chrono s\'arrête. À la reprise, touche « Lancer la 2e » : il repartira de ' + S.half + ':00.', 'C\'est la mi-temps', () => {
         patch({period:2, acc:0, running:false}); render();
       });
-      askConfirm('Fin du match', 'Le chrono s\'arrête et le match passe dans les résultats. Tu pourras encore corriger les actions.', 'Terminer le match', () => {
-        const f = {status:'termine', running:false};
-        if (S.running) f.acc = (+S.acc) + Date.now() - (+S.started_at);
-        patch(f); render(); toast('Match terminé');
-      });
+      // coupe à égalité après le temps réglementaire : on propose les tirs au but
+      if (estCoupe(S) && !S.tab && goals(S.events, 'H') === goals(S.events, 'A')){
+        openSheet(`<h3 id="shTitle">Égalité en coupe</h3><p>${goals(S.events, 'H')}-${goals(S.events, 'A')} à la fin du temps réglementaire. On passe aux tirs au but ?</p>
+          <p style="margin:12px 0 6px"><b>Qui tire en premier ?</b></p>
+          <div class="foot"><button class="fbtn primary" data-tabp="H">${esc(teamName(S,'H'))}</button><button class="fbtn primary" data-tabp="A">${esc(teamName(S,'A'))}</button></div>
+          <button class="cancel" id="tabNon">Non, le match est terminé</button>`);
+        $('shBody').querySelectorAll('[data-tabp]').forEach(b => b.onclick = () => {
+          const f = {tab: {premier: b.dataset.tabp, tirs: []}, running:false};
+          if (S.running) f.acc = (+S.acc) + Date.now() - (+S.started_at);
+          patch(f); closeSheet(); render(); notifTab('debut'); toast('Tirs au but : note chaque tir');
+        });
+        $('tabNon').onclick = () => { closeSheet(); terminer(); };
+        return;
+      }
+      if (S.tab && !tabBilan(S.tab).gagnant) return askConfirm('Tirs au but pas finis', 'Aucune équipe n’a encore gagné la séance. Terminer quand même le match ?', 'Terminer le match', terminer);
+      askConfirm('Fin du match', 'Le chrono s\'arrête et le match passe dans les résultats. Tu pourras encore corriger les actions.', 'Terminer le match', terminer);
     };
+    function terminer(){
+      const f = {status:'termine', running:false};
+      if (S.running) f.acc = (+S.acc) + Date.now() - (+S.started_at);
+      patch(f); render(); toast('Match terminé');
+      if (S.tab && tabBilan(S.tab).gagnant) notifTab('fin');
+    }
     $('clock').onclick = () => {
       if (S.status==='termine') return;
       openSheet(`<h3 id="shTitle">Régler le chrono</h3><p>Pour rattraper un oubli ou un décalage. Le chrono continue de tourner.</p>
@@ -1971,6 +2081,7 @@ async function consoleView(id, openCompo){
   const etat = () => JSON.stringify([S.events.map(e => [e.id, e.min, e.n, e.out_n, e.in_n, e.p, e.t, e.k]).sort(), S.status, S.period, S.running, S.acc, S.started_at, S.rosters, S.delegue_id]);
   const syncRemote = debounce(async () => {
     if (!location.hash.startsWith('#/gerer/' + id)) return;
+    const t0 = Date.now();
     let r; try{ r = await fetchMatch(id); }catch(e){ return; }
     if (!r.m || !location.hash.startsWith('#/gerer/' + id)) return;
     const ops = outbox.filter(o => o.match === id);
@@ -1978,7 +2089,7 @@ async function consoleView(id, openCompo){
     const supprimes = new Set(ops.filter(o => o.kind === 'evdel').map(o => o.id));
     const serveur = new Set(r.evs.map(e => e.id));
     const avant = etat();
-    if (!ops.some(o => o.kind === 'match')) Object.assign(S, r.m);
+    if (!ops.some(o => o.kind === 'match') && t0 > (matchEcritAt[id] || 0)) Object.assign(S, r.m);
     S.events = [...r.evs.filter(e => !supprimes.has(e.id)), ...S.events.filter(e => enAttente.has(e.id) && !serveur.has(e.id))];
     S.rosters = S.rosters || {H:[],A:[]};
     if (etat() !== avant){ saveLocal(); render(); }

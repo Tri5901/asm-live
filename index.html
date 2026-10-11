@@ -739,6 +739,34 @@ td.eqc{white-space:nowrap;text-align:center} td.eqc b{display:inline-block;min-w
 .mcard.fl{border-color:color-mix(in srgb, var(--red) 55%, var(--line))}
 .luprop{display:flex;align-items:center;gap:8px;justify-content:space-between;background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:6px 10px;margin:0 0 8px;font-size:12.5px}
 .lurows .ln::placeholder{color:var(--muted);opacity:.9}
+/* Tirs au but */
+.btab{text-align:center;font:800 17px "Barlow Condensed",sans-serif;letter-spacing:.02em;margin:-2px 0 6px;color:#fff}
+.mmid .mtab{display:block;text-align:center;font:700 11.5px Barlow,sans-serif;color:var(--muted);margin-top:2px}
+.tabbox{background:var(--surface);border:2px solid var(--club);border-radius:16px;padding:12px;margin:10px 0}
+.tabtitre{font:800 18px "Barlow Condensed",sans-serif;text-transform:uppercase;margin-bottom:6px}
+.tabl{display:grid;grid-template-columns:104px 1fr auto;align-items:center;gap:8px;padding:5px 0}
+.tabnm{font:700 15px "Barlow Condensed",sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tabnm.club{color:var(--club)}
+.tabdots{display:flex;gap:5px;flex-wrap:wrap}
+.tabdot{width:24px;height:24px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;font:800 11px "Barlow Condensed",sans-serif}
+.tabdot.ok{background:var(--ok);border-color:var(--ok);color:#000}
+.tabdot.ko{background:var(--red);border-color:var(--red);color:#fff}
+.tabdot.next{border-color:var(--club);box-shadow:0 0 0 2px rgba(247,224,26,.3)}
+.tabtot{font:800 22px "Barlow Condensed",sans-serif;min-width:20px;text-align:right}
+.tabqui{margin:10px 0 4px;font-size:14px}
+.tabchips{display:flex;flex-wrap:wrap;gap:6px}
+.tabchip{background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:999px;padding:6px 10px;font:600 13px Barlow,sans-serif}
+.tabchip.on{background:var(--club);color:#000;border-color:var(--club)}
+.tabchip.deja{opacity:.45}
+.fbtn.tabok{background:var(--ok);color:#000;border-color:var(--ok)}
+.fbtn.tabko{background:var(--red);color:#fff;border-color:var(--red)}
+.fbtn.tabok:disabled,.fbtn.tabko:disabled{opacity:.35}
+.tabfin{background:rgba(46,125,50,.15);border:1px solid var(--ok);border-radius:12px;padding:10px;margin-top:8px;text-align:center;font-weight:700}
+.tabfin.perdu{background:rgba(208,38,42,.12);border-color:var(--red)}
+.tablinks{display:flex;justify-content:space-between;margin-top:4px}
+.tabautres{margin-top:6px;font-size:13px}
+.tabautres summary{color:var(--muted);cursor:pointer;padding:4px 0}
+.tabchip.remp{border-style:dashed}
 </style>
 </head>
 <body>
