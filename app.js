@@ -2400,11 +2400,16 @@ function cguView(){
 }
 
 // ---------- Connexion / compte ----------
+let loginMode = 'in';
 function loginView(){
   if (session){ location.hash = '#/compte'; return; }
+  // formulaire déjà affiché : un rafraîchissement de fond (fin du chargement, liste des équipes…) ne doit pas
+  // le réafficher, sinon il repasse sur « Connexion » et efface ce qui a été tapé
+  if ($('lf') && view.contains($('lf'))) return;
   // venu du bouton « Je veux être responsable score » : création de compte proposée d'abord
-  let mode = lsGet('asm-login-mode', null) === 'up' ? 'up' : 'in';
+  if (lsGet('asm-login-mode', null) === 'up') loginMode = 'up';
   lsSet('asm-login-mode', null);
+  let mode = loginMode;
   const apres = lsGet('asm-apres-connexion', null);
   const draw = (msg='') => {
     view.innerHTML = `<form class="card" id="lf">
@@ -2417,8 +2422,9 @@ function loginView(){
       ${mode==='up' ? '<label class="cgucase"><input type="checkbox" id="lfCgu" required><span>J’ai lu et j’accepte les <button type="button" class="link" id="lfCguVoir">conditions d’utilisation</button>, y compris l’utilisation de mes données.</span></label>' : ''}
       <div class="foot" style="margin-top:4px"><button class="fbtn primary" id="lfGo">${mode==='in' ? 'Se connecter' : 'Créer mon compte'}</button></div>
       <button type="button" class="link" id="lfSwitch">${mode==='in' ? 'Pas encore de compte ? Créer un compte' : 'Déjà un compte ? Se connecter'}</button>
-    </form>`;
-    $('lfSwitch').onclick = () => { mode = mode==='in' ? 'up' : 'in'; draw(); };
+    </form><p class="appver note" id="appVer"></p>`;
+    versionAdmin();
+    $('lfSwitch').onclick = () => { mode = loginMode = mode==='in' ? 'up' : 'in'; draw(); };
     if ($('lfCguVoir')) $('lfCguVoir').onclick = e => { e.preventDefault(); openSheet(`<div class="cgu">${cguHTML()}</div><button class="fbtn primary" id="cguOk" style="width:100%;margin-top:12px">J’ai compris</button>`, 'tall'); $('cguOk').onclick = () => { closeSheet(); if ($('lfCgu')) $('lfCgu').checked = true; }; };
     $('lf').onsubmit = async ev => {
       ev.preventDefault();
@@ -2434,11 +2440,12 @@ function loginView(){
         const m = /invalid login/i.test(res.error.message) ? 'Email ou mot de passe incorrect.' : /already registered/i.test(res.error.message) ? 'Un compte existe déjà avec cet email.' : res.error.message;
         return draw(`<div class="msg err">${esc(m)}</div>`);
       }
-      if (!res.data.session){ mode = 'in'; return draw('<div class="msg">Compte créé. Confirme ton adresse avec le lien reçu par email, puis connecte-toi.' + (apres && apres.demande ? ' Ta demande pour être responsable score partira à ce moment-là.' : '') + '</div>'); }
+      if (!res.data.session){ mode = loginMode = 'in'; return draw('<div class="msg">Compte créé. Confirme ton adresse avec le lien reçu par email, puis connecte-toi.' + (apres && apres.demande ? ' Ta demande pour être responsable score partira à ce moment-là.' : '') + '</div>'); }
       if (mode === 'up'){
         // prévient les admins (une seule fois par compte, contrôlé par la base)
         fetch('api/notify-signup', { method: 'POST', keepalive: true, headers: { Authorization: 'Bearer ' + res.data.session.access_token } }).catch(() => {});
       }
+      loginMode = 'in';
       await loadProfile();
       // retour sur le match : la demande « responsable score » y est envoyée automatiquement
       const ap = lsGet('asm-apres-connexion', null);
@@ -3191,7 +3198,8 @@ async function versionAdmin(){
   try{ ici = Math.max(...(await caches.keys()).map(num).filter(Boolean)); if (!isFinite(ici)) ici = null; }catch(e){}
   try{ enLigne = num(await (await fetch('sw.js?v=' + Date.now(), { cache: 'no-store' })).text()); }catch(e){}
   if (!$('appVer')) return;
-  el.innerHTML = `Version de l’appli : <b>${ici ? 'v' + ici : enLigne ? 'v' + enLigne : '?'}</b>` + (enLigne && ici && enLigne > ici ? ` · <span class="majdispo">v${enLigne} disponible : ferme et rouvre l’appli</span>` : enLigne && ici ? ' · à jour' : '');
+  const fv = n => 'v' + String(n).split('').join('.');   // 148 → v1.4.8
+  el.innerHTML = `Version de l’appli : <b>${ici ? fv(ici) : enLigne ? fv(enLigne) : '?'}</b>` + (enLigne && ici && enLigne > ici ? ` · <span class="majdispo">${fv(enLigne)} disponible : ferme et rouvre l’appli</span>` : enLigne && ici ? ' · à jour' : '');
 }
 
 // Accès : qui a activé les notifications (nombre d'appareils, équipes dont il suit les buts)
