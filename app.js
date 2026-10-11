@@ -861,7 +861,7 @@ function liveCadre(m, filmeur){
   const h = liveHost();
   h.innerHTML = `<div class="lv"><video id="liveVid" playsinline autoplay muted></video><div id="liveOver" class="lvover"></div>
     <div class="lvbar">${filmeur ? '<button type="button" id="lvCam">🔄 Caméra</button><button type="button" id="lvStop" class="stop">⏹ Arrêter le live</button>'
-      : '<button type="button" id="lvSon">🔊 Activer le son</button><button type="button" id="lvQuit">✕ Fermer</button>'}<button type="button" id="lvShare" class="share">↗ Partager le live</button></div></div>`;
+      : '<button type="button" id="lvSon" hidden>🔊 Activer le son</button><button type="button" id="lvQuit">✕ Fermer</button>'}<button type="button" id="lvShare" class="share">↗ Partager le live</button></div></div>`;
   $('lvShare').onclick = () => livePartager(m);
   return $('liveVid');
 }
@@ -901,19 +901,25 @@ async function liveFilmer(m, evs, redessiner){
   }
 }
 async function liveRegarder(m, evs, redessiner){
+  // le lecteur est créé tout de suite, dans le geste « Regarder » : le navigateur autorise alors le son d'emblée
+  const vid = liveCadre(m, false), aud = document.createElement('audio');
+  aud.autoplay = true; aud.id = 'liveAudio'; liveHost().appendChild(aud);
+  // l'image reste sans son (elle démarre toujours) ; le son passe par l'élément audio, débloqué par le geste
+  aud.play().catch(() => {});
   try{
     const LK = await chargerLK();
     const { url, token } = await liveApi(m, 'regarder');
     const room = new LK.Room({ adaptiveStream: true });
-    const vid = liveCadre(m, false);
     LIVE = { id: m.id, m, role: 'regarder', room };
-    room.on(LK.RoomEvent.TrackSubscribed, track => {
-      if (track.kind === 'video') track.attach(vid);
-      else { const a = track.attach(); a.id = 'liveAudio'; liveHost().appendChild(a); }
-    });
+    // son bloqué par le navigateur (lien ouvert sans toucher l'écran) : bouton pour l'activer
+    const son = () => { const b = $('lvSon'); if (b) b.hidden = room.canPlaybackAudio; };
+    room.on(LK.RoomEvent.TrackSubscribed, track => { if (track.kind === 'video') track.attach(vid); else { track.attach(aud); son(); } });
+    room.on(LK.RoomEvent.AudioPlaybackStatusChanged, son);
     room.on(LK.RoomEvent.Disconnected, () => { if (LIVE && LIVE.room === room){ liveStop(false); toast('Live terminé'); redessiner(); } });
     await room.connect(url, token);
-    $('lvSon').onclick = async () => { try{ await room.startAudio(); vid.muted = false; $('lvSon').remove(); }catch(e){} };
+    try{ await room.startAudio(); }catch(e){}
+    son();
+    $('lvSon').onclick = async () => { try{ await room.startAudio(); aud.play().catch(() => {}); }catch(e){} son(); };
     $('lvQuit').onclick = () => { liveStop(false); redessiner(); };
     liveIncrustation(m, evs);
     redessiner();
