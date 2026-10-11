@@ -1,6 +1,6 @@
 // Service worker AS Mésanger – Feuille de match
 // Incrémente VERSION à chaque mise en ligne pour que les téléphones récupèrent la nouvelle version.
-const VERSION = 'asm-v169';
+const VERSION = 'asm-v170';
 const APP_SHELL = [
   './',
   './index.html',
@@ -13,6 +13,7 @@ const APP_SHELL = [
   './icons/maskable-512.png',
   './icons/apple-touch-icon.png',
   './icons/notif-192.png',
+  './icons/notif-192-rose.png',
   './icons/badge-96.png'
 ];
 
