@@ -644,7 +644,6 @@ function lineupsHTML(m, evs = []){
     : m.compo_cachee ? '<span class="vistog off static"><i></i>Cachée au public</span>' : '';
   return `<section class="log"><div class="loghead"><h2>Compositions</h2>${canManage(m) ? `<a class="link" href="#/gerer/${esc(m.id)}/compo">${has ? 'Modifier' : '📋 Saisir la compo'}</a>` : ''}</div>`
     + (vis ? `<div class="visrow">${vis}<small>${m.compo_cachee ? 'Seuls les responsables d’équipe, les admins et le responsable score du match la voient.' : 'Tout le monde peut la voir sur la page du match.'}</small></div>` : '')
-    + (has && canManage(m) ? `<div class="visrow"><button type="button" class="vistog${terrainActif(m) ? '' : ' off'}" id="terrainTog" aria-pressed="${terrainActif(m)}"><i></i>Vue terrain</button><small>${terrainActif(m) ? 'Le terrain et le banc sont affichés en haut de la page. Touche deux joueurs pour noter un changement de poste.' : 'Affiche nos joueurs sur le terrain et sur le banc, minute par minute.'}</small></div>` : '')
     + (has && m.status !== 'prevu' && evs.some(e => e.k === 'sub') ? `<button type="button" class="link rempbtn" id="rempBtn">${lsGet('asm-voir-remp', false) ? 'Masquer les remplacements' : 'Afficher les remplacements'}</button>` : '')
     + (has ? `<div class="lineups${lsGet('asm-voir-remp', false) ? ' remp' : ''}">${side('H')}${side('A')}</div>` : '<div class="empty">Compo pas encore saisie.</div>')
     + '</section>';
@@ -1213,6 +1212,7 @@ async function matchView(id){
     const delegHTML = isStaff() || m.delegue_nom ? `<div class="field deleg"><span>Responsable score</span>${delegPickHTML('delSel', m.delegue_id, m.delegue_nom, !isTeamManager(m.equipe))}${canManage(m) && !isTeamManager(m.equipe) ? '<small>Seul le responsable de l’équipe (ou un admin) peut changer le responsable score.</small>' : isStaff() && !canManage(m) ? '<small>Seuls le responsable de l’équipe, le responsable score ou un admin peuvent modifier ce match.</small>' : ''}</div>` : '';
     view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false) + niveauHTML(m) + lieuHTML(m)
       + `<div class="mactions"><button class="pill" id="btnBell">🔔 Buts des ${esc(teamLabel(m.equipe))}</button><button class="pill" id="btnShareLive">↗ Partager</button>${m.status==='termine' && !m._partiel ? '<button class="pill" id="btnResume">📸 Résumé</button>' : ''}</div>`
+      + (!m._partiel && canManage(m) && (rosterOf(m, clubSide(m)).length || terrainActif(m)) ? `<div class="visrow terrow"><button type="button" class="vistog${terrainActif(m) ? '' : ' off'}" id="terrainTog" aria-pressed="${terrainActif(m)}"><i></i>Vue terrain</button><small>${terrainActif(m) ? 'Visible par tous. Touche deux joueurs pour noter un changement de poste.' : 'Affiche nos joueurs sur le terrain et sur le banc, minute par minute.'}</small></div>` : '')
       + (terrainActif(m) && !m._partiel ? '<div id="terrainBox"></div>' : '')
       + demHTML()
       + (canManage(m) ? `<a class="fbtn primary big" href="#/gerer/${esc(m.id)}">Gérer ce match</a>` : '')
