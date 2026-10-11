@@ -728,9 +728,9 @@ function terrainMonter(m, evs, box, save){
       ${cap ? `<div class="tercap">${cap}</div>` : ''}
       <div class="terpitch"><i class="tl1"></i><i class="tl2"></i><i class="tl3"></i><i class="tl4"></i>
         ${pl.map((n, i) => { const [x, y, role] = slots[i];
-          if (!n) return `<div class="tp vide" style="left:${x}%;top:${y}%"><div class="tr">–</div><div class="tn">${esc(role)}</div></div>`;
+          if (!n) return `<div class="tp vide" style="--x:${x};--y:${y}"><div class="tr">–</div><div class="tn">${esc(role)}</div></div>`;
           const b = evAvant.filter(e => e.k === 'goal' && String(e.n) === n).length, j = evAvant.filter(e => e.k === 'yellow' && String(e.n) === n).length;
-          return `<div class="tp${i === 0 ? ' gk' : ''}${v.sel === n ? ' sel' : ''}${gere ? ' clic' : ''}" data-n="${esc(n)}" style="left:${x}%;top:${y}%"><div class="tr">${esc(n)}<span class="tb">${b ? '⚽' + (b > 1 ? b : '') : ''}${'<i class="kc y"></i>'.repeat(j)}</span></div><div class="tn">${esc(court(n))}</div><div class="tro">${esc(role)}</div></div>`; }).join('')}
+          return `<div class="tp${i === 0 ? ' gk' : ''}${v.sel === n ? ' sel' : ''}${gere ? ' clic' : ''}" data-n="${esc(n)}" style="--x:${x};--y:${y}"><div class="tr">${esc(n)}<span class="tb">${b ? '⚽' + (b > 1 ? b : '') : ''}${'<i class="kc y"></i>'.repeat(j)}</span></div><div class="tn">${esc(court(n))}</div><div class="tro">${esc(role)}</div></div>`; }).join('')}
       </div>
       ${banc.length ? `<div class="terbanc">${banc.map(p => `<span><b>${esc(p.n)}</b> ${esc(court(p.n))}<small>${rouges[p.n] ? 'exclu ' + esc(rouges[p.n]) : sortis[p.n] ? 'sorti ' + esc(sortis[p.n]) : p.sub ? 'banc' : ''}</small></span>`).join('')}</div>` : ''}
       ${gere && cfg.p.length ? `<details class="terlog"><summary>${cfg.p.length} changement${cfg.p.length > 1 ? 's' : ''} de poste</summary>${cfg.p.slice().sort((a, b) => a.s - b.s).map((x, k) => `<div><span>${esc(fmt(x.s))} · ${esc(court(x.a))} ↔ ${esc(court(x.b))}</span><button type="button" class="link" data-terdel="${x.s}">Retirer</button></div>`).join('')}</details>` : ''}
