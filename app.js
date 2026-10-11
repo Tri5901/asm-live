@@ -100,7 +100,8 @@ function currentMinute(m){
   const mm = Math.floor(elapsedMs(m)/60000) + 1;
   const offset = m.period === 2 ? m.half : 0;
   if (m.period === 0) return {label:"0'", sort:0};
-  if (mm > m.half) return {label:`${offset+m.half}+${mm-m.half}'`, sort:offset+mm};
+  // temps additionnel : 45+2' → 45.02 (comme sortFromLabel), pour rester avant la 46e de la 2e mi-temps
+  if (mm > m.half) return {label:`${offset+m.half}+${mm-m.half}'`, sort:+(offset + m.half + (mm - m.half) / 100).toFixed(2)};
   return {label:`${offset+mm}'`, sort:offset+mm};
 }
 function clockText(m){
@@ -1678,8 +1679,10 @@ async function consoleView(id, openCompo){
       const map = new Map();
       (data||[]).forEach(r => (((r.rosters||{})[r.club_side])||[]).forEach(p => {
         const k = playerKey(p.name || ''); if (!k) return;
-        const e = map.get(k) || {name:p.name, n:p.n, count:0}; e.count++; map.set(k, e);
+        const e = map.get(k) || {name:p.name, n:p.n, count:0, nums:{}}; e.count++; if (p.n) e.nums[p.n] = (e.nums[p.n] || 0) + 1; map.set(k, e);
       }));
+      // numéro habituel = le plus porté (les plus récents d'abord en cas d'égalité)
+      map.forEach(e => { const best = Object.entries(e.nums).sort((a, b) => b[1] - a[1])[0]; e.n = best ? best[0] : (e.n || ''); });
       pastPlayers = [...map.values()].sort((a,b) => b.count - a.count || a.name.localeCompare(b.name, 'fr'));
     }catch(e){ /* hors ligne : pas de suggestions */ }
     return pastPlayers;
@@ -1750,20 +1753,35 @@ async function consoleView(id, openCompo){
     }
     const plural = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
 
+    // numéros proposés (sans les appliquer) pour nos joueurs sans numéro : leur numéro habituel, s'il est libre
+    const numerosProposes = () => {
+      const res = {};
+      if (cur !== clubSide(S) || !pastPlayers) return res;
+      const pris = new Set(ed[cur].map(p => String(p.n || '')).filter(Boolean));
+      ed[cur].forEach((p, i) => {
+        if (p.n || !p.name) return;
+        const k = pastPlayers.find(x => playerKey(x.name) === playerKey(p.name));
+        if (k && k.n && !pris.has(String(k.n))){ res[i] = String(k.n); pris.add(String(k.n)); }
+      });
+      return res;
+    };
     function draw(focusLast){
       const c = counts(cur);
       const inList = new Set(ed[cur].map(p => playerKey(p.name)));
       const sugg = cur === clubSide(S) ? (pastPlayers || []).filter(p => !inList.has(playerKey(p.name))) : [];
+      const props = numerosProposes();
+      const nbProp = Object.keys(props).length;
       openSheet(`<h3 id="shTitle">Compositions</h3>
         <div class="seg luteams">${order.map(t => `<button type="button" data-t="${t}" class="${t===cur?'on':''}">${esc(teamName(S,t))} · ${ed[t].length}</button>`).join('')}</div>
         <div class="lubar"><span><b>${plural(c.tit, 'titulaire')}</b> · ${plural(c.rem, 'remplaçant')}</span>
           <span class="lutools"><button type="button" class="photo" id="luPhoto">📷 Photo</button><button type="button" class="photo" id="luPaste">${paste ? 'Fermer' : 'Coller'}</button></span></div>
         <input type="file" accept="image/*" id="luFile" hidden>
         <div class="ocrstat" id="luStat"></div>
+        ${nbProp ? `<div class="luprop"><span>💡 ${nbProp} numéro${nbProp > 1 ? 's' : ''} proposé${nbProp > 1 ? 's' : ''} d’après les matchs précédents (en gris).</span><button type="button" class="photo" id="luProp">Utiliser</button></div>` : ''}
         ${paste ? `<textarea id="luText" placeholder="10 DUPONT Lucas&#10;7 MARTIN Hugo&#10;14 BERNARD Léo R"></textarea>
           <button type="button" class="fbtn" id="luParse" style="width:100%;margin:6px 0 10px">Ajouter ces joueurs</button>` : ''}
         <div class="lurows">${ed[cur].map((p, i) => `<div class="lrow${p.sub ? ' sub' : ''}${errs.has(cur + i) ? ' err' : ''}${p.absent ? ' absent' : ''}" data-i="${i}"${p.absent ? ' title="Pas trouvé sur la photo"' : ''}>
-            <input class="ln" inputmode="numeric" pattern="[0-9]*" maxlength="3" value="${esc(p.n)}" placeholder="n°" aria-label="Numéro">
+            <input class="ln" inputmode="numeric" pattern="[0-9]*" maxlength="3" value="${esc(p.n)}" placeholder="${props[i] ? esc(props[i]) : 'n°'}" aria-label="Numéro">
             <input class="lname" value="${esc(p.name)}" placeholder="Nom Prénom" autocomplete="off" enterkeyhint="next" list="luNames" aria-label="Nom du joueur">
             <button type="button" class="ltog" aria-label="Titulaire ou remplaçant">${p.sub ? 'Remp.' : 'Titul.'}</button>
             <button type="button" class="ldel" aria-label="Retirer ce joueur">×</button></div>${(() => {
@@ -1778,6 +1796,7 @@ async function consoleView(id, openCompo){
         ${msg ? `<div class="msg err" style="margin-top:10px">${esc(msg)}</div>` : ''}
         <div class="foot" style="margin-top:12px"><button class="fbtn primary" id="luSave">Enregistrer</button><button class="fbtn" id="luCancel">Annuler</button></div>`);
       const body = $('shBody');
+      if ($('luProp')) $('luProp').onclick = () => { Object.entries(props).forEach(([i, n]) => { if (!ed[cur][i].n) ed[cur][i].n = n; }); draw(); toast('Numéros ajoutés : vérifie-les avant d’enregistrer'); };
       body.querySelectorAll('.luteams button').forEach(b => b.onclick = () => { cur = b.dataset.t; paste = false; draw(); });
       body.querySelectorAll('.lrow').forEach(row => {
         const i = +row.dataset.i, p = ed[cur][i];
@@ -2552,6 +2571,12 @@ function cguView(){
 
 // ---------- Connexion / compte ----------
 let loginMode = 'in';
+// erreurs sur la page de connexion / création de compte : notées (sans données personnelles) pour comprendre un blocage
+function noterErreurConnexion(action, message){
+  try{ if (sb) sb.rpc('noter_erreur_connexion', { p_action: action, p_message: String(message || '').slice(0, 300), p_navigateur: navigator.userAgent.slice(0, 200) }).then(() => {}, () => {}); }catch(e){}
+}
+window.addEventListener('error', e => { if (/^#\/?connexion/.test(location.hash)) noterErreurConnexion('js', (e.message || '') + ' @' + (e.lineno || '')); });
+window.addEventListener('unhandledrejection', e => { if (/^#\/?connexion/.test(location.hash)) noterErreurConnexion('js', String(e.reason && (e.reason.message || e.reason)).slice(0, 300)); });
 function loginView(){
   if (session){ location.hash = '#/compte'; return; }
   // formulaire déjà affiché : un rafraîchissement de fond (fin du chargement, liste des équipes…) ne doit pas
@@ -2588,6 +2613,7 @@ function loginView(){
         res = await sb.auth.signUp({email, password, options:{data:{nom: fmtNom($('lfPrenom').value) + ' ' + fmtNom($('lfNom').value), cgu: CGU_VERSION}}});
       }
       if (res.error){
+        noterErreurConnexion(mode === 'in' ? 'connexion' : 'inscription', res.error.message);
         const m = /invalid login/i.test(res.error.message) ? 'Email ou mot de passe incorrect.' : /already registered/i.test(res.error.message) ? 'Un compte existe déjà avec cet email.' : res.error.message;
         return draw(`<div class="msg err">${esc(m)}</div>`);
       }
