@@ -644,7 +644,10 @@ const METEO = { 0: ['☀️', 'Ensoleillé'], 1: ['🌤️', 'Plutôt ensoleill�
   71: ['🌨️', 'Neige faible'], 73: ['🌨️', 'Neige'], 75: ['🌨️', 'Forte neige'], 77: ['🌨️', 'Grains de neige'],
   80: ['🌦️', 'Averses'], 81: ['🌧️', 'Averses'], 82: ['⛈️', 'Fortes averses'], 85: ['🌨️', 'Averses de neige'], 86: ['🌨️', 'Averses de neige'],
   95: ['⛈️', 'Orage'], 96: ['⛈️', 'Orage et grêle'], 99: ['⛈️', 'Orage et grêle'] };
-const meteoUtile = m => !m._partiel && (m.status === 'direct' || (m.status === 'prevu' && new Date(m.kickoff).getTime() - Date.now() < 15.5 * 864e5));
+// nombre de jours (calendrier, heure de Paris) entre aujourd'hui et le jour du match
+const joursAvant = m => { const j = d => new Date(new Date(d).toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' })).getTime(); return Math.round((j(m.kickoff) - j(Date.now())) / 864e5); };
+// prévision affichée à partir de 7 jours avant (le dimanche pour le dimanche suivant), puis pendant le match
+const meteoUtile = m => !m._partiel && (m.status === 'direct' || (m.status === 'prevu' && joursAvant(m) >= 0 && joursAvant(m) <= 7));
 async function meteoPosition(m){
   const ext = clubSide(m) === 'A' && m.adresse;
   const q = ext ? m.adresse : 'Mésanger 44522';
@@ -662,7 +665,11 @@ async function meteoPosition(m){
 async function meteoRemplir(m, box){
   if (!box) return '';
   const cle = 'asm-meteo-' + m.id + '-' + m.status, c = lsGet(cle, null);
-  let d = c && Date.now() - c.t < 30 * 60000 ? c.d : null;
+  // mise à jour toutes les 30 min le jour du match, une fois par jour avant
+  const jourJ = m.status === 'direct' || joursAvant(m) <= 0;
+  const frais = c && (jourJ ? Date.now() - c.t < 30 * 60000
+    : new Date(c.t).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' }) === new Date().toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' }));
+  let d = frais ? c.d : null;
   const pos = await meteoPosition(m);
   if (!d){
     const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${pos.lat}&longitude=${pos.lon}&timezone=Europe%2FParis&forecast_days=16`
