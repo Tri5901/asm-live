@@ -5,9 +5,11 @@
 //  - rappel « Mi-temps ? » / « Match terminé ? » si le chrono dépasse 55 min en 1re ou 105 min en 2e mi-temps ;
 //  - « Tu es l'homme du match » au(x) gagnant(s) du vote (compte lié au joueur), à la fin du vote ;
 //  - officiels : relance des dispos le jeudi 19 h, rappel aux désignés la veille à 18 h ;
-//  - match encore en direct 2 h 15 après le coup d'envoi : clôturé, le responsable score est prévenu.
+//  - match encore en direct 2 h 15 après le coup d'envoi : clôturé, le responsable score est prévenu ;
+//  - but / carton dont la notification n'est pas partie du téléphone du responsable score : envoyée ici.
 // La base choisit les matchs et les destinataires (une seule notification de chaque sorte par match).
 const webpush = require('web-push');
+const { envoyerEvenement } = require('./_notif-evenement');
 
 const SUPABASE_URL = 'https://xzzttulqlydcespgkpnx.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_VwLyp5ROGzidc4oHWehoLg_kIehYAcE';
@@ -26,8 +28,19 @@ module.exports = async (req, res) => {
   });
   const [r1, r2, r3, r4, r5, r6, r7] = await Promise.all([appel('alerte_score_targets'), appel('debut_targets'), appel('compo_targets'), appel('chrono_targets'), appel('hdm_targets'), appel('officiels_auto_targets'), appel('cloture_auto_targets')]);
   if (!r1.ok || !r2.ok) return res.status(403).json({ error: 'refusé' });
+  // rattrapage des notifications de but / carton restées en attente
+  let rattrapees = 0;
+  const rr = await appel('notif_retard');
+  if (rr.ok){
+    for (const id of (await rr.json()) || []){
+      const t = await fetch(SUPABASE_URL + '/rest/v1/rpc/push_targets_cle', { method: 'POST',
+        headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ p_cle: cle, p_event: id }) });
+      const cibles = t.ok ? await t.json() : [];
+      if (cibles.length) rattrapees += await envoyerEvenement(id, cibles, null);
+    }
+  }
   const targets = [...await r1.json(), ...await r2.json(), ...(r3.ok ? await r3.json() : []), ...(r4.ok ? await r4.json() : []), ...(r5.ok ? await r5.json() : []), ...(r6.ok ? await r6.json() : []), ...(r7.ok ? await r7.json() : [])];
-  if (!Array.isArray(targets) || !targets.length) return res.json({ sent: 0 });
+  if (!Array.isArray(targets) || !targets.length) return res.json({ sent: 0, rattrapees });
 
   webpush.setVapidDetails('https://asm-live.vercel.app', VAPID_PUBLIC, process.env.VAPID_PRIVATE_KEY);
   let sent = 0;
@@ -36,5 +49,5 @@ module.exports = async (req, res) => {
     try { await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 3600 }); sent++; }
     catch (e) { /* téléphone désabonné : ignoré */ }
   }));
-  res.json({ sent });
+  res.json({ sent, rattrapees });
 };

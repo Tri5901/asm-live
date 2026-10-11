@@ -1,6 +1,6 @@
 // Service worker AS Mésanger – Feuille de match
 // Incrémente VERSION à chaque mise en ligne pour que les téléphones récupèrent la nouvelle version.
-const VERSION = 'asm-v164';
+const VERSION = 'asm-v165';
 const APP_SHELL = [
   './',
   './index.html',
@@ -93,12 +93,15 @@ self.addEventListener('notificationclick', event => {
   const url = new URL(event.notification.data && event.notification.data.url || './', self.registration.scope).href;
   // Appli déjà ouverte : on la met au premier plan et on lui dit quelle page afficher
   // (message + navigation en secours) ; sinon on l'ouvre directement sur la bonne page.
+  // (toutes les fenêtres de l'appli : onglet du navigateur et appli installée peuvent être ouverts en même temps)
   event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async list => {
-    const c = list.find(w => w.url.startsWith(self.registration.scope));
-    if (!c) return clients.openWindow(url);
-    const w = await c.focus().catch(() => c);
-    try { (w || c).postMessage({ type: 'ouvrir', url }); } catch (e) {}
-    if (c.navigate && new URL(c.url).hash !== new URL(url).hash) c.navigate(url).catch(() => {});
-    return w;
+    const fen = list.filter(w => w.url.startsWith(self.registration.scope));
+    if (!fen.length) return clients.openWindow(url);
+    for (const c of fen){
+      try { c.postMessage({ type: 'ouvrir', url }); } catch (e) {}
+      if (c.navigate && new URL(c.url).hash !== new URL(url).hash) c.navigate(url).catch(() => {});
+    }
+    // la plus récemment utilisée passe au premier plan
+    return fen[0].focus().catch(() => {});
   }));
 });

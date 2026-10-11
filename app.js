@@ -412,7 +412,11 @@ setInterval(flush, 15000);
 
 // ---------- Routeur ----------
 let cleanup = null;
+// tant que le compte n'est pas chargé au démarrage, on n'affiche rien d'autre : sinon une page réservée
+// (admin…) ouverte depuis une notification pouvait renvoyer ailleurs, faute de savoir qu'on est admin
+let routePret = false;
 async function route(){
+  if (!routePret) return;
   route.cur = (route.cur || 0) + 1;
   if (cleanup){ try{ cleanup(); }catch(e){} cleanup = null; }
   closeSheet();
@@ -3710,14 +3714,16 @@ if (sb){
     session = s;
     if (ev === 'SIGNED_OUT'){ profile = null; lsSet('asm-profile', null); renderAcct(); }
   });
-  loadProfile().catch(()=>{}).finally(() => { route(); flush(); });
+  loadProfile().catch(()=>{}).finally(() => { routePret = true; route(); flush(); });
+  // réseau très lent : on n'attend pas le compte plus de 4 s
+  setTimeout(() => { if (!routePret){ routePret = true; route(); } }, 4000);
   // liste des équipes à jour (nouvelle catégorie ajoutée dans la base) : on réaffiche si elle a changé
   sb.from('equipes').select('*').then(({ data }) => {
     if (!data || !data.length || JSON.stringify(data) === JSON.stringify(lsGet('asm-equipes', null))) return;
     lsSet('asm-equipes', data); setEquipes(data); if (!location.hash.startsWith('#/gerer')) route();
   });
   startPresence();
-} else route();
+} else { routePret = true; route(); }
 
 // PWA : fonctionnement hors ligne
 if ('serviceWorker' in navigator) {
