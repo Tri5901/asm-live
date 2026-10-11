@@ -15,7 +15,9 @@ module.exports = async (req, res) => {
   try {
     // aperçu d'une notification réelle (envoyé seulement à ce téléphone)
     const APERCUS = {
-      debut: { title: "▶️ C'est parti ! AS Mésanger C – Ancenis RCASG 2", body: "Coup d'envoi : suis le match en direct.", url: '/#/match/a927dc47-0726-4752-8b0e-fba9963c578c', tag: 'essai-debut' }
+      debut: { title: "▶️ C'est parti ! AS Mésanger C – Ancenis RCASG 2", body: "Coup d'envoi : suis le match en direct.", url: '/#/match/a927dc47-0726-4752-8b0e-fba9963c578c', tag: 'essai-debut' },
+      but: { title: '⚽ BUT DE MÉSANGER ! (AS Mésanger B)', body: "Score 0-1 · FC Le Cellier Mauves 2 contre AS Mésanger B · 27' · n°9 Simon Bodier", url: '/', tag: 'essai-but' },
+      carton: { title: '🟨 Carton jaune pour Nathan Vigneron', body: "Nathan Vigneron (n°5) prend un carton jaune à la 20'.\nScore 1-0 · AS Mésanger C contre Riaillé UFCE Donneau", url: '/', tag: 'essai-carton' }
     };
     const msg = APERCUS[req.body.apercu] || { title: '✅ Notifications activées', body: 'Tu recevras ici chaque but et chaque carton des équipes choisies.', url: '/', tag: 'essai' };
     await webpush.sendNotification(sub, JSON.stringify(msg), { TTL: 60, urgency: 'high' });
