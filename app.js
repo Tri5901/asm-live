@@ -644,9 +644,122 @@ function lineupsHTML(m, evs = []){
     : m.compo_cachee ? '<span class="vistog off static"><i></i>Cachée au public</span>' : '';
   return `<section class="log"><div class="loghead"><h2>Compositions</h2>${canManage(m) ? `<a class="link" href="#/gerer/${esc(m.id)}/compo">${has ? 'Modifier' : '📋 Saisir la compo'}</a>` : ''}</div>`
     + (vis ? `<div class="visrow">${vis}<small>${m.compo_cachee ? 'Seuls les responsables d’équipe, les admins et le responsable score du match la voient.' : 'Tout le monde peut la voir sur la page du match.'}</small></div>` : '')
+    + (has && canManage(m) ? `<div class="visrow"><button type="button" class="vistog${terrainActif(m) ? '' : ' off'}" id="terrainTog" aria-pressed="${terrainActif(m)}"><i></i>Vue terrain</button><small>${terrainActif(m) ? 'Le terrain et le banc sont affichés en haut de la page. Touche deux joueurs pour noter un changement de poste.' : 'Affiche nos joueurs sur le terrain et sur le banc, minute par minute.'}</small></div>` : '')
     + (has && m.status !== 'prevu' && evs.some(e => e.k === 'sub') ? `<button type="button" class="link rempbtn" id="rempBtn">${lsGet('asm-voir-remp', false) ? 'Masquer les remplacements' : 'Afficher les remplacements'}</button>` : '')
     + (has ? `<div class="lineups${lsGet('asm-voir-remp', false) ? ' remp' : ''}">${side('H')}${side('A')}</div>` : '<div class="empty">Compo pas encore saisie.</div>')
     + '</section>';
+}
+// ---------- Vue terrain (option activée par le responsable score) ----------
+// Nos joueurs sur le terrain et sur le banc, minute par minute. Un remplaçant prend d'office la place du joueur qu'il
+// remplace ; quand les joueurs se décalent, on touche deux joueurs pour noter le changement de poste.
+// matches.terrain = { on, f: dispositif, d: [11 numéros : place de départ], p: [{ s: minute, a, b }] }
+const TERRAIN_DISPOS = {
+  '4-4-2': [[50,91,'Gardien',1],[14,72,'Arrière gauche',3],[38,75,'Défenseur central',4],[62,75,'Défenseur central',5],[86,72,'Arrière droit',2],[14,47,'Milieu gauche',11],[38,51,'Milieu central',6],[62,51,'Milieu central',8],[86,47,'Milieu droit',7],[36,22,'Attaquant',10],[64,22,'Attaquant',9]],
+  '4-3-3': [[50,91,'Gardien',1],[14,72,'Arrière gauche',3],[38,75,'Défenseur central',4],[62,75,'Défenseur central',5],[86,72,'Arrière droit',2],[28,50,'Milieu',8],[50,56,'Milieu défensif',6],[72,50,'Milieu',10],[16,24,'Ailier gauche',11],[50,18,'Avant-centre',9],[84,24,'Ailier droit',7]],
+  '4-2-3-1': [[50,91,'Gardien',1],[14,72,'Arrière gauche',3],[38,75,'Défenseur central',4],[62,75,'Défenseur central',5],[86,72,'Arrière droit',2],[36,57,'Milieu défensif',6],[64,57,'Milieu défensif',8],[16,36,'Ailier gauche',11],[50,38,'Meneur',10],[84,36,'Ailier droit',7],[50,16,'Avant-centre',9]],
+  '3-5-2': [[50,91,'Gardien',1],[26,74,'Défenseur central',4],[50,76,'Défenseur central',5],[74,74,'Défenseur central',6],[10,48,'Piston gauche',3],[32,54,'Milieu',8],[50,44,'Meneur',10],[68,54,'Milieu',7],[90,48,'Piston droit',2],[36,20,'Attaquant',9],[64,20,'Attaquant',11]]
+};
+const terrainActif = m => !!(m.terrain && m.terrain.on);
+const terrainVue = new Map();   // par match : { T (null = dernière minute connue), sel }
+// place de départ : chaque poste reçoit le titulaire qui porte son numéro « habituel », les autres complètent
+function terrainDepart(f, tit){
+  const res = Array(11).fill(null);
+  TERRAIN_DISPOS[f].forEach((s, i) => { const n = String(s[3]); if (tit.includes(n) && !res.includes(n)) res[i] = n; });
+  const reste = tit.filter(n => !res.includes(n)); res.forEach((v, i) => { if (!v) res[i] = reste.shift() || null; });
+  return res;
+}
+function terrainCfg(m){
+  const cs = clubSide(m), tit = rosterOf(m, cs).filter(p => !p.sub && p.n).map(p => String(p.n));
+  const t = m.terrain || {}, f = TERRAIN_DISPOS[t.f] ? t.f : '4-4-2';
+  // place de départ enregistrée, si elle correspond toujours aux titulaires de la compo
+  const d = Array.isArray(t.d) && t.d.length === 11 && t.d.every(n => tit.includes(n)) && new Set(t.d).size === 11 ? t.d.slice() : terrainDepart(f, tit);
+  return { f, d, p: Array.isArray(t.p) ? t.p : [], tit };
+}
+function terrainEtat(m, evs, cfg, T){
+  const cs = clubSide(m), pl = cfg.d.slice(), sortis = {}, rouges = {};
+  const acts = [...evs.filter(e => e.t === cs && (e.k === 'sub' || e.k === 'red')).map(e => ({ ...e, s: +e.sort || 0 })),
+    ...cfg.p.map(x => ({ ...x, k: 'poste' }))].sort((a, b) => a.s - b.s);
+  let der = null;
+  for (const a of acts){
+    if (a.s > T) break;
+    if (a.k === 'sub'){ const i = pl.indexOf(String(a.out_n)); if (i < 0) continue; pl[i] = String(a.in_n); sortis[a.out_n] = a.min; delete sortis[a.in_n]; der = { ...a, i }; }
+    else if (a.k === 'red'){ const i = pl.indexOf(String(a.n)); if (i < 0) continue; pl[i] = null; rouges[a.n] = a.min; der = a; }
+    else { const i = pl.indexOf(a.a), j = pl.indexOf(a.b); if (i < 0 || j < 0) continue; [pl[i], pl[j]] = [pl[j], pl[i]]; der = { ...a, i, j }; }
+  }
+  return { pl, sortis, rouges, der, moments: [...new Set([0, ...acts.map(a => a.s)])].sort((a, b) => a - b) };
+}
+function terrainMonter(m, evs, box, save){
+  if (!box || !terrainActif(m)) return;
+  const cs = clubSide(m), cfg = terrainCfg(m), gere = canManage(m), roster = rosterOf(m, cs);
+  if (cfg.tit.length < 11){ box.innerHTML = gere ? '<p class="note">Il faut 11 titulaires avec leur numéro dans la compo pour la vue terrain.</p>' : ''; return; }
+  const v = terrainVue.get(m.id) || { T: null, sel: null }; terrainVue.set(m.id, v);
+  const nomDe = n => (roster.find(p => String(p.n) === String(n)) || {}).name || 'n°' + n;
+  const court = n => { const s = nomDe(n).split(' '); return s.length > 1 ? s[0][0] + '. ' + s.slice(1).join(' ') : s[0]; };
+  const fin = m.status === 'termine', direct = m.status === 'direct';
+  const fmt = s => s === 0 ? "0'" : (evs.find(e => Math.abs((+e.sort || 0) - s) < 0.01) || {}).min || (Math.floor(s) + "'");
+  const enreg = async t => {
+    // console « Gérer » : file d'envoi (marche aussi sans réseau)
+    if (save){ save(t); return dessine(); }
+    const avant = m.terrain;
+    m.terrain = t;
+    const { data: upd, error } = await sb.from('matches').update({ terrain: t }).eq('id', m.id).select('id');
+    if (error || !upd || !upd.length){ m.terrain = avant; toast(isNetErr(error) ? 'Pas de réseau' : 'Modification refusée'); }
+    dessine();
+  };
+  const dessine = () => {
+    const tous = terrainEtat(m, evs, cfg, Infinity), maxi = tous.moments[tous.moments.length - 1] || 0;
+    const T = v.T == null ? (m.status === 'prevu' ? 0 : Infinity) : v.T;
+    const { pl, sortis, rouges, der } = terrainEtat(m, evs, cfg, T), slots = TERRAIN_DISPOS[cfg.f];
+    const evAvant = evs.filter(e => e.t === cs && (+e.sort || 0) <= T);
+    const titre = T === Infinity ? (fin ? 'Fin du match' : direct ? 'En ce moment' : 'Coup d’envoi') : T === 0 ? 'Coup d’envoi' : fmt(T);
+    let cap = '';
+    if (der && (T === Infinity ? der.s === maxi : der.s === T)){
+      cap = der.k === 'sub' ? `<b>${esc(der.min)} 🔁 ${esc(nomDe(der.in_n))}</b> remplace ${esc(nomDe(der.out_n))} et prend son poste : ${esc(slots[der.i][2].toLowerCase())}.`
+        : der.k === 'red' ? `<b>${esc(der.min)} 🟥 ${esc(nomDe(der.n))}</b> est exclu.`
+        : `<b>${esc(fmt(der.s))} ↔</b> ${esc(nomDe(der.a))} et ${esc(nomDe(der.b))} échangent leurs postes.`;
+    }
+    if (gere) cap += `<small>${v.sel ? esc(nomDe(v.sel)) + ' sélectionné : touche le joueur avec qui il échange.' : T === 0 ? 'Touche deux joueurs pour régler la place de départ.' : 'Pas le bon poste ? Touche deux joueurs pour les échanger à cette minute.'}</small>`;
+    const banc = roster.filter(p => p.n && !pl.includes(String(p.n)));
+    box.innerHTML = `<div class="ter">
+      <div class="tertl"><button type="button" data-tm="-1" aria-label="Moment précédent">◀</button><b>${esc(titre)}</b><button type="button" data-tm="1" aria-label="Moment suivant">▶</button>
+        ${gere ? `<select id="terF" aria-label="Dispositif">${Object.keys(TERRAIN_DISPOS).map(f => `<option${f === cfg.f ? ' selected' : ''}>${f}</option>`).join('')}</select>` : `<span class="terf">${esc(cfg.f)}</span>`}</div>
+      ${cap ? `<div class="tercap">${cap}</div>` : ''}
+      <div class="terpitch"><i class="tl1"></i><i class="tl2"></i><i class="tl3"></i><i class="tl4"></i>
+        ${pl.map((n, i) => { const [x, y, role] = slots[i];
+          if (!n) return `<div class="tp vide" style="left:${x}%;top:${y}%"><div class="tr">–</div><div class="tn">${esc(role)}</div></div>`;
+          const b = evAvant.filter(e => e.k === 'goal' && String(e.n) === n).length, j = evAvant.filter(e => e.k === 'yellow' && String(e.n) === n).length;
+          return `<div class="tp${i === 0 ? ' gk' : ''}${v.sel === n ? ' sel' : ''}${gere ? ' clic' : ''}" data-n="${esc(n)}" style="left:${x}%;top:${y}%"><div class="tr">${esc(n)}<span class="tb">${b ? '⚽' + (b > 1 ? b : '') : ''}${'<i class="kc y"></i>'.repeat(j)}</span></div><div class="tn">${esc(court(n))}</div><div class="tro">${esc(role)}</div></div>`; }).join('')}
+      </div>
+      ${banc.length ? `<div class="terbanc">${banc.map(p => `<span><b>${esc(p.n)}</b> ${esc(court(p.n))}<small>${rouges[p.n] ? 'exclu ' + esc(rouges[p.n]) : sortis[p.n] ? 'sorti ' + esc(sortis[p.n]) : p.sub ? 'banc' : ''}</small></span>`).join('')}</div>` : ''}
+      ${gere && cfg.p.length ? `<details class="terlog"><summary>${cfg.p.length} changement${cfg.p.length > 1 ? 's' : ''} de poste</summary>${cfg.p.slice().sort((a, b) => a.s - b.s).map((x, k) => `<div><span>${esc(fmt(x.s))} · ${esc(court(x.a))} ↔ ${esc(court(x.b))}</span><button type="button" class="link" data-terdel="${x.s}">Retirer</button></div>`).join('')}</details>` : ''}
+    </div>`;
+    box.querySelectorAll('[data-tm]').forEach(b => b.onclick = () => {
+      const ms = tous.moments, cur = T === Infinity ? maxi + 1 : T;
+      const nx = +b.dataset.tm > 0 ? ms.find(x => x > cur + 1e-9) : ms.filter(x => x < cur - 1e-9).pop();
+      v.T = nx == null ? (+b.dataset.tm > 0 ? null : 0) : nx; v.sel = null; dessine();
+    });
+    if ($('terF')) $('terF').onchange = e => enreg({ ...(m.terrain || {}), on: true, f: e.target.value, d: cfg.d, p: cfg.p });
+    box.querySelectorAll('[data-terdel]').forEach(b => b.onclick = () => { cfg.p = cfg.p.filter(x => x.s !== +b.dataset.terdel); enreg({ ...(m.terrain || {}), on: true, f: cfg.f, d: cfg.d, p: cfg.p }); });
+    if (gere) box.querySelectorAll('.tp[data-n]').forEach(el => el.onclick = () => {
+      const n = el.dataset.n;
+      if (!v.sel || v.sel === n){ v.sel = v.sel === n ? null : n; return dessine(); }
+      const a = v.sel; v.sel = null;
+      if (T === 0){
+        const i = cfg.d.indexOf(a), j = cfg.d.indexOf(n); if (i < 0 || j < 0) return dessine();
+        [cfg.d[i], cfg.d[j]] = [cfg.d[j], cfg.d[i]];
+        toast('Place de départ modifiée');
+      } else {
+        // à la minute affichée (en direct : la minute en cours), juste après ce qui s'y est passé
+        const base = T === Infinity ? (direct ? Math.max(currentMinute(m).sort, maxi) : maxi) : T;
+        const s = +(base + 0.001 * (1 + cfg.p.filter(x => Math.abs(x.s - base) < 0.5).length)).toFixed(3);
+        cfg.p = [...cfg.p, { s, a, b: n }];
+        if (T !== Infinity) v.T = s;
+        toast(court(a) + ' ↔ ' + court(n));
+      }
+      enreg({ ...(m.terrain || {}), on: true, f: cfg.f, d: cfg.d, p: cfg.p });
+    });
+  };
+  dessine();
 }
 // ---------- Match à venir : l'adversaire (classement, forme, match aller) ----------
 const numEquipe = s => (String(s || '').trim().match(/\s(\d+)$/) || [])[1] || null;
@@ -1100,6 +1213,7 @@ async function matchView(id){
     const delegHTML = isStaff() || m.delegue_nom ? `<div class="field deleg"><span>Responsable score</span>${delegPickHTML('delSel', m.delegue_id, m.delegue_nom, !isTeamManager(m.equipe))}${canManage(m) && !isTeamManager(m.equipe) ? '<small>Seul le responsable de l’équipe (ou un admin) peut changer le responsable score.</small>' : isStaff() && !canManage(m) ? '<small>Seuls le responsable de l’équipe, le responsable score ou un admin peuvent modifier ce match.</small>' : ''}</div>` : '';
     view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false) + niveauHTML(m) + lieuHTML(m)
       + `<div class="mactions"><button class="pill" id="btnBell">🔔 Buts des ${esc(teamLabel(m.equipe))}</button><button class="pill" id="btnShareLive">↗ Partager</button>${m.status==='termine' && !m._partiel ? '<button class="pill" id="btnResume">📸 Résumé</button>' : ''}</div>`
+      + (terrainActif(m) && !m._partiel ? '<div id="terrainBox"></div>' : '')
       + demHTML()
       + (canManage(m) ? `<a class="fbtn primary big" href="#/gerer/${esc(m.id)}">Gérer ce match</a>` : '')
       + (fini ? `<div id="hdmBox">${hdmCache}</div>` : delegHTML)
@@ -1118,6 +1232,15 @@ async function matchView(id){
     if ($('btnLieu')) $('btnLieu').onclick = () => openLieu(m);
     if ($('rdvBox')) { const ms = new Date(m.kickoff).getTime() - Date.now(); if (ms < 864e5) setTimeout(() => $('rdvBox')?.remove(), ms); }
     $('btnBell').onclick = () => openBell(m.equipe || 1);
+    if ($('terrainTog')) $('terrainTog').onclick = async () => {
+      const on = !terrainActif(m), cfg = terrainCfg(m);
+      $('terrainTog').disabled = true;
+      const t = { ...(m.terrain || {}), on, f: cfg.f, d: cfg.d, p: cfg.p };
+      const { data: upd, error } = await sb.from('matches').update({ terrain: t }).eq('id', m.id).select('id');
+      if (error || !upd || !upd.length){ toast(isNetErr(error) ? 'Pas de réseau' : 'Modification refusée'); draw(); return; }
+      m.terrain = t; toast(on ? 'Vue terrain activée' : 'Vue terrain désactivée'); draw();
+    };
+    terrainMonter(m, evs, $('terrainBox'));
     if ($('compoVis')) $('compoVis').onclick = async () => {
       const hide = !m.compo_cachee;
       $('compoVis').disabled = true;
@@ -1248,6 +1371,7 @@ async function consoleView(id, openCompo){
         <button class="act" data-t="${t}" data-k="red"><span class="ic r"></span>Carton rouge</button>
       </div>`).join('')}
     </section>
+    <div id="terrainCo"></div>
     <button class="fbtn" id="btnLineup" style="width:100%;margin-top:12px">Compositions des équipes</button>
     <section class="log">
       <div class="loghead"><h2>Chronologie</h2><button id="btnShift" style="color:var(--muted);font-size:14px;text-decoration:underline;padding:6px 0">Décaler les minutes</button></div>
@@ -1290,6 +1414,17 @@ async function consoleView(id, openCompo){
       });
     });
     bindClock(); renderClock();
+    terrainCo();
+  }
+  // vue terrain dans la console : bouton pour l'activer, puis le terrain (changements de poste par la file d'envoi)
+  function terrainCo(){
+    const box = $('terrainCo'); if (!box) return;
+    const save = t => { S.terrain = t; saveLocal(); queue({kind:'match', match:id, fields:{terrain:t}}); };
+    const has = rosterOf(S, clubSide(S)).length;
+    if (!has){ box.innerHTML = ''; return; }
+    box.innerHTML = `<div class="visrow" style="margin-top:12px"><button type="button" class="vistog${terrainActif(S) ? '' : ' off'}" id="terrainTogCo" aria-pressed="${terrainActif(S)}"><i></i>Vue terrain</button><small>${terrainActif(S) ? 'Visible sur la page du match. Touche deux joueurs pour noter un changement de poste.' : 'Affiche nos joueurs sur le terrain et sur le banc, minute par minute.'}</small></div><div id="terrainBoxCo"></div>`;
+    $('terrainTogCo').onclick = () => { const cfg = terrainCfg(S); save({ ...(S.terrain || {}), on: !terrainActif(S), f: cfg.f, d: cfg.d, p: cfg.p }); toast(terrainActif(S) ? 'Vue terrain activée' : 'Vue terrain désactivée'); terrainCo(); };
+    if (terrainActif(S)) terrainMonter(S, S.events, $('terrainBoxCo'), save);
   }
   function renderSync(){
     const el = $('sync'); if (!el) return;
