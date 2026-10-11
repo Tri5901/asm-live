@@ -54,7 +54,7 @@ begin
                      from officiels_affect a left join profiles pr on pr.id = a.user_id where a.match_id = m.id and a.statut <> 'retire')
       ) order by m.kickoff), '[]')
       from matches m join equipes e on e.id = m.equipe
-      where e.categorie = 'Seniors' and m.status = 'prevu'
+      where e.categorie = 'Senior M' and m.status = 'prevu'
         and (m.kickoff at time zone 'Europe/Paris')::date between p_samedi - 1 and p_samedi + 1),
     'dispos', (select coalesce(jsonb_agg(jsonb_build_object('user_id', d.user_id, 'sam', d.sam, 'dim', d.dim, 'prefs', d.prefs)), '[]')
                  from officiels_dispo d where d.samedi = p_samedi and (v_staff or d.user_id = v_moi)),
@@ -88,7 +88,7 @@ begin
     from a join push_subscriptions s on coalesce(s.user_id, s.admin_id) = a.user_id;
   if extract(dow from v_now) = 4 and extract(hour from v_now) >= 19 then
     v_sam := v_now::date + 2;
-    if exists (select 1 from matches m join equipes e on e.id = m.equipe where e.categorie = 'Seniors' and m.status = 'prevu'
+    if exists (select 1 from matches m join equipes e on e.id = m.equipe where e.categorie = 'Senior M' and m.status = 'prevu'
                 and (m.kickoff at time zone 'Europe/Paris')::date between v_sam - 1 and v_sam + 1)
        and not exists (select 1 from officiels_relances where samedi = v_sam) then
       insert into officiels_relances (samedi) values (v_sam);

@@ -74,7 +74,7 @@ module.exports = async (req, res) => {
 
   const data = [], detail = [];
   for (const [c, court] of cols) {
-    const eq = equipes.find(e => e.court === court && e.categorie === 'Seniors');
+    const eq = equipes.find(e => e.court === court && /^Seniors?( M)?$/.test(e.categorie));
     const date = dateRow[c];
     if (!eq || !/^\d{2}\/\d{2}\/\d{4}$/.test(date || '')) continue;
     // le vendredi soir, la feuille peut encore montrer la convocation de la semaine passée :

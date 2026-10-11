@@ -1,4 +1,4 @@
--- Responsables d'équipe : chaque compte "delegue" gère les équipes cochées (1 à 5 = Seniors A à E).
+-- Responsables d'équipe : chaque compte "delegue" gère les équipes cochées (1 à 5 = Senior A à E, 6 = Senior F).
 alter table public.profiles add column if not exists equipes int[] not null default '{}';
 
 -- Peut gérer les matchs de cette équipe (créer, saisir, désigner un délégué, supprimer)

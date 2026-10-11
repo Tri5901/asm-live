@@ -6,7 +6,7 @@ import { SUPABASE_URL, SUPABASE_KEY, VAPID_PUBLIC } from './config.js';
 const CLUB = 'AS Mésanger';
 // Équipes du club, rangées par catégorie (table « equipes » de la base ; liste de secours ci-dessous).
 // Ajouter une catégorie = ajouter des lignes dans la base : tout le site s'adapte.
-const EQUIPES_DEFAUT = ['A', 'B', 'C', 'D', 'E'].map((c, i) => ({ id: i + 1, categorie: 'Seniors', cat_ordre: 1, ordre: i + 1, nom: 'Seniors ' + c, court: c, nom_club: CLUB + ' ' + c }));
+const EQUIPES_DEFAUT = ['A', 'B', 'C', 'D', 'E'].map((c, i) => ({ id: i + 1, categorie: 'Senior M', cat_ordre: 1, ordre: i + 1, nom: 'Senior ' + c, court: c, nom_club: CLUB + ' ' + c }));
 let EQUIPES = [], TEAMS = [], CATS = [];
 function setEquipes(list){
   EQUIPES = (Array.isArray(list) && list.length ? list : EQUIPES_DEFAUT).filter(e => e.actif !== false)
@@ -855,7 +855,8 @@ function terrainMonter(m, evs, box, save){
           const b = evAvant.filter(e => e.k === 'goal' && String(e.n) === n).length, j = evAvant.filter(e => e.k === 'yellow' && String(e.n) === n).length;
           return `<div class="tp${i === 0 ? ' gk' : ''}${v.sel === n ? ' sel' : ''}${gere ? ' clic' : ''}" data-n="${esc(n)}" style="--x:${x};--y:${y}"><div class="tr">${esc(n)}<span class="tb">${b ? '⚽' + (b > 1 ? b : '') : ''}${'<i class="kc y"></i>'.repeat(j)}</span></div><div class="tn">${esc(court(n))}</div><div class="tro">${esc(role)}</div></div>`; }).join('')}
       </div>
-      ${banc.length ? `<div class="terbanc">${banc.map(p => `<span><b>${esc(p.n)}</b> ${esc(court(p.n))}<small>${rouges[p.n] ? 'exclu ' + esc(rouges[p.n]) : sortis[p.n] ? 'sorti ' + esc(sortis[p.n]) : p.sub ? 'banc' : ''}</small></span>`).join('')}</div>` : ''}
+      ${banc.length ? `<div class="terbanc">${banc.map(p => { const b = evAvant.filter(e => e.k === 'goal' && String(e.n) === String(p.n)).length;
+        return `<span><b>${esc(p.n)}</b> ${esc(court(p.n))}${b ? `<i class="tbb">⚽${b > 1 ? b : ''}</i>` : ''}<small>${rouges[p.n] ? 'exclu ' + esc(rouges[p.n]) : sortis[p.n] ? 'sorti ' + esc(sortis[p.n]) : p.sub ? 'banc' : ''}</small></span>`; }).join('')}</div>` : ''}
       ${gere && cfg.p.length ? `<details class="terlog"><summary>${cfg.p.length} changement${cfg.p.length > 1 ? 's' : ''} de poste</summary>${cfg.p.slice().sort((a, b) => a.s - b.s).map((x, k) => `<div><span>${esc(fmt(x.s))} · ${esc(court(x.a))} ↔ ${esc(court(x.b))}</span><button type="button" class="link" data-terdel="${x.s}">Retirer</button></div>`).join('')}</details>` : ''}
     </div>`;
     box.querySelectorAll('[data-tm]').forEach(b => b.onclick = () => {
