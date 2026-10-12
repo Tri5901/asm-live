@@ -3435,7 +3435,7 @@ const adminTabs = cur => `<div class="seg admtabs" role="tablist">${ADMIN_ONGLET
 // ---------- Admin › Publications : post des résultats du week-end (photothèque par équipe, visuels, recadrage) ----------
 // Facebook et Instagram ne sont pas encore reliés : le brouillon se prépare tout seul, l'admin télécharge ou partage
 // les images et copie le texte. Données : pub_photos (photothèque), publications (un brouillon par week-end), pub_reglages.
-const PUB_W = 1080, PUB_H = 1350, PUB_JAUNE = '#F7E01A';
+const PUB_W = 1080, PUB_H = 1350;
 let pubWe = null, pubSel = 0, pubEqPh = 0, pubSave = null;
 const pubJour = iso => new Date(iso).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
 const pubAjJ = (s, n) => { const d = new Date(s + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
@@ -3467,59 +3467,63 @@ function pubTexte(sam, ms, evsDe){
       + (x.buteurs.length ? `\n      ⚽ ${x.buteurs.join(', ')}` : ''); });
   return `⚽ RÉSULTATS DU WEEK-END (${pubWeLib(sam, true)})\n\n${lignes.join('\n')}\n\n📲 Tous les matchs en direct : asm-live.vercel.app\n#ASMésanger #FootAmateur 💛🖤`;
 }
-// dessin d'un visuel 1080×1350 : photo de fond recadrée (fx, fy en %, z = zoom), voile sombre, logo, contenu
+// dessin d'un visuel 1080×1350, à l'identique des « Résultats match » publiés par le club sur Instagram :
+// photo plein cadre (fx, fy en %, z = zoom), « RÉSULTATS / MATCH COUPE » en haut à gauche, compétition, « DOMICILE X EXTÉRIEUR »
+// (notre équipe en jaune), les deux logos ronds en haut à droite, le score à la verticale (le nôtre en jaune), les buteurs en bas.
+const PUB_JAUNE = '#FFD400';
+const pubTypeMatch = c => /coupe|challenge|troph/i.test(c || '') ? 'MATCH COUPE' : /amical/i.test(c || '') ? 'MATCH AMICAL' : 'MATCH CHAMPIONNAT';
+// « Coupe des Pays de la Loire · 2e tour » → « COUPE PAYS DE LA LOIRE - TOUR 2 » ; « Régional 3 · J3 » → « RÉGIONAL 3 - JOURNÉE 3 »
+const pubCompet = c => String(c || '').split(' · ').map(p => p.replace(/^Coupe des Pays de la Loire$/i, 'Coupe Pays de la Loire')
+  .replace(/^(\d+)(?:er|e|ème) tour$/i, 'Tour $1').replace(/^J(\d+)$/i, 'Journée $1')).join(' - ').toUpperCase();
+const pubNomEquipe = (m, t) => t === clubSide(m) ? ('AS MÉSANGER' + (teamLetter(m.equipe) !== 'A' ? ' ' + teamLetter(m.equipe) : '')) : teamName(m, t).toUpperCase();
+// « Mael Carette » ×2 → « MAEL.C X2 »
+const pubButeur = (nom, k) => { const w = String(nom).replace(/\./g, '').trim().split(/\s+/); return ((w[0] || '') + (w[1] ? '.' + w[1][0] : '')).toUpperCase() + (k > 1 ? ' X' + k : ''); };
 async function pubDessiner(cv, img, ctx){
   const W = PUB_W, H = PUB_H, g = cv.getContext('2d'); cv.width = W; cv.height = H;
   g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
-  try{ await Promise.all([document.fonts.load('italic 800 80px "Barlow Condensed"'), document.fonts.load('800 80px "Barlow Condensed"'), document.fonts.load('600 40px Barlow')]); }catch(e){}
-  const f = img.fond || {}, photo = f.photo === 'aucune' ? null : ctx.photos.find(p => p.id === f.photo) || null;
-  const [bg, logo, adv] = await Promise.all([pubCharger(pubUrl(photo), !(photo && photo.url)), pubCharger('icons/notif-192.png'), img.m ? pubCharger(pubLogoAdv(img.m) || img.m.opp_logo, true) : null]);
-  g.fillStyle = '#0b0b0a'; g.fillRect(0, 0, W, H);
+  try{ await Promise.all([document.fonts.load('126px "Bebas Neue"'), document.fonts.load('168px Lora')]); }catch(e){}
+  const m = img.m, f = img.fond || {}, photo = f.photo === 'aucune' ? null : ctx.photos.find(p => p.id === f.photo) || null;
+  const [bg, logo, adv] = await Promise.all([pubCharger(pubUrl(photo), !(photo && photo.url)), pubCharger('icons/notif-192.png'), pubCharger(pubLogoAdv(m) || m.opp_logo, true)]);
+  g.fillStyle = '#1b1b18'; g.fillRect(0, 0, W, H);
   if (bg){ const z = f.z || 1, sc = Math.max(W / bg.width, H / bg.height) * z, dw = bg.width * sc, dh = bg.height * sc;
     g.drawImage(bg, (W - dw) * (f.fx ?? 50) / 100, (H - dh) * (f.fy ?? 50) / 100, dw, dh); }
-  const v = g.createLinearGradient(0, 0, 0, H);
-  [[0, .45], [.28, .35], [.58, .82], [1, .96]].forEach(([p, a]) => v.addColorStop(p, `rgba(10,10,8,${bg ? a : Math.max(a, .6)})`));
-  g.fillStyle = v; g.fillRect(0, 0, W, H);
-  if (!bg){ const halo = g.createRadialGradient(W / 2, H + 100, 50, W / 2, H + 100, 1100); halo.addColorStop(0, 'rgba(247,224,26,.35)'); halo.addColorStop(1, 'rgba(247,224,26,0)'); g.fillStyle = halo; g.fillRect(0, 0, W, H); }
-  const T = (txt, x, y, taille, coul, { poids = 800, it = false, align = 'center', max = W - 120, cond = true, esp = 0 } = {}) => {
-    g.font = `${it ? 'italic ' : ''}${poids} ${taille}px ${cond ? '"Barlow Condensed"' : 'Barlow'}, sans-serif`; g.fillStyle = coul; g.textAlign = align; g.textBaseline = 'alphabetic';
-    try{ g.letterSpacing = esp + 'px'; }catch(e){}
+  // léger voile pour la lisibilité (plus marqué en haut et en bas, comme sur les publications du club)
+  g.fillStyle = 'rgba(0,0,0,.26)'; g.fillRect(0, 0, W, H);
+  const vh = g.createLinearGradient(0, 0, 0, H); vh.addColorStop(0, 'rgba(0,0,0,.38)'); vh.addColorStop(.42, 'rgba(0,0,0,0)'); vh.addColorStop(.72, 'rgba(0,0,0,0)'); vh.addColorStop(1, 'rgba(0,0,0,.42)');
+  g.fillStyle = vh; g.fillRect(0, 0, W, H);
+  const T = (txt, x, y, taille, coul, { police = '"Bebas Neue"', align = 'left', max = W - 170 } = {}) => {
+    g.font = `400 ${taille}px ${police}, "Barlow Condensed", sans-serif`; g.fillStyle = coul; g.textAlign = align; g.textBaseline = 'alphabetic';
     const w = g.measureText(txt).width; if (w > max){ g.save(); g.translate(x, y); g.scale(max / w, 1); g.fillText(txt, 0, 0); g.restore(); } else g.fillText(txt, x, y);
-    try{ g.letterSpacing = '0px'; }catch(e){} };
-  const rond = (x, y, w, h, r) => { g.beginPath(); g.roundRect ? g.roundRect(x, y, w, h, r) : g.rect(x, y, w, h); };
-  if (logo) g.drawImage(logo, W / 2 - 64, 48, 128, 128);
-  T('AS MÉSANGER', W / 2, 214, 30, '#ffffff', { poids: 600, cond: false, esp: 9 });
-  T('@ASMESANGER · ASM-LIVE.VERCEL.APP', W / 2, H - 42, 26, '#cfcbbb', { poids: 600, cond: false, esp: 3 });
-  if (!img.m){
-    // récapitulatif du week-end
-    T('RÉSULTATS', W / 2, 420, 176, '#ffffff', { it: true });
-    T('DU WEEK-END', W / 2, 560, 140, PUB_JAUNE, { it: true });
-    T(pubWeLib(ctx.sam, true).toUpperCase(), W / 2, 640, 34, PUB_JAUNE, { poids: 600, cond: false, esp: 8 });
-    const L = ctx.ms, n = L.length, top = 690, dispo = H - 110 - top, gap = n > 6 ? 10 : 16, h = Math.min(108, (dispo - gap * (n - 1)) / n);
-    L.forEach((m, i) => { const x = pubMatch(m, ctx.evsDe(m.id)), y = top + i * (h + gap);
-      g.fillStyle = 'rgba(20,20,17,.80)'; rond(70, y, W - 140, h, 22); g.fill();
-      g.fillStyle = PUB_JAUNE; rond(92, y + (h - 62) / 2, 62, 62, 14); g.fill();
-      T(teamLetter(m.equipe), 123, y + h / 2 + 15, 44, '#111');
-      T(teamName(m, oppSide(m)).toUpperCase(), 178, y + h / 2 + (h > 80 ? 2 : 10), h > 80 ? 38 : 32, '#ffffff', { align: 'left', max: 600, poids: 700 });
-      if (h > 80) T(`${teamLabel(m.equipe)} · ${(m.competition || '').split(' · ')[0]}`, 178, y + h / 2 + 34, 22, '#bdb9aa', { align: 'left', max: 600, poids: 600, cond: false });
-      g.fillStyle = x.r === 'V' ? '#2e9e4f' : x.r === 'D' ? '#d0262a' : '#6b6a63'; rond(W - 92 - 130, y + (h - 70) / 2, 130, 70, 14); g.fill();
-      T(`${x.c}-${x.o}`, W - 92 - 65, y + h / 2 + 19, 56, '#ffffff', { max: 120 }); });
-  } else {
-    const m = img.m, x = pubMatch(m, ctx.evsDe(m.id)), cs = clubSide(m);
-    T(`${teamLabel(m.equipe)} · ${m.competition || ''}`.toUpperCase(), W / 2, 300, 30, PUB_JAUNE, { poids: 600, cond: false, esp: 5, max: W - 140 });
-    T(x.mot.toUpperCase(), W / 2, 470, 190, '#ffffff', { it: true });
-    const lg = (im, cx, club) => { if (!im) return; if (club){ g.drawImage(im, cx - 95, 560, 190, 190); return; }
-      g.fillStyle = '#ffffff'; rond(cx - 92, 563, 184, 184, 32); g.fill(); const s = Math.min(150 / im.width, 150 / im.height);
-      g.drawImage(im, cx - im.width * s / 2, 655 - im.height * s / 2, im.width * s, im.height * s); };
-    lg(cs === 'H' ? logo : adv, 240, cs === 'H'); lg(cs === 'A' ? logo : adv, W - 240, cs === 'A');
-    T(`${x.h} – ${x.a}`, W / 2, 735, 210, '#ffffff');
-    if (x.tabTxt) T(x.tabTxt.trim().replace(/[()]/g, ''), W / 2, 800, 34, PUB_JAUNE, { poids: 700 });
-    T(teamName(m, 'H').toUpperCase(), 240, 840, 40, '#ffffff', { max: 400 }); T(teamName(m, 'A').toUpperCase(), W - 240, 840, 40, '#ffffff', { max: 400 });
-    if (x.buteurs.length){
-      g.font = '700 40px Barlow, sans-serif'; const mots = ('⚽ ' + x.buteurs.join(' · ')).split(' '), lignes = []; let l = '';
-      mots.forEach(w => { const t = l ? l + ' ' + w : w; if (g.measureText(t).width > W - 180 && l){ lignes.push(l); l = w; } else l = t; }); if (l) lignes.push(l);
-      lignes.slice(0, 5).forEach((t, i) => T(t, W / 2, 960 + i * 58, 40, '#ffffff', { poids: 700, cond: false }));
-    }
+    return Math.min(w, max); };
+  const cs = clubSide(m), x = pubMatch(m, ctx.evsDe(m.id)), X0 = 112;
+  T('RÉSULTATS', X0, 214, 126, '#ffffff', { max: 620 });
+  T(pubTypeMatch(m.competition), X0, 326, 126, '#ffffff', { max: W - X0 - 60 });
+  T(pubCompet(m.competition), X0, 404, 57, '#ffffff', { max: W - X0 - 60 });
+  // « DOMICILE X EXTÉRIEUR », notre équipe en jaune
+  let xx = X0; const parts = [[pubNomEquipe(m, 'H'), cs === 'H'], [' X ', false], [pubNomEquipe(m, 'A'), cs === 'A']];
+  g.font = '400 34px "Bebas Neue", "Barlow Condensed", sans-serif'; const tot = parts.reduce((a, [t]) => a + g.measureText(t).width, 0), k = Math.min(1, (W - X0 - 60) / tot);
+  g.save(); g.translate(X0, 460); g.scale(k, 1); parts.forEach(([t, nous]) => { g.fillStyle = nous ? PUB_JAUNE : '#ffffff'; g.textAlign = 'left'; g.fillText(t, xx - X0, 0); xx += g.measureText(t).width; }); g.restore();
+  // logos ronds : domicile puis extérieur
+  const rond = (im, cx, club) => { const r = 60, cy = 150; g.save(); g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.closePath();
+    if (club){ g.clip(); if (im) g.drawImage(im, cx - r, cy - r, r * 2, r * 2); g.restore(); return; }
+    g.fillStyle = '#ffffff'; g.fill(); g.clip(); if (im){ const s = Math.min(r * 1.55 / im.width, r * 1.55 / im.height); g.drawImage(im, cx - im.width * s / 2, cy - im.height * s / 2, im.width * s, im.height * s); } g.restore(); };
+  rond(cs === 'H' ? logo : adv, 822, cs === 'H'); rond(cs === 'A' ? logo : adv, 954, cs === 'A');
+  // score à la verticale : domicile en haut, extérieur en bas ; à droite si on reçoit, à gauche sinon (réglable)
+  const cote = f.cote || (cs === 'H' ? 'd' : 'g'), sx = cote === 'd' ? 900 : 162;
+  T(String(x.h), sx, 666, 168, cs === 'H' ? PUB_JAUNE : '#ffffff', { police: 'Lora', align: 'center', max: 300 });
+  g.fillStyle = '#ffffff'; g.fillRect(sx - 43, 754, 86, 5);
+  T(String(x.a), sx, 989, 168, cs === 'A' ? PUB_JAUNE : '#ffffff', { police: 'Lora', align: 'center', max: 300 });
+  if (x.tabTxt) T('TIRS AU BUT ' + x.tabTxt.replace(/[^\d-]/g, ''), sx, 1052, 40, '#ffffff', { align: 'center', max: 360 });
+  // buteurs
+  const evs = ctx.evsDe(m.id).filter(e => e.k === 'goal' && e.t === cs).sort((a, b) => (+a.sort || 0) - (+b.sort || 0));
+  const cnt = new Map(); evs.forEach(e => { const nm = e.n === 'CSC' ? 'CSC' : nameOf(m, cs, e.n); if (nm) cnt.set(nm, (cnt.get(nm) || 0) + 1); });
+  if (cnt.size){
+    const noms = [...cnt].map(([n, k]) => n === 'CSC' ? 'CSC' + (k > 1 ? ' X' + k : '') : pubButeur(n, k));
+    g.font = '400 36px "Bebas Neue", "Barlow Condensed", sans-serif'; const lignes = []; let l = '';
+    noms.forEach((n, i) => { const t = l ? l + ' / ' + n : n; if (g.measureText(t).width > W - X0 - 80 && l){ lignes.push(l + ' /'); l = n; } else l = t; }); if (l) lignes.push(l);
+    const y0 = 1224 - (lignes.length - 1) * 50;
+    T('BUTEURS :', X0, y0 - 53, 38, '#ffffff');
+    lignes.forEach((t, i) => T(t, X0, y0 + i * 50, 36, '#ffffff'));
   }
 }
 async function pubPhotoAjouter(files, equipe){
@@ -3562,12 +3566,13 @@ async function publicationsView(){
   const evs = re.data || [], evsDe = id => evs.filter(e => e.match_id === id);
   const pub = rpub.data || { id: pubWe, data: {}, statut: 'brouillon' }, D = pub.data = { fonds: {}, exclus: [], ...(pub.data || {}) };
   // images du carrousel : le récap puis un visuel par match gardé
-  const images = [{ cle: 'recap', m: null }].concat(ms.filter(m => !D.exclus.includes(m.id)).map(m => ({ cle: m.id, m })));
+  let images = ms.filter(m => !D.exclus.includes(m.id)).map(m => ({ cle: m.id, m }));
+  if (!images.length){ D.exclus = []; images = ms.map(m => ({ cle: m.id, m })); }
   if (pubSel >= images.length) pubSel = 0;
   // photo de fond par défaut : celles de l'équipe à tour de rôle, sinon celles du club, sinon n'importe laquelle
   const photosDe = eq => photos.filter(p => p.equipe === eq), club = photos.filter(p => p.equipe == null);
   const fondDe = (img, i) => { const f = D.fonds[img.cle]; if (f) return f;
-    const l = img.m ? (photosDe(img.m.equipe).length ? photosDe(img.m.equipe) : club.length ? club : photos) : (club.length ? club : photos);
+    const l = photosDe(img.m.equipe).length ? photosDe(img.m.equipe) : club.length ? club : photos;
     const k = Math.abs([...pubWe].reduce((a, c) => a + c.charCodeAt(0), 0) + i) % (l.length || 1);
     return { photo: l.length ? l[k].id : 'aucune', fx: 50, fy: 50, z: 1 }; };
   images.forEach((img, i) => img.fond = fondDe(img, i));
@@ -3575,23 +3580,24 @@ async function publicationsView(){
   const ctx = { sam: pubWe, ms, evsDe, photos };
   const peutPartager = !!(navigator.canShare && window.File);
   const eqPh = pubEqPh, lPh = eqPh ? photosDe(eqPh) : club;
-  const img = images[pubSel], f = img.fond, propos = img.m ? photosDe(img.m.equipe).concat(club, photos.filter(p => p.equipe !== img.m.equipe && p.equipe != null)) : club.concat(photos.filter(p => p.equipe != null));
+  const img = images[pubSel], f = img.fond, propos = photosDe(img.m.equipe).concat(club, photos.filter(p => p.equipe !== img.m.equipe && p.equipe != null));
   view.innerHTML = `<div class="acc pubw">${adminTabs('pubs')}
     <section class="card pubauto"><label class="pubtog"><input type="checkbox" id="pAuto"${regl.auto ? ' checked' : ''}><span><b>Publication automatique</b><small>Le post des résultats se prépare tout seul chaque week-end. Il partira seul le dimanche à ${regl.heure ?? 20} h dès que Facebook et Instagram seront reliés.</small></span></label>
       <div class="pubnets">${[['instagram', 'Instagram'], ['facebook', 'Facebook']].map(([k, l]) => `<label class="pubnet"><input type="checkbox" data-net="${k}"${(regl.reseaux || []).includes(k) ? ' checked' : ''}> ${l}</label>`).join('')}<span class="pubwait">Accès à relier</span></div></section>
     <div class="chipbar pubwes">${wes.map(w => `<button type="button" data-we="${w}" class="${w === pubWe ? 'on' : ''}">${pubWeLib(w)}</button>`).join('')}</div>
     <p class="pubstat">${pub.statut === 'publiee' ? `✅ Marquée publiée${pub.publie_le ? ' le ' + esc(fmtDate(pub.publie_le)) : ''}` : '📝 Brouillon, enregistré automatiquement'} · ${ms.length} match${ms.length > 1 ? 's' : ''} · ${images.length} image${images.length > 1 ? 's' : ''}</p>
     <div class="pubprev"><canvas id="pCv"></canvas></div>
-    <div class="pubthumbs">${images.map((x, i) => `<button type="button" class="pubth${i === pubSel ? ' on' : ''}" data-im="${i}"><canvas></canvas><span>${x.m ? esc(teamLetter(x.m.equipe)) : 'Récap'}</span></button>`).join('')}</div>
-    <section class="card pubcrop"><h3>Image ${pubSel + 1} · ${img.m ? esc(teamLabel(img.m.equipe)) + ' – ' + esc(teamName(img.m, oppSide(img.m))) : 'Récapitulatif'}</h3>
+    <div class="pubthumbs">${images.map((x, i) => `<button type="button" class="pubth${i === pubSel ? ' on' : ''}" data-im="${i}"><canvas></canvas><span>${esc(teamLetter(x.m.equipe))}</span></button>`).join('')}</div>
+    <section class="card pubcrop"><h3>Image ${pubSel + 1} · ${esc(teamLabel(img.m.equipe))} – ${esc(teamName(img.m, oppSide(img.m)))}</h3>
       <div class="pubphotos"><button type="button" class="pubph aucune${f.photo === 'aucune' ? ' on' : ''}" data-ph="aucune">Sans photo</button>${propos.map(p => `<button type="button" class="pubph${f.photo === p.id ? ' on' : ''}" data-ph="${p.id}" style="background-image:url('${esc(pubUrl(p))}')"></button>`).join('')}</div>
       ${f.photo !== 'aucune' ? [['z', '🔍 Zoom', 100, 300, Math.round((f.z || 1) * 100)], ['fx', '↔ Gauche · droite', 0, 100, f.fx ?? 50], ['fy', '↕ Haut · bas', 0, 100, f.fy ?? 50]].map(([k, l, a, b, v]) => `<label class="pubsl"><span>${l}</span><input type="range" min="${a}" max="${b}" value="${v}" data-sl="${k}"></label>`).join('') : ''}
-      ${img.m ? `<button type="button" class="link" id="pExclure">Retirer ce match du carrousel</button>` : D.exclus.length ? `<button type="button" class="link" id="pRemettre">Remettre les ${D.exclus.length} match${D.exclus.length > 1 ? 's' : ''} retiré${D.exclus.length > 1 ? 's' : ''}</button>` : ''}</section>
+      <div class="pubcote"><span>Score</span><div class="seg">${[['g', '◀ À gauche'], ['d', 'À droite ▶']].map(([k, l]) => `<button type="button" data-cote="${k}" class="${(f.cote || (clubSide(img.m) === 'H' ? 'd' : 'g')) === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+      <div class="publiens">${images.length > 1 ? '<button type="button" class="link" id="pExclure">Retirer ce match du carrousel</button>' : ''}${D.exclus.length ? `<button type="button" class="link" id="pRemettre">Remettre les ${D.exclus.length} match${D.exclus.length > 1 ? 's' : ''} retiré${D.exclus.length > 1 ? 's' : ''}</button>` : ''}</div></section>
     <section class="card"><h3>Texte du post</h3><textarea id="pTxt" rows="12">${esc(texte)}</textarea>
       <div class="foot"><button type="button" class="fbtn" id="pCopier">📋 Copier le texte</button>${D.texte != null ? '<button type="button" class="fbtn" id="pTxtAuto">↺ Texte automatique</button>' : ''}</div></section>
     <div class="foot pubact">${peutPartager ? '<button type="button" class="fbtn primary" id="pPartager">📲 Partager les images</button>' : ''}<button type="button" class="fbtn${peutPartager ? '' : ' primary'}" id="pTelech">⬇ Télécharger les images</button></div>
     <div class="foot pubact"><button type="button" class="fbtn" disabled title="Accès Facebook / Instagram à relier">Publier sur Instagram et Facebook</button><button type="button" class="fbtn" id="pStatut">${pub.statut === 'publiee' ? '↩ Repasser en brouillon' : '✅ Marquer publiée'}</button></div>
-    <section class="card pubgal"><h3>🖼️ Photothèque</h3><p class="note">Les photos d’une équipe servent de fond à ses visuels, à tour de rôle. Les photos « Club » vont avec le récapitulatif et les équipes sans photo.</p>
+    <section class="card pubgal"><h3>🖼️ Photothèque</h3><p class="note">Les photos d’une équipe servent de fond à ses visuels, à tour de rôle. Les photos « Club » servent aux équipes qui n’ont pas encore de photo.</p>
       <div class="chipbar">${[[0, 'Club']].concat(EQUIPES.map(e => [e.id, e.nom])).map(([id, l]) => `<button type="button" data-geq="${id}" class="${eqPh === id ? 'on' : ''}">${esc(l)} <small>${(id ? photosDe(id) : club).length}</small></button>`).join('')}</div>
       <div class="pubgrid">${lPh.map(p => `<div class="pubgi" style="background-image:url('${esc(pubUrl(p))}')"><button type="button" data-delph="${p.id}" aria-label="Retirer cette photo">×</button></div>`).join('')}
         <label class="pubgi add"><input type="file" accept="image/*" multiple id="pAjout" hidden>＋ Ajouter</label></div></section></div>`;
@@ -3610,6 +3616,7 @@ async function publicationsView(){
   view.querySelectorAll('[data-sl]').forEach(s => s.oninput = () => { const k = s.dataset.sl; f[k] = k === 'z' ? +s.value / 100 : +s.value; D.fonds[img.cle] = f; redessiner(); enregistrer(); });
   view.querySelectorAll('[data-ph]').forEach(b => b.onclick = () => { D.fonds[img.cle] = { ...f, photo: b.dataset.ph, ...(b.dataset.ph !== f.photo ? { fx: 50, fy: 50, z: 1 } : {}) }; enregistrer(); publicationsView(); });
   view.querySelectorAll('[data-im]').forEach(b => b.onclick = () => { pubSel = +b.dataset.im; publicationsView(); });
+  view.querySelectorAll('[data-cote]').forEach(b => b.onclick = () => { f.cote = b.dataset.cote; D.fonds[img.cle] = f; enregistrer(); view.querySelectorAll('[data-cote]').forEach(x => x.classList.toggle('on', x === b)); redessiner(); });
   view.querySelectorAll('[data-we]').forEach(b => b.onclick = () => { pubWe = b.dataset.we; pubSel = 0; publicationsView(); });
   view.querySelectorAll('[data-geq]').forEach(b => b.onclick = () => { pubEqPh = +b.dataset.geq; publicationsView(); });
   if ($('pExclure')) $('pExclure').onclick = () => { D.exclus = [...new Set(D.exclus.concat(img.m.id))]; pubSel = 0; enregistrer(); publicationsView(); };
