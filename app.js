@@ -1086,18 +1086,18 @@ async function hdmRemplir(m, evs, box, changer = false){
   let mien = null;
   if (myId()){ const { data } = await sb.from('votes_hdm').select('joueur').eq('match_id', m.id).maybeSingle(); mien = data && data.joueur; }
   if (!box.isConnected) return;
-  // la base ne renvoie les voix qu'aux admins, et seulement pendant le vote. Une fois le vote terminé, personne ne voit
-  // le nombre de voix : l'élu (elu) pour tous, et pour les admins et responsables les autres joueurs qui ont eu des voix
+  // la base ne renvoie les voix qu'aux admins (pendant et après le vote). Une fois le vote terminé : l'élu (elu) pour tous,
+  // les autres joueurs qui ont eu des voix pour les responsables (sans le nombre), et toutes les voix pour les admins
   const R = res || [], avecVoix = R.some(x => x.voix != null), total = R.reduce((a, x) => a + (x.voix || 0), 0);
   // numéro porté pendant ce match (si la compo l'a)
   const numDe = nom => { const p = roster.find(x => x.name === nom); return p && p.n ? `<b class="hdmn">${esc(p.n)}</b>` : ''; };
   const detail = () => `<div class="hdmlist">${R.map(x => { const pc = total ? Math.round(100 * x.voix / total) : 0;
-      return `<div class="hdmrow"><span class="hdmbar" style="width:${pc}%"></span><span class="hdmnom">${numDe(x.joueur)}${esc(x.joueur)}</span><b>${x.voix} voix</b></div>`; }).join('')}</div>`;
+      return `<div class="hdmrow"><span class="hdmbar" style="width:${pc}%"></span><span class="hdmnom">${numDe(x.joueur)}${esc(x.joueur)}${x.elu ? ' 🏆' : ''}</span><b>${x.voix} voix</b></div>`; }).join('')}</div>`;
   if (!hdmOuvert(m)){
     const elus = R.filter(x => x.elu !== false), autres = R.filter(x => x.elu === false);
     if (!elus.length){ box.innerHTML = ''; return; }
     box.innerHTML = `<section class="hdm"><h3>🏆 ${elus.length > 1 ? hdmTitre([m.equipe], 1) + ' (ex aequo)' : hdmTitre([m.equipe])}</h3><p class="hdmwin">${elus.map(x => numDe(x.joueur) + esc(x.joueur)).join(' et ')}</p>
-      ${autres.length ? `<p class="note" style="margin:10px 0 6px">Ont aussi reçu des voix, du plus au moins voté (visible par les admins et les responsables) :</p>
+      ${avecVoix ? `<p class="note" style="margin:10px 0 6px">Voix de chaque joueur (${total} vote${total > 1 ? 's' : ''}, visible seulement par les admins) :</p>${detail()}` : autres.length ? `<p class="note" style="margin:10px 0 6px">Ont aussi reçu des voix, du plus au moins voté (visible par les admins et les responsables) :</p>
         <div class="hdmautres">${autres.map(x => `<span>${numDe(x.joueur)}${esc(x.joueur)}</span>`).join('')}</div>` : ''}</section>`;
     return;
   }
@@ -1126,10 +1126,10 @@ async function partagerResume(m, evs){
   // format des publications Instagram du club : titres blancs condensés, sous-titres jaunes, logos dans des ronds
   const W = 1080, H = 1350, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const g = cv.getContext('2d'), JAUNE = '#F7E01A'; g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
-  try{ await Promise.all([document.fonts.load('italic 800 80px "Barlow Condensed"'), document.fonts.load('800 80px "Barlow Condensed"'), document.fonts.load('700 40px "Barlow Condensed"')]); }catch(e){}
+  try{ await Promise.all([document.fonts.load('italic 800 80px "Barlow Condensed"'), document.fonts.load('800 80px "Barlow Condensed"'), document.fonts.load('700 40px "Barlow Condensed"'), document.fonts.load('220px Belleza')]); }catch(e){}
   const charger = (src, cors) => new Promise(r => { if (!src) return r(null); const i = new Image(); if (cors) i.crossOrigin = 'anonymous'; i.onload = () => r(i); i.onerror = () => r(null); i.src = src; });
   const cs = clubSide(m), idLogo = ((m.opp_logo || '').match(/^https:\/\/cdn-transverse\.azureedge\.net\/phlogos\/BC(\d+)\.jpg$/) || [])[1];
-  const [logo, logoAdv] = await Promise.all([charger('icons/icon-512.png'), charger(idLogo ? '/api/logo?id=' + idLogo : m.opp_logo, true)]);
+  const [logo, logoRond, logoAdv] = await Promise.all([charger('icons/icon-512.png'), charger('icons/notif-192.png'), charger(pubLogoAdv(m) || m.opp_logo, true)]);
   // fond : noir, halo jaune en bas, bandes diagonales discrètes
   g.fillStyle = '#0b0b0a'; g.fillRect(0, 0, W, H);
   const halo = g.createRadialGradient(W / 2, H + 100, 50, W / 2, H + 100, 1100); halo.addColorStop(0, 'rgba(247,224,26,.38)'); halo.addColorStop(1, 'rgba(247,224,26,0)');
@@ -1147,7 +1147,10 @@ async function partagerResume(m, evs){
   T(`${teamLabel(m.equipe)}${m.competition ? ' · ' + m.competition : ''}`.toUpperCase(), W / 2, 395, 46, JAUNE, { poids: 700 });
   T(new Date(m.kickoff).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Paris' }).toUpperCase(), W / 2, 448, 38, '#ffffff', { poids: 700 });
   // écussons + score
+  // comme les publications du club : notre logo rond, le logo adverse détouré (sans fond blanc) ; sans logo, ses initiales dans un rond
   const rond = (img, x, y, r, initiales, nous) => {
+    if (img){ const l = nous ? img : pubDetourer(img), k = nous ? (r * 2) / Math.max(l.width, l.height) : Math.min((r * 2.4) / l.width, (r * 2) / l.height);
+      g.save(); if (!nous){ g.shadowColor = 'rgba(0,0,0,.45)'; g.shadowBlur = 18; } g.drawImage(l, x - l.width * k / 2, y - l.height * k / 2, l.width * k, l.height * k); g.restore(); return; }
     g.save(); g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fillStyle = nous ? '#000' : '#fff'; g.fill(); g.lineWidth = 6; g.strokeStyle = JAUNE; g.stroke(); g.clip();
     if (img){ const k = Math.min((r * (nous ? 2.05 : 1.2)) / img.width, (r * (nous ? 2.05 : 1.2)) / img.height); g.drawImage(img, x - img.width * k / 2, y - img.height * k / 2, img.width * k, img.height * k); }
     else { g.fillStyle = '#1a1a17'; g.font = `800 ${r * .8}px "Barlow Condensed", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(initiales, x, y + 4); }
@@ -1155,9 +1158,11 @@ async function partagerResume(m, evs){
   };
   const ini = s => String(s).replace(/^(FC|AS|US|ES|AC|SC|JS|GJ|CS|ASC)\s+/i, '').split(/[\s-]+/).filter(w => /\p{L}/u.test(w)).slice(0, 2).map(w => w[0].toUpperCase()).join('');
   const yL = 610, xH = 190, xA = W - 190;
-  [['H', xH], ['A', xA]].forEach(([t, x]) => rond(t === cs ? logo : logoAdv, x, yL, 105, ini(teamName(m, t)), t === cs));
+  [['H', xH], ['A', xA]].forEach(([t, x]) => rond(t === cs ? (logoRond || logo) : logoAdv, x, yL, 105, ini(teamName(m, t)), t === cs));
   const sh = goals(evs, 'H'), sa = goals(evs, 'A');
-  T(`${sh}-${sa}`, W / 2, yL + 75, 220, JAUNE, { italique: true, max: 420 });
+  // score en Belleza, la police des scores du club
+  g.save(); g.font = '400 210px Belleza, "Barlow Condensed", sans-serif'; g.fillStyle = JAUNE; g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+  { const t = `${sh} - ${sa}`, w = g.measureText(t).width, k = Math.min(1, 420 / w); g.translate(W / 2, yL + 75); g.scale(k, 1); g.fillText(t, 0, 0); } g.restore();
   [['H', xH], ['A', xA]].forEach(([t, x]) => T(teamName(m, t).toUpperCase(), x, yL + 160, 40, t === cs ? JAUNE : '#ffffff', { poids: 700, max: 330 }));
   const ballon = (cx, cy, r) => {
     const P = (d, a) => [cx + r * d * Math.cos(a), cy + r * d * Math.sin(a)];
@@ -1305,18 +1310,24 @@ function aCompleterHTML(list, byMatch){
     ${sansButeur.length ? '<p><b>Buts sans buteur</b></p>' + sansButeur.map(([m, n]) => lien(m, ` · ${n} but${n > 1 ? 's' : ''}`)).join('') : ''}
     ${sansCompo.length ? '<p><b>Matchs sans compo</b></p>' + sansCompo.map(m => lien(m, '')).join('') : ''}</details>`;
 }
-let hdmSaisonCache = null;
+// élus des votes terminés : relus toutes les 5 minutes au plus (un vote se termine le lendemain du match,
+// l'appli restée ouverte doit voir les nouveaux élus)
+let hdmSaisonCache = null, hdmSaisonAt = 0;
 async function hdmSaisonRemplir(box, filtre){
   if (!box) return;
-  if (!hdmSaisonCache){ const { data } = await sb.rpc('hdm_gagnants'); hdmSaisonCache = data || []; }
-  if (!box.isConnected) return;
+  if (!hdmSaisonCache || Date.now() - hdmSaisonAt > 5 * 60000){ const { data, error } = await sb.rpc('hdm_gagnants'); if (!error){ hdmSaisonCache = data || []; hdmSaisonAt = Date.now(); } }
+  if (!box.isConnected || !hdmSaisonCache) return;
   // ex aequo : 1 titre pour chacun, en signalant ceux obtenus à égalité
   const L = hdmSaisonCache.filter(filtre), parMatch = {};
   L.forEach(x => { parMatch[x.match_id] = (parMatch[x.match_id] || 0) + 1; });
-  const C = {}, E = {};
-  L.forEach(x => { C[x.joueur] = (C[x.joueur] || 0) + 1; if (parMatch[x.match_id] > 1) E[x.joueur] = (E[x.joueur] || 0) + 1; });
-  const top = Object.entries(C).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'fr')).slice(0, 5);
-  box.innerHTML = top.length ? `<section class="hdm"><h3>🏆 ${hdmTitre([...new Set(L.map(x => x.equipe))], 1)}</h3><ol class="hdmtop">${top.map(([nm, k]) => `<li><span>${esc(nm)}${E[nm] ? `<small class="hdmeg">dont ${E[nm]} à égalité</small>` : ''}</span><b>${k}</b></li>`).join('')}</ol></section>` : '';
+  const C = {}, E = {}, D = {};
+  L.forEach(x => { C[x.joueur] = (C[x.joueur] || 0) + 1; if (parMatch[x.match_id] > 1) E[x.joueur] = (E[x.joueur] || 0) + 1;
+    if (!D[x.joueur] || x.kickoff > D[x.joueur]) D[x.joueur] = x.kickoff; });
+  // à nombre de titres égal, le titre le plus récent d'abord (les élus du week-end restent visibles)
+  const tous = Object.entries(C).sort((a, b) => b[1] - a[1] || String(D[b[0]]).localeCompare(String(D[a[0]])) || a[0].localeCompare(b[0], 'fr'));
+  const ligne = ([nm, k]) => `<li><span>${esc(nm)}${E[nm] ? `<small class="hdmeg">dont ${E[nm]} à égalité</small>` : ''}</span><b>${k}</b></li>`;
+  box.innerHTML = tous.length ? `<section class="hdm"><h3>🏆 ${hdmTitre([...new Set(L.map(x => x.equipe))], 1)}</h3><ol class="hdmtop">${tous.slice(0, 5).map(ligne).join('')}</ol>
+    ${tous.length > 5 ? `<details class="hdmplus"><summary>Voir les ${tous.length - 5} autres</summary><ol class="hdmtop" start="6">${tous.slice(5).map(ligne).join('')}</ol></details>` : ''}</section>` : '';
 }
 
 // Historique des modifications d'un match (écrit par la base à chaque changement)
