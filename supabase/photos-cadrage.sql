@@ -2,4 +2,6 @@
 -- dans chaque visuel). Vide pour toutes les photos : par défaut l'appli montre toute la largeur de la photo (fond flou autour).
 alter table public.pub_photos add column if not exists cadrage jsonb;
 update public.pub_photos set cadrage = null where cadrage is not null;
+-- photos d'équipe du site recoupées sans le bandeau « SÉNIORS X /2025-2026 » (1056×610)
+update public.pub_photos set hauteur = 610 where url like '/photos/equipe-%-site.jpg';
 select count(*) filter (where cadrage is not null) as photos_cadrees, count(*) as photos from public.pub_photos;
