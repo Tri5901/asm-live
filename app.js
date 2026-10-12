@@ -1320,12 +1320,16 @@ async function hdmSaisonRemplir(box, filtre){
   // ex aequo : 1 titre pour chacun, en signalant ceux obtenus à égalité
   const L = hdmSaisonCache.filter(filtre), parMatch = {};
   L.forEach(x => { parMatch[x.match_id] = (parMatch[x.match_id] || 0) + 1; });
-  const C = {}, E = {}, D = {};
+  const C = {}, E = {}, D = {}, Q = {};   // Q : équipes pour lesquelles le joueur a été élu (nombre de titres par équipe)
   L.forEach(x => { C[x.joueur] = (C[x.joueur] || 0) + 1; if (parMatch[x.match_id] > 1) E[x.joueur] = (E[x.joueur] || 0) + 1;
+    const q = Q[x.joueur] = Q[x.joueur] || {}; q[x.equipe] = (q[x.equipe] || 0) + 1;
     if (!D[x.joueur] || x.kickoff > D[x.joueur]) D[x.joueur] = x.kickoff; });
   // à nombre de titres égal, le titre le plus récent d'abord (les élus du week-end restent visibles)
   const tous = Object.entries(C).sort((a, b) => b[1] - a[1] || String(D[b[0]]).localeCompare(String(D[a[0]])) || a[0].localeCompare(b[0], 'fr'));
-  const ligne = ([nm, k]) => `<li><span>${esc(nm)}${E[nm] ? `<small class="hdmeg">dont ${E[nm]} à égalité</small>` : ''}</span><b>${k}</b></li>`;
+  // « Senior D » pour une seule équipe, « Senior A ×2 · Senior B » sinon
+  const equipesDe = nm => { const q = Object.entries(Q[nm] || {}).sort((a, b) => teamRank(+a[0]) - teamRank(+b[0]));
+    return q.map(([e, n]) => teamLabel(+e) + (q.length > 1 && n > 1 ? ' ×' + n : '')).join(' · '); };
+  const ligne = ([nm, k]) => `<li><span>${esc(nm)}<small class="hdmeq">${esc(equipesDe(nm))}</small>${E[nm] ? `<small class="hdmeg">dont ${E[nm]} à égalité</small>` : ''}</span><b>${k}</b></li>`;
   box.innerHTML = tous.length ? `<section class="hdm"><h3>🏆 ${hdmTitre([...new Set(L.map(x => x.equipe))], 1)}</h3><ol class="hdmtop">${tous.slice(0, 5).map(ligne).join('')}</ol>
     ${tous.length > 5 ? `<details class="hdmplus"><summary>Voir les ${tous.length - 5} autres</summary><ol class="hdmtop" start="6">${tous.slice(5).map(ligne).join('')}</ol></details>` : ''}</section>` : '';
 }
