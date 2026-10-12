@@ -3482,10 +3482,36 @@ const pubCompet = c => String(c || '').split(' · ').map(p => p.replace(/^Coupe 
 const pubNomEquipe = (m, t) => t === clubSide(m) ? ('AS MÉSANGER' + (teamLetter(m.equipe) !== 'A' ? ' ' + teamLetter(m.equipe) : '')) : teamName(m, t).toUpperCase();
 // « Mael Carette » ×2 → « MAEL.C X2 »
 const pubButeur = (nom, k) => { const w = String(nom).replace(/\./g, '').trim().split(/\s+/); return ((w[0] || '') + (w[1] ? '.' + w[1][0] : '')).toUpperCase() + (k > 1 ? ' X' + k : ''); };
+// détourage d'un logo FFF : le fond blanc relié aux bords devient transparent (les blancs à l'intérieur du logo restent),
+// bords adoucis, marges vides retirées. Résultat gardé par image.
+const pubDetours = new WeakMap();
+function pubDetourer(im){
+  if (!im) return null; if (pubDetours.has(im)) return pubDetours.get(im);
+  const w = im.naturalWidth || im.width, h = im.naturalHeight || im.height, c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d'); g.drawImage(im, 0, 0);
+  let d; try{ d = g.getImageData(0, 0, w, h); }catch(e){ pubDetours.set(im, im); return im; }   // image protégée : laissée telle quelle
+  const p = d.data, blanc = i => { const a = p[i], b = p[i + 1], c2 = p[i + 2]; return Math.min(a, b, c2) > 222 && Math.max(a, b, c2) - Math.min(a, b, c2) < 28; };
+  const vu = new Uint8Array(w * h), pile = [];
+  for (let x = 0; x < w; x++){ pile.push(x, (h - 1) * w + x); } for (let y = 0; y < h; y++){ pile.push(y * w, y * w + w - 1); }
+  while (pile.length){ const k = pile.pop(); if (vu[k] || !blanc(k * 4)) continue; vu[k] = 1;
+    const x = k % w, y = (k / w) | 0; if (x > 0) pile.push(k - 1); if (x < w - 1) pile.push(k + 1); if (y > 0) pile.push(k - w); if (y < h - 1) pile.push(k + w); }
+  for (let k = 0; k < w * h; k++){
+    if (vu[k]){ p[k * 4 + 3] = 0; continue; }
+    // bord du logo touchant le fond retiré : transparence partielle selon sa clarté (anticrénelage)
+    const x = k % w, y = (k / w) | 0, voisin = (x > 0 && vu[k - 1]) || (x < w - 1 && vu[k + 1]) || (y > 0 && vu[k - w]) || (y < h - 1 && vu[k + w]);
+    if (voisin){ const m = Math.min(p[k * 4], p[k * 4 + 1], p[k * 4 + 2]); if (m > 170) p[k * 4 + 3] = Math.round(255 * Math.min(1, (255 - m) / 85)); }
+  }
+  g.putImageData(d, 0, 0);
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (p[(y * w + x) * 4 + 3] > 24){ if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  let res = c;
+  if (x1 >= x0 && y1 >= y0){ res = document.createElement('canvas'); res.width = x1 - x0 + 1; res.height = y1 - y0 + 1; res.getContext('2d').drawImage(c, -x0, -y0); }
+  pubDetours.set(im, res); return res;
+}
 async function pubDessiner(cv, img, ctx){
   const W = PUB_W, H = PUB_H, g = cv.getContext('2d'); cv.width = W; cv.height = H;
   g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
-  try{ await Promise.all([document.fonts.load('126px "Bebas Neue"'), document.fonts.load('168px Lora')]); }catch(e){}
+  try{ await Promise.all([document.fonts.load('126px "Bebas Neue"'), document.fonts.load('168px Belleza')]); }catch(e){}
   const m = img.m, f = img.fond || {}, photo = f.photo === 'aucune' ? null : ctx.photos.find(p => p.id === f.photo) || null;
   const [bg, logo, adv] = await Promise.all([pubCharger(pubUrl(photo), !(photo && photo.url)), pubCharger('icons/notif-192.png'), pubCharger(pubLogoAdv(m) || m.opp_logo, true)]);
   g.fillStyle = '#1b1b18'; g.fillRect(0, 0, W, H);
@@ -3513,16 +3539,21 @@ async function pubDessiner(cv, img, ctx){
   let xx = X0; const parts = [[pubNomEquipe(m, 'H'), cs === 'H'], [' X ', false], [pubNomEquipe(m, 'A'), cs === 'A']];
   g.font = '400 34px "Bebas Neue", "Barlow Condensed", sans-serif'; const tot = parts.reduce((a, [t]) => a + g.measureText(t).width, 0), k = Math.min(1, (W - X0 - 60) / tot);
   g.save(); g.translate(X0, 460); g.scale(k, 1); parts.forEach(([t, nous]) => { g.fillStyle = nous ? PUB_JAUNE : '#ffffff'; g.textAlign = 'left'; g.fillText(t, xx - X0, 0); xx += g.measureText(t).width; }); g.restore();
-  // logos ronds : domicile puis extérieur
-  const rond = (im, cx, club) => { const r = 60, cy = 150; g.save(); g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.closePath();
-    if (club){ g.clip(); if (im) g.drawImage(im, cx - r, cy - r, r * 2, r * 2); g.restore(); return; }
-    g.fillStyle = '#ffffff'; g.fill(); g.clip(); if (im){ const s = Math.min(r * 1.55 / im.width, r * 1.55 / im.height); g.drawImage(im, cx - im.width * s / 2, cy - im.height * s / 2, im.width * s, im.height * s); } g.restore(); };
-  rond(cs === 'H' ? logo : adv, 822, cs === 'H'); rond(cs === 'A' ? logo : adv, 954, cs === 'A');
+  // logos en haut à droite : domicile puis extérieur. Le nôtre est rond (120 px) ; l'adverse est détouré, haut de 120 px
+  // au plus et jusqu'à 200 px de large pour les logos en longueur. Alignés à droite, 16 px d'écart.
+  const H0 = 120, CY = 150, DROITE = 1014, ECART = 16;
+  const taille = (im, club) => { if (club) return { im, w: H0, h: H0, club };
+    const l = pubDetourer(im); if (!l) return null; const k = Math.min(200 / l.width, H0 / l.height); return { im: l, w: l.width * k, h: l.height * k }; };
+  const pose = (t, x) => { if (!t) return;
+    if (t.club){ g.save(); g.beginPath(); g.arc(x + H0 / 2, CY, H0 / 2, 0, Math.PI * 2); g.clip(); if (t.im) g.drawImage(t.im, x, CY - H0 / 2, H0, H0); g.restore(); return; }
+    g.save(); g.shadowColor = 'rgba(0,0,0,.45)'; g.shadowBlur = 14; g.drawImage(t.im, x, CY - t.h / 2, t.w, t.h); g.restore(); };
+  const tH = taille(cs === 'H' ? logo : adv, cs === 'H'), tA = taille(cs === 'A' ? logo : adv, cs === 'A');
+  const xA = DROITE - (tA ? tA.w : H0); pose(tA, xA); pose(tH, xA - ECART - (tH ? tH.w : H0));
   // score à la verticale : domicile en haut, extérieur en bas ; à droite si on reçoit, à gauche sinon (réglable)
   const cote = f.cote || (cs === 'H' ? 'd' : 'g'), sx = cote === 'd' ? 900 : 162;
-  T(String(x.h), sx, 666, 168, cs === 'H' ? PUB_JAUNE : '#ffffff', { police: 'Lora', align: 'center', max: 300 });
+  T(String(x.h), sx, 666, 168, cs === 'H' ? PUB_JAUNE : '#ffffff', { police: 'Belleza', align: 'center', max: 300 });
   g.fillStyle = '#ffffff'; g.fillRect(sx - 43, 754, 86, 5);
-  T(String(x.a), sx, 989, 168, cs === 'A' ? PUB_JAUNE : '#ffffff', { police: 'Lora', align: 'center', max: 300 });
+  T(String(x.a), sx, 989, 168, cs === 'A' ? PUB_JAUNE : '#ffffff', { police: 'Belleza', align: 'center', max: 300 });
   if (x.tabTxt) T('TIRS AU BUT ' + x.tabTxt.replace(/[^\d-]/g, ''), sx, 1052, 40, '#ffffff', { align: 'center', max: 360 });
   // buteurs
   const evs = ctx.evsDe(m.id).filter(e => e.k === 'goal' && e.t === cs).sort((a, b) => (+a.sort || 0) - (+b.sort || 0));
