@@ -354,8 +354,10 @@ function renderAcct(){
     a.innerHTML = `<span class="avatar">${esc((nom || '?').charAt(0).toUpperCase())}</span>`;
     a.setAttribute('aria-label', 'Mon compte' + (nom ? ' (' + nom + ')' : ''));
     a.href = '#/compte'; a.classList.add('in');
+    if ($('tabAdmin')) $('tabAdmin').hidden = !isAdmin();
   } else {
     a.textContent = 'Connexion'; a.removeAttribute('aria-label'); a.href = '#/connexion'; a.classList.remove('in');
+    if ($('tabAdmin')) $('tabAdmin').hidden = true;
   }
 }
 
@@ -426,7 +428,8 @@ async function route(){
   const parts = (location.hash.replace(/^#\/?/, '') || '').split('/');
   const [page, arg] = parts;
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on',
-    a.dataset.tab === (page === '' || page === 'match' ? 'matchs' : page)));
+    a.dataset.tab === (page === '' || page === 'match' ? 'matchs' : page === 'officiels' && isAdmin() ? 'admin' : page)));
+  $('tabAdmin').hidden = !isAdmin();
   $('tabs').hidden = page==='gerer' || page==='match';
   $('fab').hidden = !(canCreate() && page==='');
   presTrack();
@@ -444,7 +447,7 @@ async function route(){
     if (page==='connexion') return loginView();
     if (page==='compte') return accountView();
     if (page==='cgu') return cguView();
-    if (page==='admin') return await (arg === 'stats' ? siteStatsView() : adminView());
+    if (page==='admin') return await (arg === 'stats' ? siteStatsView() : arg === 'publications' ? publicationsView() : adminView());
     if (page==='officiels') return await officielsView();
     location.hash = '#/';
   }catch(e){
@@ -3425,7 +3428,216 @@ function noterVisite(page){
   sb.rpc('noter_visite', { p_visiteur: id, p_page: (page || 'accueil').replace(/[^a-z]/g, '') || 'accueil', p_ouverture: ouverture })
     .then(({ error }) => { if (admin && !error) lsSet('asm-vid-exclu', true); }, () => {});
 }
-const adminTabs = cur => `<div class="seg admtabs" role="tablist"><a href="#/admin" class="${cur === 'acces' ? 'on' : ''}" role="tab" aria-selected="${cur === 'acces'}">Accès</a><a href="#/admin/stats" class="${cur === 'stats' ? 'on' : ''}" role="tab" aria-selected="${cur === 'stats'}">Statistiques</a></div>`;
+// onglets de l'espace admin (onglet « Admin » du menu, visible des seuls admins)
+const ADMIN_ONGLETS = [['acces', '#/admin', '👥 Accès'], ['arbitres', '#/officiels', '🟨 Arbitres'], ['pubs', '#/admin/publications', '📣 Publications'], ['stats', '#/admin/stats', '📊 Statistiques']];
+const adminTabs = cur => `<div class="seg admtabs" role="tablist">${ADMIN_ONGLETS.map(([k, h, l]) => `<a href="${h}" class="${cur === k ? 'on' : ''}" role="tab" aria-selected="${cur === k}">${l}</a>`).join('')}</div>`;
+
+// ---------- Admin › Publications : post des résultats du week-end (photothèque par équipe, visuels, recadrage) ----------
+// Facebook et Instagram ne sont pas encore reliés : le brouillon se prépare tout seul, l'admin télécharge ou partage
+// les images et copie le texte. Données : pub_photos (photothèque), publications (un brouillon par week-end), pub_reglages.
+const PUB_W = 1080, PUB_H = 1350, PUB_JAUNE = '#F7E01A';
+let pubWe = null, pubSel = 0, pubEqPh = 0, pubSave = null;
+const pubJour = iso => new Date(iso).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+const pubAjJ = (s, n) => { const d = new Date(s + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+// samedi du week-end (semaine du lundi au dimanche) d'un match
+const pubSamedi = iso => { const s = pubJour(iso), j = new Date(s + 'T12:00:00Z').getUTCDay(); return pubAjJ(s, j === 0 ? -1 : 6 - j); };
+const pubWeLib = (sam, long) => { const d = new Date(sam + 'T12:00:00Z'), d2 = new Date(pubAjJ(sam, 1) + 'T12:00:00Z'), o = { timeZone: 'UTC' };
+  const m1 = d.toLocaleDateString('fr-FR', { ...o, month: long ? 'long' : 'short' }), m2 = d2.toLocaleDateString('fr-FR', { ...o, month: long ? 'long' : 'short' });
+  return d.getUTCDate() + (m1 === m2 ? '' : ' ' + m1) + '-' + d2.getUTCDate() + ' ' + m2 + (long ? ' ' + d2.getUTCFullYear() : ''); };
+const pubImgs = new Map();
+const pubCharger = (src, cors) => { if (!src) return Promise.resolve(null); if (pubImgs.has(src)) return pubImgs.get(src);
+  const p = new Promise(r => { const i = new Image(); if (cors) i.crossOrigin = 'anonymous'; i.onload = () => r(i); i.onerror = () => r(null); i.src = src; }); pubImgs.set(src, p); return p; };
+const pubUrl = ph => ph ? ph.url || sb.storage.from('photos').getPublicUrl(ph.chemin).data.publicUrl : null;
+const pubLogoAdv = m => { const id = ((m.opp_logo || '').match(/phlogos\/BC(\d+)\.jpg$/) || [])[1]; return id ? '/api/logo?id=' + id : null; };
+// score vu du club, buteurs du club (« Mael Carette ×2 »), mot du résultat
+function pubMatch(m, evs){
+  const cs = clubSide(m), c = goals(evs, cs), o = goals(evs, oppSide(m)), r = resultOf(m, evs);
+  const cnt = new Map(); let csc = 0;
+  evs.filter(e => e.k === 'goal' && e.t === cs).sort((a, b) => (+a.sort || 0) - (+b.sort || 0)).forEach(e => {
+    if (e.n === 'CSC'){ csc++; return; } const nm = nameOf(m, cs, e.n); if (nm) cnt.set(nm, (cnt.get(nm) || 0) + 1); });
+  const buteurs = [...cnt].map(([n, k]) => n + (k > 1 ? ' ×' + k : '')).concat(csc ? [csc > 1 ? csc + ' CSC' : 'CSC'] : []);
+  const tab = m.tab ? tabBilan(m.tab) : null, tabTxt = tab && tab.gagnant ? ` (t.a.b. ${tab.b[cs]}-${tab.b[oppSide(m)]})` : '';
+  const mot = r === 'V' ? (c - o >= 5 ? 'Carton plein' : 'Victoire') : r === 'D' ? 'Défaite' : 'Match nul';
+  return { c, o, r, buteurs, tabTxt, mot, h: goals(evs, 'H'), a: goals(evs, 'A') };
+}
+// texte du post
+function pubTexte(sam, ms, evsDe){
+  const lignes = ms.map(m => { const x = pubMatch(m, evsDe(m.id)), adv = teamName(m, oppSide(m));
+    return `${x.r === 'V' ? '🟢' : x.r === 'D' ? '🔴' : '⚪'} ${teamLabel(m.equipe)} ${x.c}-${x.o}${x.tabTxt} ${adv}${m.competition ? ' (' + m.competition.split(' · ')[0] + ')' : ''}`
+      + (x.buteurs.length ? `\n      ⚽ ${x.buteurs.join(', ')}` : ''); });
+  return `⚽ RÉSULTATS DU WEEK-END (${pubWeLib(sam, true)})\n\n${lignes.join('\n')}\n\n📲 Tous les matchs en direct : asm-live.vercel.app\n#ASMésanger #FootAmateur 💛🖤`;
+}
+// dessin d'un visuel 1080×1350 : photo de fond recadrée (fx, fy en %, z = zoom), voile sombre, logo, contenu
+async function pubDessiner(cv, img, ctx){
+  const W = PUB_W, H = PUB_H, g = cv.getContext('2d'); cv.width = W; cv.height = H;
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+  try{ await Promise.all([document.fonts.load('italic 800 80px "Barlow Condensed"'), document.fonts.load('800 80px "Barlow Condensed"'), document.fonts.load('600 40px Barlow')]); }catch(e){}
+  const f = img.fond || {}, photo = f.photo === 'aucune' ? null : ctx.photos.find(p => p.id === f.photo) || null;
+  const [bg, logo, adv] = await Promise.all([pubCharger(pubUrl(photo), !(photo && photo.url)), pubCharger('icons/notif-192.png'), img.m ? pubCharger(pubLogoAdv(img.m) || img.m.opp_logo, true) : null]);
+  g.fillStyle = '#0b0b0a'; g.fillRect(0, 0, W, H);
+  if (bg){ const z = f.z || 1, sc = Math.max(W / bg.width, H / bg.height) * z, dw = bg.width * sc, dh = bg.height * sc;
+    g.drawImage(bg, (W - dw) * (f.fx ?? 50) / 100, (H - dh) * (f.fy ?? 50) / 100, dw, dh); }
+  const v = g.createLinearGradient(0, 0, 0, H);
+  [[0, .45], [.28, .35], [.58, .82], [1, .96]].forEach(([p, a]) => v.addColorStop(p, `rgba(10,10,8,${bg ? a : Math.max(a, .6)})`));
+  g.fillStyle = v; g.fillRect(0, 0, W, H);
+  if (!bg){ const halo = g.createRadialGradient(W / 2, H + 100, 50, W / 2, H + 100, 1100); halo.addColorStop(0, 'rgba(247,224,26,.35)'); halo.addColorStop(1, 'rgba(247,224,26,0)'); g.fillStyle = halo; g.fillRect(0, 0, W, H); }
+  const T = (txt, x, y, taille, coul, { poids = 800, it = false, align = 'center', max = W - 120, cond = true, esp = 0 } = {}) => {
+    g.font = `${it ? 'italic ' : ''}${poids} ${taille}px ${cond ? '"Barlow Condensed"' : 'Barlow'}, sans-serif`; g.fillStyle = coul; g.textAlign = align; g.textBaseline = 'alphabetic';
+    try{ g.letterSpacing = esp + 'px'; }catch(e){}
+    const w = g.measureText(txt).width; if (w > max){ g.save(); g.translate(x, y); g.scale(max / w, 1); g.fillText(txt, 0, 0); g.restore(); } else g.fillText(txt, x, y);
+    try{ g.letterSpacing = '0px'; }catch(e){} };
+  const rond = (x, y, w, h, r) => { g.beginPath(); g.roundRect ? g.roundRect(x, y, w, h, r) : g.rect(x, y, w, h); };
+  if (logo) g.drawImage(logo, W / 2 - 64, 48, 128, 128);
+  T('AS MÉSANGER', W / 2, 214, 30, '#ffffff', { poids: 600, cond: false, esp: 9 });
+  T('@ASMESANGER · ASM-LIVE.VERCEL.APP', W / 2, H - 42, 26, '#cfcbbb', { poids: 600, cond: false, esp: 3 });
+  if (!img.m){
+    // récapitulatif du week-end
+    T('RÉSULTATS', W / 2, 420, 176, '#ffffff', { it: true });
+    T('DU WEEK-END', W / 2, 560, 140, PUB_JAUNE, { it: true });
+    T(pubWeLib(ctx.sam, true).toUpperCase(), W / 2, 640, 34, PUB_JAUNE, { poids: 600, cond: false, esp: 8 });
+    const L = ctx.ms, n = L.length, top = 690, dispo = H - 110 - top, gap = n > 6 ? 10 : 16, h = Math.min(108, (dispo - gap * (n - 1)) / n);
+    L.forEach((m, i) => { const x = pubMatch(m, ctx.evsDe(m.id)), y = top + i * (h + gap);
+      g.fillStyle = 'rgba(20,20,17,.80)'; rond(70, y, W - 140, h, 22); g.fill();
+      g.fillStyle = PUB_JAUNE; rond(92, y + (h - 62) / 2, 62, 62, 14); g.fill();
+      T(teamLetter(m.equipe), 123, y + h / 2 + 15, 44, '#111');
+      T(teamName(m, oppSide(m)).toUpperCase(), 178, y + h / 2 + (h > 80 ? 2 : 10), h > 80 ? 38 : 32, '#ffffff', { align: 'left', max: 600, poids: 700 });
+      if (h > 80) T(`${teamLabel(m.equipe)} · ${(m.competition || '').split(' · ')[0]}`, 178, y + h / 2 + 34, 22, '#bdb9aa', { align: 'left', max: 600, poids: 600, cond: false });
+      g.fillStyle = x.r === 'V' ? '#2e9e4f' : x.r === 'D' ? '#d0262a' : '#6b6a63'; rond(W - 92 - 130, y + (h - 70) / 2, 130, 70, 14); g.fill();
+      T(`${x.c}-${x.o}`, W - 92 - 65, y + h / 2 + 19, 56, '#ffffff', { max: 120 }); });
+  } else {
+    const m = img.m, x = pubMatch(m, ctx.evsDe(m.id)), cs = clubSide(m);
+    T(`${teamLabel(m.equipe)} · ${m.competition || ''}`.toUpperCase(), W / 2, 300, 30, PUB_JAUNE, { poids: 600, cond: false, esp: 5, max: W - 140 });
+    T(x.mot.toUpperCase(), W / 2, 470, 190, '#ffffff', { it: true });
+    const lg = (im, cx, club) => { if (!im) return; if (club){ g.drawImage(im, cx - 95, 560, 190, 190); return; }
+      g.fillStyle = '#ffffff'; rond(cx - 92, 563, 184, 184, 32); g.fill(); const s = Math.min(150 / im.width, 150 / im.height);
+      g.drawImage(im, cx - im.width * s / 2, 655 - im.height * s / 2, im.width * s, im.height * s); };
+    lg(cs === 'H' ? logo : adv, 240, cs === 'H'); lg(cs === 'A' ? logo : adv, W - 240, cs === 'A');
+    T(`${x.h} – ${x.a}`, W / 2, 735, 210, '#ffffff');
+    if (x.tabTxt) T(x.tabTxt.trim().replace(/[()]/g, ''), W / 2, 800, 34, PUB_JAUNE, { poids: 700 });
+    T(teamName(m, 'H').toUpperCase(), 240, 840, 40, '#ffffff', { max: 400 }); T(teamName(m, 'A').toUpperCase(), W - 240, 840, 40, '#ffffff', { max: 400 });
+    if (x.buteurs.length){
+      g.font = '700 40px Barlow, sans-serif'; const mots = ('⚽ ' + x.buteurs.join(' · ')).split(' '), lignes = []; let l = '';
+      mots.forEach(w => { const t = l ? l + ' ' + w : w; if (g.measureText(t).width > W - 180 && l){ lignes.push(l); l = w; } else l = t; }); if (l) lignes.push(l);
+      lignes.slice(0, 5).forEach((t, i) => T(t, W / 2, 960 + i * 58, 40, '#ffffff', { poids: 700, cond: false }));
+    }
+  }
+}
+async function pubPhotoAjouter(files, equipe){
+  let n = 0;
+  for (const f of files){
+    try{
+      const bmp = await createImageBitmap(f), s = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+      const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * s); cv.height = Math.round(bmp.height * s);
+      cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+      const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', .86));
+      const chemin = `equipe-${equipe || 'club'}/${uuid()}.jpg`;
+      const up = await sb.storage.from('photos').upload(chemin, blob, { contentType: 'image/jpeg', upsert: false });
+      if (up.error) throw up.error;
+      const { error } = await sb.from('pub_photos').insert({ equipe: equipe || null, chemin, largeur: cv.width, hauteur: cv.height });
+      if (error) throw error; n++;
+    }catch(e){ console.error(e); toast(isNetErr(e) ? 'Pas de réseau' : 'Une photo n’a pas pu être ajoutée'); }
+  }
+  return n;
+}
+async function publicationsView(){
+  if (!isAdmin()){ location.hash = '#/compte'; return; }
+  const tok = route.cur;
+  if (!view.querySelector('.pubw')) view.innerHTML = `<div class="acc">${adminTabs('pubs')}<div class="loading">Chargement…</div></div>`;
+  const depuis = new Date(Date.now() - 120 * 864e5).toISOString();
+  const [rm, rp, rr] = await Promise.all([
+    sb.from('matches').select('id,kickoff,competition,equipe,club_side,home_name,away_name,opp_logo,rosters,status,tab').eq('status', 'termine').gte('kickoff', depuis).order('kickoff'),
+    sb.from('pub_photos').select('*').order('ajoute_le'),
+    sb.from('pub_reglages').select('*').maybeSingle()]);
+  if (route.cur !== tok) return;
+  if (rm.error || rp.error){ view.innerHTML = `<div class="acc">${adminTabs('pubs')}<div class="empty">${isNetErr(rm.error || rp.error) ? 'Pas de réseau.' : 'Les publications ne sont pas encore installées dans la base (supabase/publications.sql).'}</div></div>`; return; }
+  const tous = (rm.data || []).filter(m => EQUIPES.some(e => e.id === m.equipe)), photos = rp.data || [], regl = rr.data || { auto: false, reseaux: ['instagram', 'facebook'] };
+  const wes = [...new Set(tous.map(m => pubSamedi(m.kickoff)))].sort().reverse().slice(0, 8);
+  if (!wes.length){ view.innerHTML = `<div class="acc">${adminTabs('pubs')}<div class="empty">Pas encore de match terminé à publier.</div></div>`; return; }
+  if (!wes.includes(pubWe)) pubWe = wes[0];
+  const ms = tous.filter(m => pubSamedi(m.kickoff) === pubWe).sort((a, b) => teamRank(a.equipe) - teamRank(b.equipe) || a.kickoff.localeCompare(b.kickoff));
+  const [re, rpub] = await Promise.all([
+    sb.from('events').select('match_id,t,k,n,sort,min').eq('k', 'goal').in('match_id', ms.map(m => m.id)),
+    sb.from('publications').select('*').eq('id', pubWe).maybeSingle()]);
+  if (route.cur !== tok) return;
+  const evs = re.data || [], evsDe = id => evs.filter(e => e.match_id === id);
+  const pub = rpub.data || { id: pubWe, data: {}, statut: 'brouillon' }, D = pub.data = { fonds: {}, exclus: [], ...(pub.data || {}) };
+  // images du carrousel : le récap puis un visuel par match gardé
+  const images = [{ cle: 'recap', m: null }].concat(ms.filter(m => !D.exclus.includes(m.id)).map(m => ({ cle: m.id, m })));
+  if (pubSel >= images.length) pubSel = 0;
+  // photo de fond par défaut : celles de l'équipe à tour de rôle, sinon celles du club, sinon n'importe laquelle
+  const photosDe = eq => photos.filter(p => p.equipe === eq), club = photos.filter(p => p.equipe == null);
+  const fondDe = (img, i) => { const f = D.fonds[img.cle]; if (f) return f;
+    const l = img.m ? (photosDe(img.m.equipe).length ? photosDe(img.m.equipe) : club.length ? club : photos) : (club.length ? club : photos);
+    const k = Math.abs([...pubWe].reduce((a, c) => a + c.charCodeAt(0), 0) + i) % (l.length || 1);
+    return { photo: l.length ? l[k].id : 'aucune', fx: 50, fy: 50, z: 1 }; };
+  images.forEach((img, i) => img.fond = fondDe(img, i));
+  const texteAuto = pubTexte(pubWe, ms, evsDe), texte = D.texte != null ? D.texte : texteAuto;
+  const ctx = { sam: pubWe, ms, evsDe, photos };
+  const peutPartager = !!(navigator.canShare && window.File);
+  const eqPh = pubEqPh, lPh = eqPh ? photosDe(eqPh) : club;
+  const img = images[pubSel], f = img.fond, propos = img.m ? photosDe(img.m.equipe).concat(club, photos.filter(p => p.equipe !== img.m.equipe && p.equipe != null)) : club.concat(photos.filter(p => p.equipe != null));
+  view.innerHTML = `<div class="acc pubw">${adminTabs('pubs')}
+    <section class="card pubauto"><label class="pubtog"><input type="checkbox" id="pAuto"${regl.auto ? ' checked' : ''}><span><b>Publication automatique</b><small>Le post des résultats se prépare tout seul chaque week-end. Il partira seul le dimanche à ${regl.heure ?? 20} h dès que Facebook et Instagram seront reliés.</small></span></label>
+      <div class="pubnets">${[['instagram', 'Instagram'], ['facebook', 'Facebook']].map(([k, l]) => `<label class="pubnet"><input type="checkbox" data-net="${k}"${(regl.reseaux || []).includes(k) ? ' checked' : ''}> ${l}</label>`).join('')}<span class="pubwait">Accès à relier</span></div></section>
+    <div class="chipbar pubwes">${wes.map(w => `<button type="button" data-we="${w}" class="${w === pubWe ? 'on' : ''}">${pubWeLib(w)}</button>`).join('')}</div>
+    <p class="pubstat">${pub.statut === 'publiee' ? `✅ Marquée publiée${pub.publie_le ? ' le ' + esc(fmtDate(pub.publie_le)) : ''}` : '📝 Brouillon, enregistré automatiquement'} · ${ms.length} match${ms.length > 1 ? 's' : ''} · ${images.length} image${images.length > 1 ? 's' : ''}</p>
+    <div class="pubprev"><canvas id="pCv"></canvas></div>
+    <div class="pubthumbs">${images.map((x, i) => `<button type="button" class="pubth${i === pubSel ? ' on' : ''}" data-im="${i}"><canvas></canvas><span>${x.m ? esc(teamLetter(x.m.equipe)) : 'Récap'}</span></button>`).join('')}</div>
+    <section class="card pubcrop"><h3>Image ${pubSel + 1} · ${img.m ? esc(teamLabel(img.m.equipe)) + ' – ' + esc(teamName(img.m, oppSide(img.m))) : 'Récapitulatif'}</h3>
+      <div class="pubphotos"><button type="button" class="pubph aucune${f.photo === 'aucune' ? ' on' : ''}" data-ph="aucune">Sans photo</button>${propos.map(p => `<button type="button" class="pubph${f.photo === p.id ? ' on' : ''}" data-ph="${p.id}" style="background-image:url('${esc(pubUrl(p))}')"></button>`).join('')}</div>
+      ${f.photo !== 'aucune' ? [['z', '🔍 Zoom', 100, 300, Math.round((f.z || 1) * 100)], ['fx', '↔ Gauche · droite', 0, 100, f.fx ?? 50], ['fy', '↕ Haut · bas', 0, 100, f.fy ?? 50]].map(([k, l, a, b, v]) => `<label class="pubsl"><span>${l}</span><input type="range" min="${a}" max="${b}" value="${v}" data-sl="${k}"></label>`).join('') : ''}
+      ${img.m ? `<button type="button" class="link" id="pExclure">Retirer ce match du carrousel</button>` : D.exclus.length ? `<button type="button" class="link" id="pRemettre">Remettre les ${D.exclus.length} match${D.exclus.length > 1 ? 's' : ''} retiré${D.exclus.length > 1 ? 's' : ''}</button>` : ''}</section>
+    <section class="card"><h3>Texte du post</h3><textarea id="pTxt" rows="12">${esc(texte)}</textarea>
+      <div class="foot"><button type="button" class="fbtn" id="pCopier">📋 Copier le texte</button>${D.texte != null ? '<button type="button" class="fbtn" id="pTxtAuto">↺ Texte automatique</button>' : ''}</div></section>
+    <div class="foot pubact">${peutPartager ? '<button type="button" class="fbtn primary" id="pPartager">📲 Partager les images</button>' : ''}<button type="button" class="fbtn${peutPartager ? '' : ' primary'}" id="pTelech">⬇ Télécharger les images</button></div>
+    <div class="foot pubact"><button type="button" class="fbtn" disabled title="Accès Facebook / Instagram à relier">Publier sur Instagram et Facebook</button><button type="button" class="fbtn" id="pStatut">${pub.statut === 'publiee' ? '↩ Repasser en brouillon' : '✅ Marquer publiée'}</button></div>
+    <section class="card pubgal"><h3>🖼️ Photothèque</h3><p class="note">Les photos d’une équipe servent de fond à ses visuels, à tour de rôle. Les photos « Club » vont avec le récapitulatif et les équipes sans photo.</p>
+      <div class="chipbar">${[[0, 'Club']].concat(EQUIPES.map(e => [e.id, e.nom])).map(([id, l]) => `<button type="button" data-geq="${id}" class="${eqPh === id ? 'on' : ''}">${esc(l)} <small>${(id ? photosDe(id) : club).length}</small></button>`).join('')}</div>
+      <div class="pubgrid">${lPh.map(p => `<div class="pubgi" style="background-image:url('${esc(pubUrl(p))}')"><button type="button" data-delph="${p.id}" aria-label="Retirer cette photo">×</button></div>`).join('')}
+        <label class="pubgi add"><input type="file" accept="image/*" multiple id="pAjout" hidden>＋ Ajouter</label></div></section></div>`;
+  // dessins : grand aperçu + vignettes
+  const cvs = images.map(() => document.createElement('canvas'));
+  const vignette = i => { const t = view.querySelectorAll('.pubth canvas')[i]; if (!t) return; t.width = 108; t.height = 135; t.getContext('2d').drawImage(cvs[i], 0, 0, 108, 135); };
+  const grand = () => { const c = $('pCv'); if (!c) return; c.width = PUB_W; c.height = PUB_H; c.getContext('2d').drawImage(cvs[pubSel], 0, 0); };
+  await pubDessiner(cvs[pubSel], images[pubSel], ctx); if (route.cur !== tok) return; grand(); vignette(pubSel);
+  images.forEach((x, i) => { if (i !== pubSel) pubDessiner(cvs[i], x, ctx).then(() => vignette(i)); });
+  // enregistrement du brouillon (après chaque réglage)
+  const enregistrer = () => { clearTimeout(pubSave); pubSave = setTimeout(async () => {
+    const { error } = await sb.from('publications').upsert({ id: pubWe, data: D, statut: pub.statut, maj_le: new Date().toISOString() });
+    if (error) toast(isNetErr(error) ? 'Pas de réseau : brouillon non enregistré' : 'Brouillon non enregistré'); }, 700); };
+  let enCours = false, encore = false;
+  const redessiner = async () => { if (enCours){ encore = true; return; } enCours = true; await pubDessiner(cvs[pubSel], img, ctx); grand(); vignette(pubSel); enCours = false; if (encore){ encore = false; redessiner(); } };
+  view.querySelectorAll('[data-sl]').forEach(s => s.oninput = () => { const k = s.dataset.sl; f[k] = k === 'z' ? +s.value / 100 : +s.value; D.fonds[img.cle] = f; redessiner(); enregistrer(); });
+  view.querySelectorAll('[data-ph]').forEach(b => b.onclick = () => { D.fonds[img.cle] = { ...f, photo: b.dataset.ph, ...(b.dataset.ph !== f.photo ? { fx: 50, fy: 50, z: 1 } : {}) }; enregistrer(); publicationsView(); });
+  view.querySelectorAll('[data-im]').forEach(b => b.onclick = () => { pubSel = +b.dataset.im; publicationsView(); });
+  view.querySelectorAll('[data-we]').forEach(b => b.onclick = () => { pubWe = b.dataset.we; pubSel = 0; publicationsView(); });
+  view.querySelectorAll('[data-geq]').forEach(b => b.onclick = () => { pubEqPh = +b.dataset.geq; publicationsView(); });
+  if ($('pExclure')) $('pExclure').onclick = () => { D.exclus = [...new Set(D.exclus.concat(img.m.id))]; pubSel = 0; enregistrer(); publicationsView(); };
+  if ($('pRemettre')) $('pRemettre').onclick = () => { D.exclus = []; enregistrer(); publicationsView(); };
+  $('pTxt').oninput = e => { D.texte = e.target.value; enregistrer(); };
+  if ($('pTxtAuto')) $('pTxtAuto').onclick = () => { delete D.texte; enregistrer(); publicationsView(); };
+  $('pCopier').onclick = async () => { try{ await navigator.clipboard.writeText($('pTxt').value); toast('Texte copié'); }catch(e){ $('pTxt').select(); toast('Sélectionné : copie-le'); } };
+  const fichiers = async () => { for (let i = 0; i < images.length; i++) await pubDessiner(cvs[i], images[i], ctx);
+    return Promise.all(cvs.map((c, i) => new Promise(r => c.toBlob(b => r(b && new File([b], `asm-resultats-${pubWe}-${i + 1}.png`, { type: 'image/png' })), 'image/png')))); };
+  $('pTelech').onclick = async () => { try{ const fs = await fichiers(); fs.forEach((fi, i) => setTimeout(() => { const a = document.createElement('a'); a.href = URL.createObjectURL(fi); a.download = fi.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }, i * 400)); }
+    catch(e){ toast('Images impossibles à enregistrer'); } };
+  if ($('pPartager')) $('pPartager').onclick = async () => { try{ const fs = (await fichiers()).filter(Boolean);
+      try{ await navigator.clipboard.writeText($('pTxt').value); }catch(e){}
+      if (!navigator.canShare({ files: fs })) return toast('Partage d’images non disponible ici');
+      await navigator.share({ files: fs, text: $('pTxt').value }); }catch(e){ if (e && e.name !== 'AbortError') toast('Partage impossible'); } };
+  $('pStatut').onclick = async () => { pub.statut = pub.statut === 'publiee' ? 'brouillon' : 'publiee';
+    const { error } = await sb.from('publications').upsert({ id: pubWe, data: D, statut: pub.statut, publie_le: pub.statut === 'publiee' ? new Date().toISOString() : null, maj_le: new Date().toISOString() });
+    if (error) return toast('Modification refusée'); publicationsView(); };
+  $('pAuto').onchange = async e => { const { error } = await sb.from('pub_reglages').update({ auto: e.target.checked, maj_le: new Date().toISOString() }).eq('id', 1); toast(error ? 'Réglage non enregistré' : e.target.checked ? 'Publication automatique activée' : 'Publication automatique désactivée'); };
+  view.querySelectorAll('[data-net]').forEach(c => c.onchange = async () => { const r = [...view.querySelectorAll('[data-net]:checked')].map(x => x.dataset.net);
+    const { error } = await sb.from('pub_reglages').update({ reseaux: r, maj_le: new Date().toISOString() }).eq('id', 1); if (error) toast('Réglage non enregistré'); });
+  $('pAjout').onchange = async e => { const l = [...e.target.files]; if (!l.length) return; toast('Ajout de ' + l.length + ' photo' + (l.length > 1 ? 's' : '') + '…');
+    const n = await pubPhotoAjouter(l, eqPh); if (n) toast(n + ' photo' + (n > 1 ? 's' : '') + ' ajoutée' + (n > 1 ? 's' : '')); publicationsView(); };
+  view.querySelectorAll('[data-delph]').forEach(b => b.onclick = () => askConfirm('Retirer cette photo ?', 'Elle ne servira plus de fond aux visuels.', 'Retirer', async () => {
+    const p = photos.find(x => x.id === b.dataset.delph); if (!p) return;
+    const { error } = await sb.from('pub_photos').delete().eq('id', p.id); if (error) return toast('Suppression refusée');
+    sb.storage.from('photos').remove([p.chemin]).catch(() => {}); toast('Photo retirée'); publicationsView(); }));
+}
 
 // ---------- Page admin « Statistiques » : visites, comptes connectés, inscriptions, pages vues ----------
 let statsJours = 30;
@@ -3666,8 +3878,8 @@ async function officielsView(){
     }));
   }
 
-  view.innerHTML = `<div class="offwrap">
-    <div class="acctop"><h1>Officiels</h1><a class="link" href="#/compte">← Mon compte</a></div>
+  view.innerHTML = `<div class="offwrap">${isAdmin() ? adminTabs('arbitres') : ''}
+    <div class="acctop"><h1>Officiels</h1>${isAdmin() ? '' : '<a class="link" href="#/compte">← Mon compte</a>'}</div>
     ${D.staff ? `<div class="seg admtabs offtabs">${[['coord', 'Coordination'], ['groupe', 'Groupe arbitres']].concat(benevole ? [['moi', 'Mes dispos']] : []).map(([k, l]) => `<a href="javascript:void 0" data-mode="${k}" class="${offMode === k ? 'on' : ''}">${l}</a>`).join('')}</div>` : ''}
     ${offMode === 'groupe' ? '<div id="offGrp"><div class="loading">Chargement…</div></div>' : `<select id="offWk" class="offsel">${wks.map(w => `<option value="${w}"${w === offWk ? ' selected' : ''}>Week-end du ${new Date(w + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}</option>`).join('')}</select>
     ${offMode === 'coord' ? coord() : moi()}`}</div>`;
