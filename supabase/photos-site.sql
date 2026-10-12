@@ -1,0 +1,25 @@
+alter table public.pub_photos add column if not exists url text;  -- photo publiée avec le site (/photos/…) au lieu du stockage
+insert into public.pub_photos (equipe, chemin, url, largeur, hauteur) values
+  (null, 'site/club-fb-1618270470304219.jpg', '/photos/club-fb-1618270470304219.jpg', 1000, 666),
+  (null, 'site/club-fb-1618270476970885.jpg', '/photos/club-fb-1618270476970885.jpg', 1000, 666),
+  (null, 'site/club-fb-1618270500304216.jpg', '/photos/club-fb-1618270500304216.jpg', 1600, 1060),
+  (null, 'site/club-fb-1618270736970859.jpg', '/photos/club-fb-1618270736970859.jpg', 1600, 1066),
+  (null, 'site/club-fb-1618270816970851.jpg', '/photos/club-fb-1618270816970851.jpg', 1000, 666),
+  (null, 'site/club-fb-1618271246970808.jpg', '/photos/club-fb-1618271246970808.jpg', 1600, 1060),
+  (null, 'site/club-fb-1618271346970798.jpg', '/photos/club-fb-1618271346970798.jpg', 1600, 1060),
+  (null, 'site/club-fb-1618271600304106.jpg', '/photos/club-fb-1618271600304106.jpg', 1600, 1060),
+  (null, 'site/club-fb-1618272046970728.jpg', '/photos/club-fb-1618272046970728.jpg', 1066, 1600),
+  (null, 'site/club-fb-1618272103637389.jpg', '/photos/club-fb-1618272103637389.jpg', 1066, 1600),
+  (null, 'site/club-fb-1618272130304053.jpg', '/photos/club-fb-1618272130304053.jpg', 1600, 1066),
+  (null, 'site/club-fb-1618272183637381.jpg', '/photos/club-fb-1618272183637381.jpg', 1600, 1066),
+  (null, 'site/club-fb-1618272440304022.jpg', '/photos/club-fb-1618272440304022.jpg', 1600, 1066),
+  (null, 'site/club-fb-1618272493637350.jpg', '/photos/club-fb-1618272493637350.jpg', 1066, 1600),
+  (null, 'site/club-fb-1618284693636130.jpg', '/photos/club-fb-1618284693636130.jpg', 1600, 1200),
+  (null, 'site/club-fb-1618284890302777.jpg', '/photos/club-fb-1618284890302777.jpg', 1290, 968),
+  (null, 'site/club-site-match-nuit.jpg', '/photos/club-site-match-nuit.jpg', 1200, 630),
+  (1, 'site/equipe-1-site.jpg', '/photos/equipe-1-site.jpg', 1056, 698),
+  (2, 'site/equipe-2-site.jpg', '/photos/equipe-2-site.jpg', 1056, 698),
+  (3, 'site/equipe-3-site.jpg', '/photos/equipe-3-site.jpg', 1056, 698),
+  (4, 'site/equipe-4-site.jpg', '/photos/equipe-4-site.jpg', 1056, 698),
+  (6, 'site/equipe-6-site.jpg', '/photos/equipe-6-site.jpg', 1056, 698);
+select coalesce(equipe::text, 'club') as rubrique, count(*) from public.pub_photos group by 1 order by 1;
