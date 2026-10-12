@@ -3536,7 +3536,25 @@ async function pubDessiner(cv, img, ctx){
     lignes.forEach((t, i) => T(t, X0, y0 + i * 50, 36, '#ffffff'));
   }
 }
-async function pubPhotoAjouter(files, equipe){
+// une photo concerne le club et/ou une ou plusieurs équipes ({ club, equipes })
+const pubTags = p => ({ club: p.club != null ? !!p.club : p.equipe == null, equipes: Array.isArray(p.equipes) && (p.equipes.length || p.club != null) ? p.equipes : p.equipe ? [p.equipe] : [] });
+const pubTagsTxt = t => [t.club ? 'Club' : ''].concat(EQUIPES.filter(e => t.equipes.includes(e.id)).map(e => e.court)).filter(Boolean).join(' · ') || 'Non triée';
+// choix des étiquettes (feuille) : appelle ok(tags) ; suppr = bouton « Retirer cette photo »
+function pubTagsFeuille(titre, t0, ok, suppr){
+  const t = { club: t0.club, equipes: [...t0.equipes] };
+  const dessine = () => openSheet(`<h3 id="shTitle">${esc(titre)}</h3><p class="note">Touche tout ce qui correspond : le club et/ou une ou plusieurs équipes.</p>
+    <div class="chipbar pubtags"><button type="button" data-tg="club" class="${t.club ? 'on' : ''}">Club</button>${EQUIPES.map(e => `<button type="button" data-tg="${e.id}" class="${t.equipes.includes(e.id) ? 'on' : ''}">${esc(e.nom)}</button>`).join('')}</div>
+    <div class="foot" style="margin-top:14px"><button class="fbtn primary" id="tgOk"${t.club || t.equipes.length ? '' : ' disabled'}>Valider</button><button class="fbtn" id="tgNo">Annuler</button></div>
+    ${suppr ? '<button type="button" class="link" id="tgSuppr" style="margin-top:12px">Retirer cette photo de la photothèque</button>' : ''}`);
+  const lier = () => {
+    $('shBody').querySelectorAll('[data-tg]').forEach(b => b.onclick = () => { const k = b.dataset.tg;
+      if (k === 'club') t.club = !t.club; else { const id = +k; t.equipes = t.equipes.includes(id) ? t.equipes.filter(x => x !== id) : t.equipes.concat(id); }
+      dessine(); lier(); });
+    $('tgOk').onclick = () => { closeSheet(); ok(t); }; $('tgNo').onclick = closeSheet;
+    if ($('tgSuppr')) $('tgSuppr').onclick = () => { closeSheet(); suppr(); }; };
+  dessine(); lier();
+}
+async function pubPhotoAjouter(files, tags){
   let n = 0;
   for (const f of files){
     try{
@@ -3544,43 +3562,53 @@ async function pubPhotoAjouter(files, equipe){
       const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * s); cv.height = Math.round(bmp.height * s);
       cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
       const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', .86));
-      const chemin = `equipe-${equipe || 'club'}/${uuid()}.jpg`;
+      const chemin = `${tags.equipes.length ? 'equipe-' + tags.equipes[0] : 'club'}/${uuid()}.jpg`;
       const up = await sb.storage.from('photos').upload(chemin, blob, { contentType: 'image/jpeg', upsert: false });
       if (up.error) throw up.error;
-      const { error } = await sb.from('pub_photos').insert({ equipe: equipe || null, chemin, largeur: cv.width, hauteur: cv.height });
+      const { error } = await sb.from('pub_photos').insert({ club: tags.club, equipes: tags.equipes, equipe: tags.club || !tags.equipes.length ? null : tags.equipes[0], chemin, largeur: cv.width, hauteur: cv.height });
       if (error) throw error; n++;
     }catch(e){ console.error(e); toast(isNetErr(e) ? 'Pas de réseau' : 'Une photo n’a pas pu être ajoutée'); }
   }
   return n;
 }
-async function publicationsView(){
+// données de l'écran Publications, gardées entre deux appuis : le brouillon en cours n'est pas relu dans la base
+// (sinon un choix pas encore enregistré était remplacé par l'ancien et il fallait toucher deux fois)
+let pubCache = null, pubSaveFn = null;
+async function publicationsView(recharger = true){
   if (!isAdmin()){ location.hash = '#/compte'; return; }
   const tok = route.cur;
   if (!view.querySelector('.pubw')) view.innerHTML = `<div class="acc">${adminTabs('pubs')}<div class="loading">Chargement…</div></div>`;
-  const depuis = new Date(Date.now() - 120 * 864e5).toISOString();
-  const [rm, rp, rr] = await Promise.all([
-    sb.from('matches').select('id,kickoff,competition,equipe,club_side,home_name,away_name,opp_logo,rosters,status,tab').eq('status', 'termine').gte('kickoff', depuis).order('kickoff'),
-    sb.from('pub_photos').select('*').order('ajoute_le'),
-    sb.from('pub_reglages').select('*').maybeSingle()]);
-  if (route.cur !== tok) return;
-  if (rm.error || rp.error){ view.innerHTML = `<div class="acc">${adminTabs('pubs')}<div class="empty">${isNetErr(rm.error || rp.error) ? 'Pas de réseau.' : 'Les publications ne sont pas encore installées dans la base (supabase/publications.sql).'}</div></div>`; return; }
-  const tous = (rm.data || []).filter(m => EQUIPES.some(e => e.id === m.equipe)), photos = rp.data || [], regl = rr.data || { auto: false, reseaux: ['instagram', 'facebook'] };
+  if (recharger && pubSaveFn){ clearTimeout(pubSave); await pubSaveFn(); }   // brouillon en attente : enregistré avant de relire
+  if (recharger || !pubCache){
+    const depuis = new Date(Date.now() - 120 * 864e5).toISOString();
+    const [rm, rp, rr] = await Promise.all([
+      sb.from('matches').select('id,kickoff,competition,equipe,club_side,home_name,away_name,opp_logo,rosters,status,tab').eq('status', 'termine').gte('kickoff', depuis).order('kickoff'),
+      sb.from('pub_photos').select('*').order('ajoute_le'),
+      sb.from('pub_reglages').select('*').maybeSingle()]);
+    if (route.cur !== tok) return;
+    if (rm.error || rp.error){ view.innerHTML = `<div class="acc">${adminTabs('pubs')}<div class="empty">${isNetErr(rm.error || rp.error) ? 'Pas de réseau.' : 'Les publications ne sont pas encore installées dans la base (supabase/publications.sql).'}</div></div>`; return; }
+    pubCache = { tous: (rm.data || []).filter(m => EQUIPES.some(e => e.id === m.equipe)), photos: rp.data || [], regl: rr.data || { auto: false, reseaux: ['instagram', 'facebook'] }, parWe: {} };
+  }
+  const { tous, photos, regl } = pubCache;
   const wes = [...new Set(tous.map(m => pubSamedi(m.kickoff)))].sort().reverse().slice(0, 8);
   if (!wes.length){ view.innerHTML = `<div class="acc">${adminTabs('pubs')}<div class="empty">Pas encore de match terminé à publier.</div></div>`; return; }
   if (!wes.includes(pubWe)) pubWe = wes[0];
   const ms = tous.filter(m => pubSamedi(m.kickoff) === pubWe).sort((a, b) => teamRank(a.equipe) - teamRank(b.equipe) || a.kickoff.localeCompare(b.kickoff));
-  const [re, rpub] = await Promise.all([
-    sb.from('events').select('match_id,t,k,n,sort,min').eq('k', 'goal').in('match_id', ms.map(m => m.id)),
-    sb.from('publications').select('*').eq('id', pubWe).maybeSingle()]);
-  if (route.cur !== tok) return;
-  const evs = re.data || [], evsDe = id => evs.filter(e => e.match_id === id);
-  const pub = rpub.data || { id: pubWe, data: {}, statut: 'brouillon' }, D = pub.data = { fonds: {}, exclus: [], ...(pub.data || {}) };
+  if (!pubCache.parWe[pubWe]){
+    const [re, rpub] = await Promise.all([
+      sb.from('events').select('match_id,t,k,n,sort,min').eq('k', 'goal').in('match_id', ms.map(m => m.id)),
+      sb.from('publications').select('*').eq('id', pubWe).maybeSingle()]);
+    if (route.cur !== tok) return;
+    pubCache.parWe[pubWe] = { evs: re.data || [], pub: rpub.data || { id: pubWe, data: {}, statut: 'brouillon' } };
+  }
+  const { evs } = pubCache.parWe[pubWe], evsDe = id => evs.filter(e => e.match_id === id);
+  const pub = pubCache.parWe[pubWe].pub, D = pub.data = { fonds: {}, exclus: [], ...(pub.data || {}) };
   // images du carrousel : le récap puis un visuel par match gardé
   let images = ms.filter(m => !D.exclus.includes(m.id)).map(m => ({ cle: m.id, m }));
   if (!images.length){ D.exclus = []; images = ms.map(m => ({ cle: m.id, m })); }
   if (pubSel >= images.length) pubSel = 0;
   // photo de fond par défaut : celles de l'équipe à tour de rôle, sinon celles du club, sinon n'importe laquelle
-  const photosDe = eq => photos.filter(p => p.equipe === eq), club = photos.filter(p => p.equipe == null);
+  const photosDe = eq => photos.filter(p => pubTags(p).equipes.includes(eq)), club = photos.filter(p => pubTags(p).club);
   const fondDe = (img, i) => { const f = D.fonds[img.cle]; if (f) return f;
     const l = photosDe(img.m.equipe).length ? photosDe(img.m.equipe) : club.length ? club : photos;
     const k = Math.abs([...pubWe].reduce((a, c) => a + c.charCodeAt(0), 0) + i) % (l.length || 1);
@@ -3591,7 +3619,7 @@ async function publicationsView(){
   const ctx = { sam: pubWe, ms, evsDe, photos };
   const peutPartager = !!(navigator.canShare && window.File);
   const eqPh = pubEqPh, lPh = eqPh ? photosDe(eqPh) : club;
-  const img = images[pubSel], f = img.fond, propos = photosDe(img.m.equipe).concat(club, photos.filter(p => p.equipe !== img.m.equipe && p.equipe != null));
+  const img = images[pubSel], f = img.fond, propos = [...new Set(photosDe(img.m.equipe).concat(club, photos))];
   view.innerHTML = `<div class="acc pubw">${adminTabs('pubs')}
     <section class="card pubauto"><label class="pubtog"><input type="checkbox" id="pAuto"${regl.auto ? ' checked' : ''}><span><b>Publication automatique</b><small>Le post des résultats se prépare tout seul chaque week-end. Il partira seul le dimanche à ${regl.heure ?? 20} h dès que Facebook et Instagram seront reliés.</small></span></label>
       <div class="pubnets">${[['instagram', 'Instagram'], ['facebook', 'Facebook']].map(([k, l]) => `<label class="pubnet"><input type="checkbox" data-net="${k}"${(regl.reseaux || []).includes(k) ? ' checked' : ''}> ${l}</label>`).join('')}<span class="pubwait">Accès à relier</span></div></section>
@@ -3608,9 +3636,9 @@ async function publicationsView(){
       <div class="foot"><button type="button" class="fbtn" id="pCopier">📋 Copier le texte</button>${D.texte != null ? '<button type="button" class="fbtn" id="pTxtAuto">↺ Texte automatique</button>' : ''}</div></section>
     <div class="foot pubact">${peutPartager ? '<button type="button" class="fbtn primary" id="pPartager">📲 Partager les images</button>' : ''}<button type="button" class="fbtn${peutPartager ? '' : ' primary'}" id="pTelech">⬇ Télécharger les images</button></div>
     <div class="foot pubact"><button type="button" class="fbtn" disabled title="Accès Facebook / Instagram à relier">Publier sur Instagram et Facebook</button><button type="button" class="fbtn" id="pStatut">${pub.statut === 'publiee' ? '↩ Repasser en brouillon' : '✅ Marquer publiée'}</button></div>
-    <section class="card pubgal"><h3>🖼️ Photothèque</h3><p class="note">Les photos d’une équipe servent de fond à ses visuels, à tour de rôle. Les photos « Club » servent aux équipes qui n’ont pas encore de photo.</p>
+    <section class="card pubgal"><h3>🖼️ Photothèque</h3><p class="note">Les photos d’une équipe servent de fond à ses visuels, à tour de rôle. Les photos « Club » servent aux équipes qui n’ont pas encore de photo. Touche une photo pour changer ce qu’elle concerne ou la retirer.</p>
       <div class="chipbar">${[[0, 'Club']].concat(EQUIPES.map(e => [e.id, e.nom])).map(([id, l]) => `<button type="button" data-geq="${id}" class="${eqPh === id ? 'on' : ''}">${esc(l)} <small>${(id ? photosDe(id) : club).length}</small></button>`).join('')}</div>
-      <div class="pubgrid">${lPh.map(p => `<div class="pubgi" style="background-image:url('${esc(pubUrl(p))}')"><button type="button" data-delph="${p.id}" aria-label="Retirer cette photo">×</button></div>`).join('')}
+      <div class="pubgrid">${lPh.map(p => `<button type="button" class="pubgi" data-tgph="${p.id}" style="background-image:url('${esc(pubUrl(p))}')"><span>${esc(pubTagsTxt(pubTags(p)))}</span></button>`).join('')}
         <label class="pubgi add"><input type="file" accept="image/*" multiple id="pAjout" hidden>＋ Ajouter</label></div></section></div>`;
   // dessins : grand aperçu + vignettes
   const cvs = images.map(() => document.createElement('canvas'));
@@ -3619,22 +3647,24 @@ async function publicationsView(){
   await pubDessiner(cvs[pubSel], images[pubSel], ctx); if (route.cur !== tok) return; grand(); vignette(pubSel);
   images.forEach((x, i) => { if (i !== pubSel) pubDessiner(cvs[i], x, ctx).then(() => vignette(i)); });
   // enregistrement du brouillon (après chaque réglage)
-  const enregistrer = () => { clearTimeout(pubSave); pubSave = setTimeout(async () => {
-    const { error } = await sb.from('publications').upsert({ id: pubWe, data: D, statut: pub.statut, maj_le: new Date().toISOString() });
-    if (error) toast(isNetErr(error) ? 'Pas de réseau : brouillon non enregistré' : 'Brouillon non enregistré'); }, 700); };
+  const enregistrer = () => { clearTimeout(pubSave); const we = pubWe;
+    pubSaveFn = async () => { pubSaveFn = null;
+      const { error } = await sb.from('publications').upsert({ id: we, data: D, statut: pub.statut, maj_le: new Date().toISOString() });
+      if (error) toast(isNetErr(error) ? 'Pas de réseau : brouillon non enregistré' : 'Brouillon non enregistré'); };
+    pubSave = setTimeout(() => pubSaveFn && pubSaveFn(), 700); };
   let enCours = false, encore = false;
   const redessiner = async () => { if (enCours){ encore = true; return; } enCours = true; await pubDessiner(cvs[pubSel], img, ctx); grand(); vignette(pubSel); enCours = false; if (encore){ encore = false; redessiner(); } };
   view.querySelectorAll('[data-sl]').forEach(s => s.oninput = () => { const k = s.dataset.sl; f[k] = k === 'z' ? +s.value / 100 : +s.value; D.fonds[img.cle] = f; redessiner(); enregistrer(); });
   view.querySelectorAll('[data-ph]').forEach(b => b.onclick = () => { const p = photos.find(x => x.id === b.dataset.ph);
-    D.fonds[img.cle] = { ...f, photo: b.dataset.ph, ...(b.dataset.ph !== f.photo ? { fx: 50, fy: 50, z: p && p.largeur ? pubZAuto(p.largeur, p.hauteur) : null, ...((p && p.cadrage) || {}) } : {}) }; enregistrer(); publicationsView(); });
-  view.querySelectorAll('[data-im]').forEach(b => b.onclick = () => { pubSel = +b.dataset.im; publicationsView(); });
+    D.fonds[img.cle] = { ...f, photo: b.dataset.ph, ...(b.dataset.ph !== f.photo ? { fx: 50, fy: 50, z: p && p.largeur ? pubZAuto(p.largeur, p.hauteur) : null, ...((p && p.cadrage) || {}) } : {}) }; enregistrer(); publicationsView(false); });
+  view.querySelectorAll('[data-im]').forEach(b => b.onclick = () => { pubSel = +b.dataset.im; publicationsView(false); });
   view.querySelectorAll('[data-cote]').forEach(b => b.onclick = () => { f.cote = b.dataset.cote; D.fonds[img.cle] = f; enregistrer(); view.querySelectorAll('[data-cote]').forEach(x => x.classList.toggle('on', x === b)); redessiner(); });
-  view.querySelectorAll('[data-we]').forEach(b => b.onclick = () => { pubWe = b.dataset.we; pubSel = 0; publicationsView(); });
-  view.querySelectorAll('[data-geq]').forEach(b => b.onclick = () => { pubEqPh = +b.dataset.geq; publicationsView(); });
-  if ($('pExclure')) $('pExclure').onclick = () => { D.exclus = [...new Set(D.exclus.concat(img.m.id))]; pubSel = 0; enregistrer(); publicationsView(); };
-  if ($('pRemettre')) $('pRemettre').onclick = () => { D.exclus = []; enregistrer(); publicationsView(); };
+  view.querySelectorAll('[data-we]').forEach(b => b.onclick = () => { pubWe = b.dataset.we; pubSel = 0; publicationsView(false); });
+  view.querySelectorAll('[data-geq]').forEach(b => b.onclick = () => { pubEqPh = +b.dataset.geq; publicationsView(false); });
+  if ($('pExclure')) $('pExclure').onclick = () => { D.exclus = [...new Set(D.exclus.concat(img.m.id))]; pubSel = 0; enregistrer(); publicationsView(false); };
+  if ($('pRemettre')) $('pRemettre').onclick = () => { D.exclus = []; enregistrer(); publicationsView(false); };
   $('pTxt').oninput = e => { D.texte = e.target.value; enregistrer(); };
-  if ($('pTxtAuto')) $('pTxtAuto').onclick = () => { delete D.texte; enregistrer(); publicationsView(); };
+  if ($('pTxtAuto')) $('pTxtAuto').onclick = () => { delete D.texte; enregistrer(); publicationsView(false); };
   $('pCopier').onclick = async () => { try{ await navigator.clipboard.writeText($('pTxt').value); toast('Texte copié'); }catch(e){ $('pTxt').select(); toast('Sélectionné : copie-le'); } };
   const fichiers = async () => { for (let i = 0; i < images.length; i++) await pubDessiner(cvs[i], images[i], ctx);
     return Promise.all(cvs.map((c, i) => new Promise(r => c.toBlob(b => r(b && new File([b], `asm-resultats-${pubWe}-${i + 1}.png`, { type: 'image/png' })), 'image/png')))); };
@@ -3646,16 +3676,21 @@ async function publicationsView(){
       await navigator.share({ files: fs, text: $('pTxt').value }); }catch(e){ if (e && e.name !== 'AbortError') toast('Partage impossible'); } };
   $('pStatut').onclick = async () => { pub.statut = pub.statut === 'publiee' ? 'brouillon' : 'publiee';
     const { error } = await sb.from('publications').upsert({ id: pubWe, data: D, statut: pub.statut, publie_le: pub.statut === 'publiee' ? new Date().toISOString() : null, maj_le: new Date().toISOString() });
-    if (error) return toast('Modification refusée'); publicationsView(); };
-  $('pAuto').onchange = async e => { const { error } = await sb.from('pub_reglages').update({ auto: e.target.checked, maj_le: new Date().toISOString() }).eq('id', 1); toast(error ? 'Réglage non enregistré' : e.target.checked ? 'Publication automatique activée' : 'Publication automatique désactivée'); };
+    if (error) return toast('Modification refusée'); pub.publie_le = pub.statut === 'publiee' ? new Date().toISOString() : null; publicationsView(false); };
+  $('pAuto').onchange = async e => { regl.auto = e.target.checked; const { error } = await sb.from('pub_reglages').update({ auto: e.target.checked, maj_le: new Date().toISOString() }).eq('id', 1); toast(error ? 'Réglage non enregistré' : e.target.checked ? 'Publication automatique activée' : 'Publication automatique désactivée'); };
   view.querySelectorAll('[data-net]').forEach(c => c.onchange = async () => { const r = [...view.querySelectorAll('[data-net]:checked')].map(x => x.dataset.net);
-    const { error } = await sb.from('pub_reglages').update({ reseaux: r, maj_le: new Date().toISOString() }).eq('id', 1); if (error) toast('Réglage non enregistré'); });
-  $('pAjout').onchange = async e => { const l = [...e.target.files]; if (!l.length) return; toast('Ajout de ' + l.length + ' photo' + (l.length > 1 ? 's' : '') + '…');
-    const n = await pubPhotoAjouter(l, eqPh); if (n) toast(n + ' photo' + (n > 1 ? 's' : '') + ' ajoutée' + (n > 1 ? 's' : '')); publicationsView(); };
-  view.querySelectorAll('[data-delph]').forEach(b => b.onclick = () => askConfirm('Retirer cette photo ?', 'Elle ne servira plus de fond aux visuels.', 'Retirer', async () => {
-    const p = photos.find(x => x.id === b.dataset.delph); if (!p) return;
-    const { error } = await sb.from('pub_photos').delete().eq('id', p.id); if (error) return toast('Suppression refusée');
-    sb.storage.from('photos').remove([p.chemin]).catch(() => {}); toast('Photo retirée'); publicationsView(); }));
+    regl.reseaux = r; const { error } = await sb.from('pub_reglages').update({ reseaux: r, maj_le: new Date().toISOString() }).eq('id', 1); if (error) toast('Réglage non enregistré'); });
+  $('pAjout').onchange = e => { const l = [...e.target.files]; e.target.value = ''; if (!l.length) return;
+    pubTagsFeuille(l.length > 1 ? `Ces ${l.length} photos concernent…` : 'Cette photo concerne…', { club: !eqPh, equipes: eqPh ? [eqPh] : [] }, async t => {
+      toast('Ajout de ' + l.length + ' photo' + (l.length > 1 ? 's' : '') + '…');
+      const n = await pubPhotoAjouter(l, t); if (n) toast(n + ' photo' + (n > 1 ? 's' : '') + ' ajoutée' + (n > 1 ? 's' : '')); publicationsView(); }); };
+  view.querySelectorAll('[data-tgph]').forEach(b => b.onclick = () => { const p = photos.find(x => x.id === b.dataset.tgph); if (!p) return;
+    pubTagsFeuille('Cette photo concerne…', pubTags(p), async t => {
+      const { error } = await sb.from('pub_photos').update({ club: t.club, equipes: t.equipes, equipe: t.club || !t.equipes.length ? null : t.equipes[0] }).eq('id', p.id);
+      if (error) return toast('Modification refusée'); Object.assign(p, { club: t.club, equipes: t.equipes }); toast('Photo rangée : ' + pubTagsTxt(t)); publicationsView(false); },
+    () => askConfirm('Retirer cette photo ?', 'Elle ne servira plus de fond aux visuels.', 'Retirer', async () => {
+      const { error } = await sb.from('pub_photos').delete().eq('id', p.id); if (error) return toast('Suppression refusée');
+      if (!p.url) sb.storage.from('photos').remove([p.chemin]).catch(() => {}); toast('Photo retirée'); publicationsView(); })); });
 }
 
 // ---------- Page admin « Statistiques » : visites, comptes connectés, inscriptions, pages vues ----------

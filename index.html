@@ -658,8 +658,9 @@ tr.prow.moi td{background:color-mix(in srgb,var(--club) 22%,transparent);font-we
 .publiens{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:8px}
 .pubact{margin-top:10px}.pubact .fbtn:disabled{opacity:.5}
 .pubgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-top:10px}
-.pubgi{position:relative;aspect-ratio:4/3;border-radius:10px;background:var(--bg) center/cover;border:1px solid var(--line)}
-.pubgi button{position:absolute;top:4px;right:4px;width:28px;height:28px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;font-size:17px;line-height:1}
+.pubgi{position:relative;aspect-ratio:4/3;border-radius:10px;background:var(--bg) center/cover;border:1px solid var(--line);padding:0;display:block;width:100%;cursor:pointer}
+.pubgi span{position:absolute;left:5px;bottom:5px;max-width:calc(100% - 10px);background:rgba(0,0,0,.68);color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pubtags{flex-wrap:wrap}
 .pubgi.add{display:grid;place-items:center;font-weight:700;color:var(--muted);border-style:dashed;cursor:pointer}
 .pubgal .chipbar small{opacity:.6;margin-left:2px}.admtabs a{text-align:center;text-decoration:none;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-weight:600}.admtabs a.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .schart{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px 6px;margin:0 0 14px}
