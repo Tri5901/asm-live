@@ -10,5 +10,6 @@ module.exports = async (req, res) => {
   if (buf.length > 500000) return res.status(413).end();
   res.setHeader('Content-Type', r.headers.get('content-type') || 'image/jpeg');
   res.setHeader('Cache-Control', 'public, max-age=604800, s-maxage=2592000');
+  res.setHeader('Access-Control-Allow-Origin', '*');   // logos publics, utilisables dans un canvas
   res.status(200).send(buf);
 };

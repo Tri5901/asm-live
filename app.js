@@ -3436,6 +3436,9 @@ const adminTabs = cur => `<div class="seg admtabs" role="tablist">${ADMIN_ONGLET
 // Facebook et Instagram ne sont pas encore reliés : le brouillon se prépare tout seul, l'admin télécharge ou partage
 // les images et copie le texte. Données : pub_photos (photothèque), publications (un brouillon par week-end), pub_reglages.
 const PUB_W = 1080, PUB_H = 1350;
+// zoom par défaut d'une photo : toute sa largeur visible (1 pour une photo en hauteur, moins pour une photo en largeur)
+const pubZAuto = (w, h) => w && h ? Math.min(1, (PUB_W / w) / Math.max(PUB_W / w, PUB_H / h)) : 1;
+const pubZ = (f, p) => f.z || (p && p.largeur ? pubZAuto(p.largeur, p.hauteur) : 1);
 let pubWe = null, pubSel = 0, pubEqPh = 0, pubSave = null;
 const pubJour = iso => new Date(iso).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
 const pubAjJ = (s, n) => { const d = new Date(s + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
@@ -3448,7 +3451,8 @@ const pubImgs = new Map();
 const pubCharger = (src, cors) => { if (!src) return Promise.resolve(null); if (pubImgs.has(src)) return pubImgs.get(src);
   const p = new Promise(r => { const i = new Image(); if (cors) i.crossOrigin = 'anonymous'; i.onload = () => r(i); i.onerror = () => r(null); i.src = src; }); pubImgs.set(src, p); return p; };
 const pubUrl = ph => ph ? ph.url || sb.storage.from('photos').getPublicUrl(ph.chemin).data.publicUrl : null;
-const pubLogoAdv = m => { const id = ((m.opp_logo || '').match(/phlogos\/BC(\d+)\.jpg$/) || [])[1]; return id ? '/api/logo?id=' + id : null; };
+// relais des logos FFF (en local, celui du site en ligne)
+const pubLogoAdv = m => { const id = ((m.opp_logo || '').match(/phlogos\/BC(\d+)\.jpg$/) || [])[1]; return id ? (location.hostname === 'localhost' ? 'https://asm-live.vercel.app' : '') + '/api/logo?id=' + id : null; };
 // score vu du club, buteurs du club (« Mael Carette ×2 »), mot du résultat
 function pubMatch(m, evs){
   const cs = clubSide(m), c = goals(evs, cs), o = goals(evs, oppSide(m)), r = resultOf(m, evs);
@@ -3485,7 +3489,13 @@ async function pubDessiner(cv, img, ctx){
   const m = img.m, f = img.fond || {}, photo = f.photo === 'aucune' ? null : ctx.photos.find(p => p.id === f.photo) || null;
   const [bg, logo, adv] = await Promise.all([pubCharger(pubUrl(photo), !(photo && photo.url)), pubCharger('icons/notif-192.png'), pubCharger(pubLogoAdv(m) || m.opp_logo, true)]);
   g.fillStyle = '#1b1b18'; g.fillRect(0, 0, W, H);
-  if (bg){ const z = f.z || 1, sc = Math.max(W / bg.width, H / bg.height) * z, dw = bg.width * sc, dh = bg.height * sc;
+  // z = zoom par rapport à « la photo remplit le cadre » (1) : en dessous, la photo entière reste visible
+  // et le vide autour est comblé par la même photo, floutée et assombrie
+  if (bg){ const cover = Math.max(W / bg.width, H / bg.height), z = f.z || pubZAuto(bg.width, bg.height), sc = cover * z, dw = bg.width * sc, dh = bg.height * sc;
+    if (dw < W - 1 || dh < H - 1){
+      g.save(); let flou = false; try{ g.filter = 'blur(26px) brightness(.5)'; flou = g.filter !== 'none'; }catch(e){}
+      const s2 = cover * 1.12; g.drawImage(bg, (W - bg.width * s2) / 2, (H - bg.height * s2) / 2, bg.width * s2, bg.height * s2); g.restore();
+      if (!flou){ g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(0, 0, W, H); } }
     g.drawImage(bg, (W - dw) * (f.fx ?? 50) / 100, (H - dh) * (f.fy ?? 50) / 100, dw, dh); }
   // léger voile pour la lisibilité (plus marqué en haut et en bas, comme sur les publications du club)
   g.fillStyle = 'rgba(0,0,0,.26)'; g.fillRect(0, 0, W, H);
@@ -3574,7 +3584,8 @@ async function publicationsView(){
   const fondDe = (img, i) => { const f = D.fonds[img.cle]; if (f) return f;
     const l = photosDe(img.m.equipe).length ? photosDe(img.m.equipe) : club.length ? club : photos;
     const k = Math.abs([...pubWe].reduce((a, c) => a + c.charCodeAt(0), 0) + i) % (l.length || 1);
-    return { photo: l.length ? l[k].id : 'aucune', fx: 50, fy: 50, z: 1 }; };
+    const p = l.length ? l[k] : null;   // cadrage par défaut propre à la photo (ex. bandeau à cacher), sinon centré
+    return { photo: p ? p.id : 'aucune', fx: 50, fy: 50, z: p && p.largeur ? pubZAuto(p.largeur, p.hauteur) : null, ...((p && p.cadrage) || {}) }; };
   images.forEach((img, i) => img.fond = fondDe(img, i));
   const texteAuto = pubTexte(pubWe, ms, evsDe), texte = D.texte != null ? D.texte : texteAuto;
   const ctx = { sam: pubWe, ms, evsDe, photos };
@@ -3590,7 +3601,7 @@ async function publicationsView(){
     <div class="pubthumbs">${images.map((x, i) => `<button type="button" class="pubth${i === pubSel ? ' on' : ''}" data-im="${i}"><canvas></canvas><span>${esc(teamLetter(x.m.equipe))}</span></button>`).join('')}</div>
     <section class="card pubcrop"><h3>Image ${pubSel + 1} · ${esc(teamLabel(img.m.equipe))} – ${esc(teamName(img.m, oppSide(img.m)))}</h3>
       <div class="pubphotos"><button type="button" class="pubph aucune${f.photo === 'aucune' ? ' on' : ''}" data-ph="aucune">Sans photo</button>${propos.map(p => `<button type="button" class="pubph${f.photo === p.id ? ' on' : ''}" data-ph="${p.id}" style="background-image:url('${esc(pubUrl(p))}')"></button>`).join('')}</div>
-      ${f.photo !== 'aucune' ? [['z', '🔍 Zoom', 100, 300, Math.round((f.z || 1) * 100)], ['fx', '↔ Gauche · droite', 0, 100, f.fx ?? 50], ['fy', '↕ Haut · bas', 0, 100, f.fy ?? 50]].map(([k, l, a, b, v]) => `<label class="pubsl"><span>${l}</span><input type="range" min="${a}" max="${b}" value="${v}" data-sl="${k}"></label>`).join('') : ''}
+      ${f.photo !== 'aucune' ? [['z', '🔍 Zoom', 40, 300, Math.round(pubZ(f, photos.find(p => p.id === f.photo)) * 100)], ['fx', '↔ Gauche · droite', 0, 100, f.fx ?? 50], ['fy', '↕ Haut · bas', 0, 100, f.fy ?? 50]].map(([k, l, a, b, v]) => `<label class="pubsl"><span>${l}</span><input type="range" min="${a}" max="${b}" value="${v}" data-sl="${k}"></label>`).join('') : ''}
       <div class="pubcote"><span>Score</span><div class="seg">${[['g', '◀ À gauche'], ['d', 'À droite ▶']].map(([k, l]) => `<button type="button" data-cote="${k}" class="${(f.cote || (clubSide(img.m) === 'H' ? 'd' : 'g')) === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
       <div class="publiens">${images.length > 1 ? '<button type="button" class="link" id="pExclure">Retirer ce match du carrousel</button>' : ''}${D.exclus.length ? `<button type="button" class="link" id="pRemettre">Remettre les ${D.exclus.length} match${D.exclus.length > 1 ? 's' : ''} retiré${D.exclus.length > 1 ? 's' : ''}</button>` : ''}</div></section>
     <section class="card"><h3>Texte du post</h3><textarea id="pTxt" rows="12">${esc(texte)}</textarea>
@@ -3614,7 +3625,8 @@ async function publicationsView(){
   let enCours = false, encore = false;
   const redessiner = async () => { if (enCours){ encore = true; return; } enCours = true; await pubDessiner(cvs[pubSel], img, ctx); grand(); vignette(pubSel); enCours = false; if (encore){ encore = false; redessiner(); } };
   view.querySelectorAll('[data-sl]').forEach(s => s.oninput = () => { const k = s.dataset.sl; f[k] = k === 'z' ? +s.value / 100 : +s.value; D.fonds[img.cle] = f; redessiner(); enregistrer(); });
-  view.querySelectorAll('[data-ph]').forEach(b => b.onclick = () => { D.fonds[img.cle] = { ...f, photo: b.dataset.ph, ...(b.dataset.ph !== f.photo ? { fx: 50, fy: 50, z: 1 } : {}) }; enregistrer(); publicationsView(); });
+  view.querySelectorAll('[data-ph]').forEach(b => b.onclick = () => { const p = photos.find(x => x.id === b.dataset.ph);
+    D.fonds[img.cle] = { ...f, photo: b.dataset.ph, ...(b.dataset.ph !== f.photo ? { fx: 50, fy: 50, z: p && p.largeur ? pubZAuto(p.largeur, p.hauteur) : null, ...((p && p.cadrage) || {}) } : {}) }; enregistrer(); publicationsView(); });
   view.querySelectorAll('[data-im]').forEach(b => b.onclick = () => { pubSel = +b.dataset.im; publicationsView(); });
   view.querySelectorAll('[data-cote]').forEach(b => b.onclick = () => { f.cote = b.dataset.cote; D.fonds[img.cle] = f; enregistrer(); view.querySelectorAll('[data-cote]').forEach(x => x.classList.toggle('on', x === b)); redessiner(); });
   view.querySelectorAll('[data-we]').forEach(b => b.onclick = () => { pubWe = b.dataset.we; pubSel = 0; publicationsView(); });
