@@ -197,6 +197,10 @@ async function comparer(file, corriger, fichNiv, fichLieux) {
   }
 }
 
+// utilisé aussi par scripts/adversaires-coupe.js
+module.exports = { URL_, H, CLUB, MOIS, parisToUTC, compSite, niveauDe, titre };
+if (require.main === module){
 const [cmd, arg, arg2, arg3] = process.argv.slice(2);
 (cmd === 'pages' ? pages() : cmd === 'comparer' ? comparer(arg, false, arg2, arg3) : cmd === 'corriger' ? comparer(arg, true, arg2, arg3) : Promise.reject(new Error('usage : pages | comparer <json> [niveaux|-] [lieux] | corriger <json> [niveaux|-] [lieux]')))
   .catch(e => { console.error('ERREUR ' + e.message); process.exit(1); });
+}

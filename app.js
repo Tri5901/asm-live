@@ -1038,8 +1038,49 @@ function liveCarteBind(m, evs, redessiner, auto){
 }
 // ---------- Match à venir : l'adversaire (classement, forme, match aller) ----------
 const numEquipe = s => (String(s || '').trim().match(/\s(\d+)$/) || [])[1] || null;
+// Match de coupe : l'adversaire vient souvent d'une autre poule (ou d'un autre niveau), on n'a donc pas son classement chez nous.
+// La tâche des horaires le relève sur la FFF (page « Saison » et classement de son équipe) dans matches.adv_infos :
+// { maj: 'AAAA-MM-JJ', champ: 'Régional 1', cls: [rang, pts, joués, V, N, D, bp, bc, nb équipes],
+//   matchs: [[date ISO, compétition, 1 si à domicile, adversaire, n° de club FFF, buts pour, buts contre], …] (du plus récent),
+//   prochain: [date ISO, compétition, 1 si à domicile, adversaire, n° de club FFF, rang de cet adversaire] | null }
+const advLogo = id => id ? (location.hostname === 'localhost' ? 'https://asm-live.vercel.app' : '') + '/api/logo?id=' + id : '';
+const advRes = (p, c) => p > c ? 'V' : p < c ? 'D' : 'N';
+function coupeAdvHTML(m){
+  const a = m.adv_infos, advNom = teamName(m, oppSide(m)), rg = n => n + (n === 1 ? 'er' : 'e');
+  const jour = d => new Date(d).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Europe/Paris' });
+  const heure = d => new Date(d).toLocaleTimeString('fr-FR', { hour: 'numeric', minute: '2-digit', timeZone: 'Europe/Paris' }).replace(':00', ' h').replace(':', ' h ');
+  const coupe = c => /coupe|challenge|troph/i.test(c);
+  const court = c => String(c).replace(/Coupe des Pays de la Loire/i, 'Coupe PdL');
+  // niveau d'une équipe jouée en coupe : « Régional 3 » → « R3 »
+  const nivCourt = n => { const k = String(n).match(/^(Régional|District|National)\s*(\d+)$/i); return k ? k[1][0].toUpperCase() + k[2] : n; };
+  const L = (a.matchs || []).filter(x => x[5] != null && x[6] != null);
+  const forme = L.slice(0, 5).map(x => advRes(+x[5], +x[6]));
+  const tot = L.reduce((t, x) => { t[advRes(+x[5], +x[6])]++; t.bp += +x[5]; t.bc += +x[6]; return t; }, { V: 0, N: 0, D: 0, bp: 0, bc: 0 });
+  // notre forme (matchs officiels de l'équipe, coupe comprise) pour comparer
+  const home = lsGet('asm-home', null) || {}, buts = home.goals || [];
+  const nos = (home.matches || []).filter(x => x.equipe === m.equipe && x.status === 'termine' && !/amica/i.test(x.competition || '') && seasonOf(x.kickoff) === seasonOf(m.kickoff))
+    .sort((x, y) => String(y.kickoff).localeCompare(String(x.kickoff))).slice(0, 5)
+    .map(x => { const g = buts.filter(b => b.match_id === x.id), cs = clubSide(x); return advRes(g.filter(b => b.t === cs).length, g.filter(b => b.t !== cs).length); });
+  const pastilles = f => `<b class="formeb">${f.map(v => `<i class="hres ${v}">${v}</i>`).join('')}</b>`;
+  const c = a.cls;
+  // score vu de l'adversaire (ses buts d'abord), comme sa pastille V / N / D
+  const ligne = x => { const v = advRes(+x[5], +x[6]);
+    return `<li><img src="${esc(advLogo(x[4]))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><div><b><span>${x[2] ? '🏠 contre' : '🚌 à'} ${esc(x[3])}</span>${x[7] ? `<em class="cniv" title="${esc(x[7])}">${esc(nivCourt(x[7]))}</em>` : ''}</b>
+      <small>${esc(jour(x[0]))} · ${coupe(x[1]) ? '🏆 ' : ''}${esc(court(x[1]))}</small></div><span class="cscore">${x[5]}–${x[6]}</span><i class="hres ${v}">${v}</i></li>`; };
+  const p = a.prochain && new Date(a.prochain[0]) > Date.now() && new Date(a.prochain[0]) < new Date(m.kickoff) ? a.prochain : null;
+  return `<section class="advcard"><h3>L’adversaire · ${esc(advNom)}</h3><div class="pfacts">
+    ${c ? `<div><span>${esc(a.champ)}</span><b>${rg(c[0])}${c[8] ? ' sur ' + c[8] : ''} · ${c[1]} pt${c[1] > 1 ? 's' : ''} en ${c[2]} match${c[2] > 1 ? 's' : ''}</b></div>` : ''}
+    ${L.length ? `<div><span>Bilan officiel</span><b>${tot.V} V · ${tot.N} N · ${tot.D} D · ${tot.bp} buts pour, ${tot.bc} contre</b></div>` : ''}
+    ${forme.length ? `<div><span>Leur forme</span>${pastilles(forme)}</div>` : ''}
+    ${nos.length ? `<div><span>Forme ${esc(teamLabel(m.equipe))}</span>${pastilles(nos)}</div>` : ''}</div>
+    ${L.length ? `<div class="sec">Leurs derniers matchs</div><ul class="cderniers">${L.slice(0, 5).map(ligne).join('')}</ul>` : ''}
+    ${p ? `<div class="cprochain">⏭️ Avant de nous jouer : <b>${esc(jour(p[0]))} ${esc(heure(p[0]))}</b>, ${p[2] ? 'contre' : 'à'} ${esc(p[3])}${p[5] ? ' (' + rg(p[5]) + ')' : ''} · ${esc(p[1])}</div>` : ''}
+    <p class="note csrc">Relevé sur le site de la FFF le ${esc(new Date(a.maj + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }))}. Forme : le match le plus récent à gauche.</p></section>`;
+}
 async function adversaireRemplir(m, box){
-  if (!box || !/ · J\d+$/.test(m.competition || '')) return;   // championnat seulement
+  if (!box) return;
+  if (m.adv_infos && /coupe|challenge|troph/i.test(m.competition || '')){ box.innerHTML = coupeAdvHTML(m); return; }
+  if (!/ · J\d+$/.test(m.competition || '')) return;   // championnat seulement
   let rows = lsGet('asm-cls', null);
   if (!rows){ try{ const { data } = await sb.from('classements').select('*'); rows = data || []; lsSet('asm-cls', rows); }catch(e){ return; } }
   const r = (rows || []).find(x => x.equipe === m.equipe); if (!r || !box.isConnected) return;
