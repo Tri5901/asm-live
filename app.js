@@ -3196,7 +3196,8 @@ async function monJoueurBloc(){
   const lier = async nom => {
     const { error } = await sb.rpc('lier_joueur', { p_user: myId(), p_nom: nom });
     if (error){ toast(isNetErr(error) ? 'Pas de réseau' : 'Modification refusée'); return; }
-    profile = { ...profile, joueur: nom }; lsSet('asm-profile', profile);
+    // lié à un joueur des compos : la base fait passer un supporter en joueur (supabase/joueur-reconnu.sql)
+    profile = { ...profile, joueur: nom, ...(nom && profile.role === 'supporter' ? { role: 'joueur' } : {}) }; lsSet('asm-profile', profile);
     toast(nom ? 'C’est noté : tu es ' + nom : 'Lien retiré'); dessine();
   };
   dessine();
