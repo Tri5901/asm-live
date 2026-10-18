@@ -1,6 +1,6 @@
 // Service worker AS Mésanger – Feuille de match
 // Incrémente VERSION à chaque mise en ligne pour que les téléphones récupèrent la nouvelle version.
-const VERSION = 'asm-v184';
+const VERSION = 'asm-v185';
 const APP_SHELL = [
   './',
   './index.html',
@@ -17,9 +17,26 @@ const APP_SHELL = [
   './icons/badge-96.png'
 ];
 
+// Bibliothèque Supabase et tous les modules qu'elle charge (tslib, iceberg-js… n'ont pas « @supabase » dans leur adresse :
+// ils n'étaient pas gardés, et avec peu de réseau l'appli restait bloquée à l'ouverture en les attendant)
+const LIBS = [
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm',
+  'https://cdn.jsdelivr.net/npm/@supabase/auth-js@2.117.2/+esm',
+  'https://cdn.jsdelivr.net/npm/@supabase/functions-js@2.117.2/+esm',
+  'https://cdn.jsdelivr.net/npm/@supabase/postgrest-js@2.117.2/+esm',
+  'https://cdn.jsdelivr.net/npm/@supabase/realtime-js@2.117.2/+esm',
+  'https://cdn.jsdelivr.net/npm/@supabase/storage-js@2.117.2/+esm',
+  'https://cdn.jsdelivr.net/npm/@supabase/phoenix@0.4.5/+esm',
+  'https://cdn.jsdelivr.net/npm/tslib@2.8.1/+esm',
+  'https://cdn.jsdelivr.net/npm/iceberg-js@0.8.1/+esm'
+];
+
 self.addEventListener('install', event => {
   // cache: 'reload' : toujours les fichiers frais du serveur (jamais une vieille copie du navigateur)
-  event.waitUntil(caches.open(VERSION).then(c => c.addAll(APP_SHELL.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
+  // les bibliothèques sont ajoutées au mieux (une indisponibilité du CDN ne bloque pas la mise à jour)
+  event.waitUntil(caches.open(VERSION).then(c => c.addAll(APP_SHELL.map(u => new Request(u, { cache: 'reload' })))
+    .then(() => Promise.all(LIBS.map(u => c.add(u).catch(() => {})))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', event => {
@@ -63,7 +80,7 @@ self.addEventListener('fetch', event => {
 
   // Polices Google et bibliothèque Supabase : cache d'abord, mis à jour en arrière-plan
   const libs = url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com'
-    || (url.hostname === 'cdn.jsdelivr.net' && url.pathname.includes('@supabase'));
+    || (url.hostname === 'cdn.jsdelivr.net' && (url.pathname.includes('@supabase') || url.pathname.endsWith('/+esm')));
   if (libs) {
     event.respondWith(
       caches.open(VERSION).then(cache =>

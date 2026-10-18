@@ -47,7 +47,18 @@ const inFilter = (f, eq) => f.team ? (eq || 1) === f.team : f.cat ? catOf(eq) ==
 // Logo de chaque équipe : celui du club, ou celui de l'adversaire s'il est connu
 const logoOf = (m, t) => t === (m.club_side || 'H') ? 'icons/notif-192.png' : (m.opp_logo || '');
 const logoImg = (m, t, cls) => { const src = logoOf(m, t); return src ? `<img class="${cls}${t === (m.club_side || 'H') ? ' own' : ''}" src="${esc(src)}" alt="" loading="lazy" onerror="this.remove()">` : ''; };
-const sb = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+// Réseau faible (stade mal couvert) : une requête peut rester bloquée sans jamais répondre. Au-delà du délai
+// on abandonne avec une erreur « timeout » (vue comme une coupure réseau : les envois restent en file et repartent)
+const DELAI_LECTURE = 25000, DELAI_ECRITURE = 20000;
+function fetchAvecDelai(url, init = {}){
+  const ctl = new AbortController(), ecriture = init.method && init.method !== 'GET' && init.method !== 'HEAD';
+  // envoi de photos (photothèque) : plus long
+  const d = String(url).includes('/storage/v1/') ? 120000 : ecriture ? DELAI_ECRITURE : DELAI_LECTURE;
+  const t = setTimeout(() => ctl.abort(new DOMException('délai dépassé (timeout, réseau faible)', 'TimeoutError')), d);
+  if (init.signal){ if (init.signal.aborted) ctl.abort(init.signal.reason); else init.signal.addEventListener('abort', () => ctl.abort(init.signal.reason), { once: true }); }
+  return fetch(url, { ...init, signal: ctl.signal }).finally(() => clearTimeout(t));
+}
+const sb = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY, { global: { fetch: fetchAvecDelai } }) : null;
 
 const $ = id => document.getElementById(id);
 const view = $('view');
@@ -375,7 +386,7 @@ function queue(op){
   else outbox.push(op);
   saveOutbox(); flush();
 }
-const isNetErr = err => !navigator.onLine || /fetch|network|load failed|timeout/i.test(String(err && (err.message||err)));
+const isNetErr = err => !navigator.onLine || /fetch|network|load failed|timeout|abort/i.test(String(err && (err.message||err)));
 // heure de la dernière modification d'un match envoyée (ou en attente) : une relecture du serveur lancée avant
 // cette heure peut renvoyer l'ancien état, elle ne doit pas écraser ce qui vient d'être saisi
 const matchEcritAt = {};
@@ -394,22 +405,31 @@ async function flush(){
         const { data } = await sb.auth.getSession();
         if (data.session){
           try{
-            await fetch('api/notify', {method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer ' + data.session.access_token}, body: JSON.stringify({event_id: op.id})});
-          }catch(e){ break; } // réseau : on réessaiera
+            // avec délai : un appel bloqué (réseau faible) ne doit pas retenir les envois suivants
+            await fetchAvecDelai('api/notify', {method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer ' + data.session.access_token}, body: JSON.stringify({event_id: op.id})});
+          }catch(e){ break; } // réseau : on réessaiera (la base ignore un but déjà notifié)
         }
       }
       if (res && res.error){
-        if (isNetErr(res.error)) break;
+        // réseau coupé ou trop lent, serveur momentanément indisponible : l'envoi reste en file et repart plus tard
+        // (une erreur serveur qui dure est abandonnée au bout de 8 essais, pour ne pas bloquer la suite)
+        if (isNetErr(res.error) || !res.status || res.status === 408 || res.status === 429) break;
+        if (res.status >= 500 && (op.essais = (op.essais || 0) + 1) < 8){ saveOutbox(); break; }
+        // connexion expirée (jeton pas renouvelé faute de réseau) : on la renouvelle et on réessaie, sans rien perdre
+        if (res.status === 401 || /jwt expired|PGRST30[13]/i.test(res.error.message + ' ' + res.error.code)){ await sb.auth.refreshSession().catch(() => {}); break; }
         toast(/row-level security|42501/i.test(res.error.message + res.error.code) ? 'Refusé : seuls le responsable score, les responsables d’équipe et les admins peuvent modifier ce match' : 'Envoi refusé : ' + (res.error.message || 'erreur'));
       } else if (op.kind==='match' && res && Array.isArray(res.data) && !res.data.length){
         // la base a ignoré la modification : pas les droits sur ce match (ou match supprimé)
         toast('Refusé : seuls le responsable score, les responsables d’équipe et les admins peuvent modifier ce match');
       }
-      if (op.kind === 'match') matchEcritAt[op.match] = Date.now();
+      // le serveur a changé : une relecture lancée avant ce moment peut renvoyer l'ancien état (but qui disparaît)
+      matchEcritAt[op.match] = Date.now();
       outbox.shift(); saveOutbox(); enVol = null;
     }
   }catch(e){ /* réseau : on réessaie plus tard */ }
   enVol = null; flushing = false;
+  // envoi resté en file (réseau faible) : nouvel essai dans 5 s, sans attendre la relance toutes les 15 s
+  if (outbox.length){ clearTimeout(flush.relance); flush.relance = setTimeout(flush, 5000); }
   syncListeners.forEach(f=>f());
 }
 window.addEventListener('online', flush);
@@ -423,6 +443,7 @@ let routePret = false;
 async function route(){
   if (!routePret) return;
   route.cur = (route.cur || 0) + 1;
+  const tok = route.cur;
   if (cleanup){ try{ cleanup(); }catch(e){} cleanup = null; }
   closeSheet();
   const parts = (location.hash.replace(/^#\/?/, '') || '').split('/');
@@ -452,6 +473,7 @@ async function route(){
     location.hash = '#/';
   }catch(e){
     console.error(e);
+    if (route.cur !== tok) return;   // page quittée entre-temps (réseau lent) : on n'affiche pas son erreur sur la nouvelle
     view.innerHTML = `<div class="empty">Impossible de charger la page${navigator.onLine ? '' : ' (pas de réseau)'}.<br><button class="link" onclick="location.reload()">Réessayer</button></div>`;
   }
 }
@@ -493,6 +515,9 @@ function debounce(fn, ms){ let t; return () => { clearTimeout(t); t = setTimeout
 
 // ---------- Accueil : liste des matchs ----------
 async function homeView(){
+  // réseau lent : si on a ouvert une autre page pendant le chargement, la liste ne doit pas revenir l'écraser
+  // (ni laisser tourner ses relectures, qui la redessinaient ensuite toutes les 10 s à 1 min)
+  const tok = route.cur, ici = () => route.cur === tok;
   const cache = lsGet('asm-home', null);
   if (cache) drawHome(cache.matches, cache.goals); else view.innerHTML = '<div class="loading">Chargement…</div>';
   const load = async () => {
@@ -500,16 +525,17 @@ async function homeView(){
       sb.from('matches').select('id,kickoff,competition,equipe,opp_logo,delegue_id,delegue_nom,club_side,home_name,away_name,half,period,running,started_at,acc,status,tab,live_par,live_at').order('kickoff', {ascending:false}).limit(1000),
       sb.from('events').select('match_id,t').eq('k','goal')
     ]);
-    if (error) { if (!cache) throw error; return; }
+    if (error) { if (!cache && ici()) throw error; return; }
     lsSet('asm-home', {matches, goals:g||[]});
     // responsables et admins : demandes « responsable score » à valider (la base ne montre que celles de leurs équipes)
     if (isStaff()){
       const { data: d } = await sb.from('demandes_score').select('id,match_id,nom').eq('statut', 'attente').neq('user_id', myId()).order('created_at');
       demAtt = d || [];
     } else demAtt = [];
-    drawHome(matches, g||[]);
+    if (ici()) drawHome(matches, g||[]);
   };
   await load();
+  if (!ici()) return;
   prefetch();
   const reload = debounce(load, 400);
   const off = liveChannel('home', reload, [{event:'*', table:'matches'}, {event:'*', table:'events'}]);
@@ -1440,7 +1466,7 @@ function prefetch(){
 const matchCache = {
   get: id => lsGet('asm-m-' + id, null),
   set: (id, r) => {
-    lsSet('asm-m-' + id, r);
+    lsSet('asm-m-' + id, { ...r, _at: Date.now() });   // _at : heure de la lecture (la console n'en reprend qu'une récente)
     const ids = lsGet('asm-m-ids', []).filter(x => x !== id); ids.unshift(id);
     ids.slice(30).forEach(x => { try{ localStorage.removeItem('asm-m-' + x); }catch(e){} });
     lsSet('asm-m-ids', ids.slice(0, 30));
@@ -1610,12 +1636,15 @@ async function matchView(id){
   };
   draw();
   loadDem();
+  // réseau lent : plusieurs relectures peuvent se croiser ; une réponse plus ancienne que celle déjà affichée
+  // est ignorée (sinon le score reculait un instant). La première lecture (fresh) porte le numéro 0.
+  let lu = 0, luAffiche = 0;
   if (cached) fresh.then(r => {
-    if (!here()) return;
+    if (!here() || luAffiche) return;
     if (!r.m){ view.innerHTML = '<div class="empty">Ce match n\'existe plus.</div>'; return; }
     m = r.m; evs = r.evs; draw();
   }).catch(() => { const l = m._partiel && here() && view.querySelector('.loading'); if (l) l.textContent = 'Pas de réseau pour l’instant : les détails s’afficheront dès qu’il revient.'; });
-  const reload = debounce(async () => { try{ const r = await fetchMatch(id); if (r.m){ matchCache.set(id, r); if (!here()) return; m = r.m; evs = r.evs; draw(); loadDem(); } }catch(e){} }, 300);
+  const reload = debounce(async () => { const n = ++lu; try{ const r = await fetchMatch(id); if (r.m && n > luAffiche){ luAffiche = n; matchCache.set(id, r); if (!here()) return; m = r.m; evs = r.evs; draw(); loadDem(); } }catch(e){} }, 300);
   const off = liveChannel('match', reload, [
     {event:'*', table:'matches', filter:`id=eq.${id}`},
     {event:'*', table:'events', filter:`match_id=eq.${id}`},
@@ -1641,7 +1670,9 @@ async function shareLink(m){
 // ---------- Nouveau match ----------
 async function newMatchView(){
   if (!canCreate()){ location.hash = session ? '#/compte' : '#/connexion'; return; }
+  const tok = route.cur;
   await loadDelegues().catch(()=>{});
+  if (route.cur !== tok) return;
   const TEAMS_OK = TEAMS.filter(n => isTeamManager(n));
   const d = new Date(); d.setMinutes(Math.ceil(d.getMinutes()/15)*15, 0, 0);
   const local = new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,16);
@@ -1684,17 +1715,27 @@ async function newMatchView(){
 
 // ---------- Console du délégué ----------
 async function consoleView(id, openCompo){
+  const tok = route.cur;
   if (isAdmin()) await loadPeople().catch(()=>{});
+  if (route.cur !== tok) return;
   if (!isMember()){ location.hash = session ? '#/compte' : '#/connexion'; return; }
   view.innerHTML = '<div class="loading">Chargement…</div>';
   const CK = 'asm-console-' + id;
   let S = null;
   const cached = lsGet(CK, null);
+  // réseau faible au stade : si on a déjà le match (console ouverte avant, ou page du direct qu'on vient de voir),
+  // on n'attend pas plus de 6 s la base : la console s'ouvre avec cette copie puis se resynchronise seule
+  const vu = matchCache.get(id);
+  const secours = cached || (vu && vu.m && !vu.m._partiel && Date.now() - (vu._at || 0) < 120000 ? { ...vu.m, events: vu.evs } : null);
+  let depuisCopie = false;
   if (cached && pendingFor(id)) S = cached;
   else {
-    try{ const r = await fetchMatch(id); if (r.m) S = {...r.m, events: r.evs}; }
-    catch(e){ if (cached) S = cached; else throw e; }
+    try{
+      const r = await (secours ? Promise.race([fetchMatch(id), new Promise((_, non) => setTimeout(() => non(new Error('timeout')), 6000))]) : fetchMatch(id));
+      if (r.m) S = {...r.m, events: r.evs};
+    }catch(e){ if (secours){ S = secours; depuisCopie = true; } else throw e; }
   }
+  if (route.cur !== tok) return;   // page quittée pendant le chargement
   if (!S){ view.innerHTML = '<div class="empty">Ce match n\'existe plus.</div>'; return; }
   if (!canManage(S)){
     view.innerHTML = `<div class="card"><h1>Tu ne gères pas ce match</h1><p class="sub">Ce match des ${esc(teamLabel(S.equipe))} peut être saisi par le responsable de l’équipe${S.delegue_nom ? `, par ${esc(S.delegue_nom)} (responsable score)` : ''} ou par un admin.</p><a class="fbtn" href="#/match/${esc(id)}" style="width:100%">Voir le direct</a></div>`;
@@ -2370,6 +2411,9 @@ async function consoleView(id, openCompo){
     const t0 = Date.now();
     let r; try{ r = await fetchMatch(id); }catch(e){ return; }
     if (!r.m || !location.hash.startsWith('#/gerer/' + id)) return;
+    // réponse partie avant notre dernier envoi (réseau lent) : elle ne connaît pas encore le but qu'on vient
+    // d'envoyer, et l'afficher le ferait disparaître un instant. On relit plutôt tout de suite.
+    if (t0 <= (matchEcritAt[id] || 0)){ syncRemote(); return; }
     const ops = outbox.filter(o => o.match === id);
     const enAttente = new Set(ops.filter(o => o.kind === 'ev').map(o => o.row.id));
     const supprimes = new Set(ops.filter(o => o.kind === 'evdel').map(o => o.id));
@@ -2386,6 +2430,8 @@ async function consoleView(id, openCompo){
     {event:'DELETE', table:'events'}
   ]);
   const pollRt = fallbackPoll(offRt, syncRemote);
+  // ouverte avec la copie du téléphone : on relit la base dès que possible
+  if (depuisCopie){ syncRemote(); toast('Réseau lent : dernière copie affichée, mise à jour dès que possible'); }
   const visRt = () => { if (document.visibilityState === 'visible') syncRemote(); };
   document.addEventListener('visibilitychange', visRt);
   // bandeau : quelqu'un d'autre a aussi la page « Gérer » de ce match ouverte
@@ -3160,7 +3206,9 @@ async function monJoueurBloc(){
 async function adminView(){
   if (!isAdmin()){ location.hash = '#/compte'; return; }
   if (!view.querySelector('.acc')) view.innerHTML = '<div class="loading">Chargement…</div>';
+  const tok = route.cur;
   let { data, error } = await sb.from('profiles').select('*').order('created_at');
+  if (route.cur !== tok) return;
   if (error) throw error;
   const deleted = data.filter(p => p.role === 'supprime' && !p.efface).sort((a, b) => String(b.deleted_at||'').localeCompare(String(a.deleted_at||'')));
   const supprimes = deleted.length;
