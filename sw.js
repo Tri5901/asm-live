@@ -1,6 +1,6 @@
 // Service worker AS Mésanger – Feuille de match
 // Incrémente VERSION à chaque mise en ligne pour que les téléphones récupèrent la nouvelle version.
-const VERSION = 'asm-v183';
+const VERSION = 'asm-v184';
 const APP_SHELL = [
   './',
   './index.html',

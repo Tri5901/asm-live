@@ -1866,9 +1866,10 @@ async function consoleView(id, openCompo){
       if (S.period===0){ f.period = 1; f.status = 'direct'; }
       // adversaire sans compo : numéros 1 à 14 (12 à 14 remplaçants) pour aider à la saisie
       const adv = oppSide(S);
-      if (coupEnvoi && !rosterOf(S, adv).length)
+      if (coupEnvoi && !rosterOf(S, adv).length){
         f.rosters = { ...(S.rosters || {}), [adv]: Array.from({length: 14}, (_, k) => ({ n: String(k + 1), name: '', sub: k >= 11 })) };
         f.compo_source = 'numéros automatiques au coup d’envoi';
+      }
       // plus de 11 titulaires au coup d'envoi : les plus grands numéros passent remplaçants
       if (coupEnvoi){
         const ro = { ...(f.rosters || S.rosters || {}) }, bancs = [];
@@ -2189,6 +2190,7 @@ async function consoleView(id, openCompo){
           <span class="lutools"><button type="button" class="photo" id="luPhoto">📷 Photo</button><button type="button" class="photo" id="luPaste">${paste ? 'Fermer' : 'Coller'}</button></span></div>
         <input type="file" accept="image/*" id="luFile" hidden>
         <div class="ocrstat" id="luStat"></div>
+        ${cur !== clubSide(S) ? '<p class="note" style="margin:0 0 8px">Noms facultatifs pour l’adversaire : les numéros suffisent.</p>' : ''}
         ${nbProp ? `<div class="luprop"><span>💡 ${nbProp} numéro${nbProp > 1 ? 's' : ''} proposé${nbProp > 1 ? 's' : ''} d’après les matchs précédents (en gris).</span><button type="button" class="photo" id="luProp">Utiliser</button></div>` : ''}
         ${paste ? `<textarea id="luText" placeholder="10 DUPONT Lucas&#10;7 MARTIN Hugo&#10;14 BERNARD Léo R"></textarea>
           <button type="button" class="fbtn" id="luParse" style="width:100%;margin:6px 0 10px">Ajouter ces joueurs</button>` : ''}
@@ -2271,8 +2273,9 @@ async function consoleView(id, openCompo){
         const seen = {};
         ed[t].forEach((p, i) => {
           p.name = (p.name || '').trim();
-          // le numéro peut rester vide (compo préparée avant le match), pas le nom
-          if (!p.name){ errs.add(t + i); msg = msg || `${teamName(S,t)} : il manque un nom.`; }
+          // le numéro peut rester vide (compo préparée avant le match), pas le nom ; chez l'adversaire le numéro seul suffit
+          // (numéros 1 à 14 mis au coup d'envoi : on peut corriger notre compo pendant le match sans remplir la sienne)
+          if (!p.name && (t === clubSide(S) || !p.n)){ errs.add(t + i); msg = msg || `${teamName(S,t)} : il manque un nom.`; }
           else if (!p.n) return;
           else if (seen[p.n] !== undefined){ errs.add(t + i); errs.add(t + seen[p.n]); msg = msg || `${teamName(S,t)} : le n°${p.n} est utilisé deux fois.`; }
           else seen[p.n] = i;
