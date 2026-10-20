@@ -1397,7 +1397,15 @@ async function hdmSaisonRemplir(box, filtre){
   const equipesDe = nm => { const q = Object.entries(Q[nm] || {}).sort((a, b) => teamRank(+a[0]) - teamRank(+b[0]));
     return q.map(([e, n]) => teamLabel(+e) + (q.length > 1 && n > 1 ? ' ×' + n : '')).join(' · '); };
   const ligne = ([nm, k]) => `<li><span>${esc(nm)}<small class="hdmeq">${esc(equipesDe(nm))}</small>${E[nm] ? `<small class="hdmeg">dont ${E[nm]} à égalité</small>` : ''}</span><b>${k}</b></li>`;
-  box.innerHTML = tous.length ? `<section class="hdm"><h3>🏆 ${hdmTitre([...new Set(L.map(x => x.equipe))], 1)}</h3><ol class="hdmtop">${tous.slice(0, 5).map(ligne).join('')}</ol>
+  // derniers élus (dernier week-end de matchs), une ligne par équipe : dans le classement de la saison, l'élu d'une équipe
+  // pouvait se retrouver caché dans « Voir les autres » (ex. la C du 18/10, 6e derrière les élus des matchs plus tardifs)
+  const dern = L.reduce((m, x) => String(x.kickoff) > m ? String(x.kickoff) : m, '');
+  const parEq = {};
+  L.filter(x => new Date(dern) - new Date(x.kickoff) < 3 * 864e5).forEach(x => { (parEq[x.equipe] = parEq[x.equipe] || []).push(x.joueur); });
+  const weHTML = dern ? `<div class="sec">Derniers élus · ${esc(new Date(dern).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'Europe/Paris' }))}</div>
+    <ul class="hdmtop hdmwe">${Object.entries(parEq).sort((a, b) => teamRank(+a[0]) - teamRank(+b[0]))
+      .map(([e, js]) => `<li><span>${esc(teamLabel(+e))}</span><b>${js.map(esc).join(' · ')}</b></li>`).join('')}</ul><div class="sec">Sur la saison</div>` : '';
+  box.innerHTML = tous.length ? `<section class="hdm"><h3>🏆 ${hdmTitre([...new Set(L.map(x => x.equipe))], 1)}</h3>${weHTML}<ol class="hdmtop">${tous.slice(0, 5).map(ligne).join('')}</ol>
     ${tous.length > 5 ? `<details class="hdmplus"><summary>Voir les ${tous.length - 5} autres</summary><ol class="hdmtop" start="6">${tous.slice(5).map(ligne).join('')}</ol></details>` : ''}</section>` : '';
 }
 
