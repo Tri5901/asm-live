@@ -56,6 +56,10 @@ function niveauDe(t) {
   return c.split(/\s+/).slice(0, 3).join(' ') || null;
 }
 const titre = s => String(s || '').toLowerCase().replace(/(^|[\s'-])(\p{L})/gu, (m, a, b) => a + b.toUpperCase());
+// nom d'un nouvel adversaire : « STE LUCE S/LOIRE US 3 » → « Ste Luce S/Loire US 3 » (sigles de clubs en capitales)
+const SIGLES = /^(Us|As|Fc|Sc|Af|Es|Ja|Ac|Cs|So|Vf|Sa|Rc|Gf|Js|Ufce|Usc|Asc|Scna|Rcasg|Aepr|Gj|Ea|Ss|Ol|Om)$/;
+const joliNom = s => titre(String(s || '').replace(/\s+/g, ' ').trim()).replace(/\/(\p{L})/gu, (m, c) => '/' + c.toUpperCase())
+  .split(' ').map(w => SIGLES.test(w) ? w.toUpperCase() : w).join(' ');
 
 async function pages() {
   const r = await fetch(URL_ + '/rest/v1/equipes?select=id,nom,fff_classement&actif=eq.true&fff_classement=not.is.null&order=cat_ordre,ordre', { headers: H });
@@ -124,7 +128,7 @@ async function ecarts(file, fichNiv, fichLieux) {
       if (!site) {
         if (fff.getTime() < maintenant || !cAdv) continue;               // déjà passé, ou adversaire inconnu : rien à ajouter
         const num = (String(nAdv).match(/\s(\d+)$/) || [])[1];
-        const adv = nomClub[cAdv] ? nomClub[cAdv] + (num ? ' ' + num : '') : titre(nAdv);
+        const adv = nomClub[cAdv] ? nomClub[cAdv] + (num ? ' ' + num : '') : joliNom(nAdv);
         const n = coupe ? nivAdv() : null;
         if (coupe && !n && uAdv) out.push({ type: 'chercher', url: 'https://epreuves.fff.fr' + uAdv });
         out.push({ type: 'ajout', eq, comp: appComp, kickoff: fff.toISOString(), club_side: domNous ? 'H' : 'A',
