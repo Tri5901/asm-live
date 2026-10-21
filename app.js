@@ -663,6 +663,21 @@ function lieuHTML(m){
   const ville = m.adresse.split(', ').pop().replace(/^\d{5}\s*/, '');
   return `<button class="lieu" id="btnLieu">📍 ${esc(m.lieu || 'Lieu du match')}${ville ? ' · ' + esc(ville) : ''}</button>${surfaceHTML(m)}`;
 }
+// arbitres désignés par la FFF (noms relevés par la tâche des horaires, publics comme sur le site de la FFF)
+function arbitresHTML(m){
+  const a = m.arbitres || {}, ass = [a.a1, a.a2].filter(Boolean);
+  if (!a.centre && !ass.length) return '';
+  return `<div class="arbitres"><b>🧑‍⚖️ Arbitres officiels (FFF)</b>Centre : ${esc(a.centre || '?')}${ass.length ? ` · Assistant${ass.length > 1 ? 's' : ''} : ${ass.map(esc).join(', ')}` : ''}</div>`;
+}
+// bénévoles du club qui ont accepté un poste sur ce match (visibles de tous, même sans compte)
+const POSTE_ARB = { central: 'Arbitre central', touche: 'Arbitre de touche', delegue: 'Délégué' };
+async function arbitresClubRemplir(m, box){
+  if (!box) return '';
+  const { data, error } = await sb.rpc('arbitres_club', { p_match: m.id });
+  if (error || !Array.isArray(data) || !data.length || !box.isConnected) return '';
+  box.innerHTML = `<div class="arbitres club"><b>🙋 Arbitres bénévoles du club</b>${data.map(x => `${POSTE_ARB[x.poste] || esc(x.poste)} : ${esc(x.nom)}`).join(' · ')}</div>`;
+  return box.innerHTML;
+}
 // type de terrain relevé sur la FFF (domicile et extérieur)
 function surfaceHTML(m){
   if (!m.surface) return '';
@@ -1571,12 +1586,13 @@ async function matchView(id){
       loadDem();
     });
   };
-  let advCache = '', hdmCache = '', meteoCache = '', finTimer = null, liveAuto = /\/live$/.test(location.hash);
+  let advCache = '', hdmCache = '', meteoCache = '', arbCache = '', arbLu = false, finTimer = null, liveAuto = /\/live$/.test(location.hash);
   const draw = () => {
     // match terminé : l'homme du match prend la place du responsable score, qui passe tout en bas
     const fini = m.status === 'termine';
     const delegHTML = isStaff() || m.delegue_nom ? `<div class="field deleg"><span>Responsable score</span>${delegPickHTML('delSel', m.delegue_id, m.delegue_nom, !isTeamManager(m.equipe))}${canManage(m) && !isTeamManager(m.equipe) ? '<small>Seul le responsable de l’équipe (ou un admin) peut changer le responsable score.</small>' : isStaff() && !canManage(m) ? '<small>Seuls le responsable de l’équipe, le responsable score ou un admin peuvent modifier ce match.</small>' : ''}</div>` : '';
-    view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false) + niveauHTML(m) + lieuHTML(m)
+    view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false) + niveauHTML(m) + lieuHTML(m) + arbitresHTML(m)
+      + `<div id="arbClub">${arbCache}</div>`
       + (meteoUtile(m) ? `<div id="meteoBox">${meteoCache}</div>` : '')
       + `<div class="mactions"><button class="pill" id="btnBell">🔔 Buts des ${esc(teamLabel(m.equipe))}</button><button class="pill" id="btnShareLive">↗ Partager</button>${m.status==='termine' && !m._partiel ? '<button class="pill" id="btnResume">📸 Résumé</button>' : ''}</div>`
       + liveCarteHTML(m)
@@ -1594,6 +1610,7 @@ async function matchView(id){
       + (isStaff() || canManage(m) ? '<details class="histobox" id="histoBox"><summary>🕓 Historique des modifications</summary><div id="histoList"></div></details>' : ''));
     $('btnShareLive').onclick = () => shareLink(m);
     if ($('btnResume')) $('btnResume').onclick = () => partagerResume(m, evs).catch(() => toast('Image impossible à créer'));
+    if ($('arbClub') && !arbLu){ arbLu = true; arbitresClubRemplir(m, $('arbClub')).then(h => { if (h) arbCache = h; }).catch(() => {}); }
     if ($('advBox')) adversaireRemplir(m, $('advBox')).then(() => { if ($('advBox')) advCache = $('advBox').innerHTML; }).catch(() => {});
     if ($('hdmBox') && !m._partiel) hdmRemplir(m, evs, $('hdmBox')).then(() => { if ($('hdmBox')) hdmCache = $('hdmBox').innerHTML; }).catch(() => {});
     if ($('rempBtn')) $('rempBtn').onclick = () => { const v = !lsGet('asm-voir-remp', false); lsSet('asm-voir-remp', v); view.querySelector('.lineups')?.classList.toggle('remp', v); $('rempBtn').textContent = v ? 'Masquer les remplacements' : 'Afficher les remplacements'; };

@@ -1,8 +1,9 @@
 // Officiels désignés par la FFF (section « OFFICIELS » de la page du match) → désignation dans l'appli.
 //   node scripts/officiels-fff.js liste            → matchs seniors à venir des 10 prochains jours, avec leur page FFF
 //                                                    (« id adresse-FFF (match) [désignation actuelle] »)
-//   node scripts/officiels-fff.js envoyer <json>   → enregistre : [{"match_id":"...","officiels":"central"}, ...]
+//   node scripts/officiels-fff.js envoyer <json>   → enregistre : [{"match_id":"...","officiels":"trio","centre":"VALENTIN X","a1":"…","a2":"…"}, ...]
 // Règle : arbitre centre seul → "central" ; arbitre centre + 2 assistants → "trio". Pas de section OFFICIELS → ne rien envoyer.
+// Les noms (centre, a1, a2, tels que sur la FFF) s'affichent sur la page du match (« Prénom Nom »), comme sur le site de la FFF.
 // La base retire les postes du club devenus inutiles (et prévient les personnes concernées via le minuteur).
 // Clé lue dans C:\Users\Utilisateur\.asm-live\classements.key (jamais affichée).
 const fs = require('fs');
@@ -27,8 +28,12 @@ async function envoyer(file) {
   const data = JSON.parse(fs.readFileSync(file, 'utf8'));
   if (!Array.isArray(data) || !data.length) return console.log('RIEN liste vide');
   if (data.some(x => !['central', 'trio'].includes(x.officiels))) throw new Error('officiels doit valoir "central" ou "trio"');
+  // « VALENTIN DE LA TOUR » → « Valentin De La Tour »
+  const nom = s => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase().replace(/(^|[\s'-])(\p{L})/gu, (m, a, b) => a + b.toUpperCase()) || null;
+  const p_data = data.map(x => ({ match_id: x.match_id, officiels: x.officiels,
+    ...(x.centre || x.a1 || x.a2 ? { arbitres: { centre: nom(x.centre), a1: nom(x.a1), a2: nom(x.a2) } } : {}) }));
   const secret = fs.readFileSync(path.join(os.homedir(), '.asm-live', 'classements.key'), 'utf8').trim();
-  const r = await fetch(URL_ + '/rest/v1/rpc/officiels_fff', { method: 'POST', headers: H, body: JSON.stringify({ p_secret: secret, p_data: data }) });
+  const r = await fetch(URL_ + '/rest/v1/rpc/officiels_fff', { method: 'POST', headers: H, body: JSON.stringify({ p_secret: secret, p_data }) });
   const t = await r.text();
   if (!r.ok) throw new Error('refus : ' + t);
   console.log(`ENREGISTRE ${t} match(s) modifié(s) sur ${data.length}`);
