@@ -78,6 +78,10 @@ module.exports = async (req, res) => {
   if (!tete) { detail.push('feuille illisible'); continue; }
   const dateRow = rows.find(r => /^Date/i.test(r[0] || '')) || [];
   const rdvRow = rows.find(r => /^RDV/i.test(r[0] || '')) || [];
+  // arbitrage (bas de la convocation) : « OFFICIEL », « ADVERSAIRE » ou le nom d'un bénévole du club
+  const ligne = re => rows.find(r => re.test(r[0] || '')) || [];
+  const arbRow = ligne(/^Arbitre\s*:?$/i), toucheRow = ligne(/^Arbitre de touche/i), policeRow = ligne(/^Police/i);
+  const poste = v => { v = String(v || '').trim(); return !v ? null : /^officiel/i.test(v) ? 'officiel' : /^advers/i.test(v) ? 'adversaire' : prenomNom(v); };
   const cols = tete.map((c, i) => [i, (c.match(/^Equipe\s+(\S+)/i) || [])[1]]).filter(x => x[1]);
   for (const [c, lettre] of cols) {
     const eq = F.equipe(equipes, lettre), court = eq ? eq.court : lettre;
@@ -91,7 +95,12 @@ module.exports = async (req, res) => {
     if (!m) { detail.push(court + ' : pas de match à venir le ' + date + ' (convocation ancienne ou autre date)'); continue; }
     const joueurs = rows.filter(r => /^\d+$/.test(r[c] || '') && (r[c + 1] || '').length > 1).map(r => nomConnu(r[c + 1]));
     const rdv = rdvISO(date, rdvRow[c]);
-    if (joueurs.length || rdv) { data.push({ match_id: m.id, joueurs, rdv }); detail.push(court + ' : ' + joueurs.length + ' joueurs' + (rdv ? ', RDV ' + rdvRow[c] : '')); }
+    const arbitrage = { arbitre: poste(arbRow[c + 1]), touche: poste(toucheRow[c + 1]), police: poste(policeRow[c + 1]) };
+    const aArb = Object.values(arbitrage).some(Boolean);
+    if (joueurs.length || rdv || aArb) {
+      data.push({ match_id: m.id, joueurs, rdv, ...(aArb ? { arbitrage } : {}) });
+      detail.push(court + ' : ' + joueurs.length + ' joueurs' + (rdv ? ', RDV ' + rdvRow[c] : '') + (aArb ? ', arbitrage' : ''));
+    }
   }
   }
   if (!data.length) return res.json({ compos: 0, detail });
