@@ -569,6 +569,55 @@ async function homeView(){
 const homeF = lsGet('asm-filtre', null) || { cat: '', team: lsGet('asm-team', 0) || 0 };
 if (homeF.team && !homeF.cat) homeF.cat = catOf(homeF.team);
 let showAllNext = false, demAtt = [];
+// ---------- Partenaires du club (logos et liste de la page Partenaires du site asmfootball.fr) ----------
+const PARTENAIRES = [
+  ['2B Peinture', '2b-peinture'], ['À la bon’heur', 'a-la-bonne-heure'], ['Abalone', 'abalone'], ['Agri Ouest', 'agri-ouest'],
+  ['Apro Steel', 'apro-steel'], ['Atoubois', 'atoubois'], ['Attila', 'attila'], ['Blanchisserie Val Ancenis', 'blanchisserie-val-d-ancenis'],
+  ['Blin Patrice Peinture', 'blin-patrice'], ['Blot Menuiseries', 'blot-menuiserie'], ['Boulangerie Ange', 'boulangerie-ange'],
+  ['Boulangerie Lebrun', 'boulangerie-lebrun'], ['Chope’n Co', 'chope-n-co'], ['Concept Propreté', 'concept-proprete'], ['Cotes et Murs', 'cotes-et-murs'],
+  ['Créa’Cime', 'crea-cim'], ['Crédit Agricole', 'credit-agricole'], ['CT Ancenis', 'ct-ancenis'], ['Decathlon', 'decathlon'], ['EIRL Robin'],
+  ['Florian Grasland Agencement', 'florian-grasland-amenagement'], ['GC Élec Info · GC Son & Lumière', 'gc-elec-son-et-lumiere'], ['Groupama', 'groupama'],
+  ['Groupe Landais', 'groupe-landais'], ['Imprimerie Planchenault', 'imprimerie-planchenault'], ['Intersport', 'intersport'],
+  ['Jalaber Diffusion', 'jalaber-distribution'], ['L’Ange Vin', 'l-angevin'], ['Laurent Mercier Traiteur'], ['Le 7 de Table', 'le-7-de-table'],
+  ['Loire Carrelage', 'loire-carrelage'], ['Loire TP', 'loire-tp'], ['Mésang’Optic', 'mesang-optic'], ['Noovimo', 'noovimo'],
+  ['ODC Plomberie', 'odc-plomberie'], ['Ouest Énergies Concept', 'ouest-energies-concept'], ['Permis d’Apprendre', 'permis-d-apprendre'],
+  ['Rabouin Traiteur', 'rabouin'], ['SARL Barbet Pascal', 'pascal-barbet'], ['SAS Renaud', 'sarl-renaud'], ['Scael', 'scael'], ['Singer', 'singer'],
+  ['SL Environnement', 'sl-environnement'], ['Sodem Manutention', 'sodem'], ['Tendance & Reflets', 'tendance-et-reflets'],
+  ['U Express Mésanger', 'u-express'], ['VM Matériaux', 'vm-materiaux']
+];
+const SITE_PARTENAIRES = 'https://asmfootball.fr/partenaires';
+// emplacement discret en bas de page : 4 partenaires à la fois, qui changent toutes les 4 s (Tristan, 24/10).
+// Ordre mélangé chaque jour, même ordre toute la journée ; les partenaires affichés suivent l'horloge,
+// la page peut se redessiner (direct) sans repartir des premiers.
+const PART_TOUR = 4000, PART_NB = 4;
+const partOrdre = (() => { let cle = '', l = [];
+  return () => {
+    const j = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+    if (j !== cle){ let g = +j.replace(/-/g, ''); const alea = () => (g = (g * 1103515245 + 12345) % 2147483648) / 2147483648;
+      l = PARTENAIRES.map(p => [alea(), p]).sort((a, b) => a[0] - b[0]).map(x => x[1]); cle = j; }
+    return l;
+  }; })();
+const partsDuMoment = (decal = 0) => { const l = partOrdre(), t = Math.floor(Date.now() / PART_TOUR) + decal;
+  return Array.from({ length: PART_NB }, (_, k) => l[(t * PART_NB + k) % l.length]); };
+const partTuile = p => p[1] ? `<img src="partenaires/${p[1]}.webp" alt="${esc(p[0])}" decoding="async">` : `<span class="ptxt">${esc(p[0])}</span>`;
+function partPiedHTML(){
+  return `<a class="pfoot" href="${SITE_PARTENAIRES}" target="_blank" rel="noopener" aria-label="Nos partenaires (site du club)"><small>Avec le soutien de</small>
+    <span class="pftuiles">${partsDuMoment().map(p => `<span class="pftuile" data-p="${esc(p[0])}">${partTuile(p)}</span>`).join('')}</span></a>`;
+}
+// relais : toutes les 4 s, fondu en cascade vers les 4 suivants (leurs logos sont chargés à l'avance)
+setInterval(() => {
+  const blocs = document.querySelectorAll('.pfoot .pftuiles');
+  if (!blocs.length || document.hidden) return;
+  const ps = partsDuMoment();
+  partsDuMoment(1).forEach(p => { if (p[1]) new Image().src = 'partenaires/' + p[1] + '.webp'; });
+  blocs.forEach(b => b.querySelectorAll('.pftuile').forEach((el, k) => {
+    const p = ps[k];
+    if (!p || el.dataset.p === p[0]) return;
+    el.dataset.p = p[0];
+    setTimeout(() => { el.classList.add('fondu'); setTimeout(() => { el.innerHTML = partTuile(p); el.classList.remove('fondu'); }, 300); }, k * 150);
+  }));
+}, 1000);
+
 function drawHome(matches, goalRows){
   // matchs d'une équipe désactivée (ex. match de test) : visibles seulement des admins
   if (!isAdmin()) matches = matches.filter(m => EQUIPES.some(e => e.id === m.equipe));
@@ -633,6 +682,7 @@ function drawHome(matches, goalRows){
     + (next.length > NEXT_MAX && !showAllNext ? `<button class="fbtn" id="moreNext" style="width:100%">Voir les ${next.length} matchs à venir</button>` : '');
   if (done.length) html += `<div class="sec">Résultats</div>` + byDay(done);
   if (!matches.length) html += `<div class="empty" style="margin-top:12px">Aucun match ${homeF.team ? 'des ' + esc(teamLabel(homeF.team)) + ' ' : homeF.cat ? 'en ' + esc(homeF.cat) + ' ' : ''}pour l'instant.${isStaff() ? '' : ' Reviens le jour du match pour le suivre en direct.'}</div>`;
+  html += partPiedHTML();
   view.innerHTML = html;
   bindTeamFilter(view, homeF, true, () => { lsSet('asm-filtre', homeF); showAllNext = false; drawHome(all, goalRows); });
   view.querySelectorAll('.gerer, .mdeleg').forEach(g => {
@@ -1642,7 +1692,8 @@ async function matchView(id){
       + `<section class="log"><div class="loghead"><h2>Chronologie</h2></div><div id="events">${timelineHTML(m, evs, false)}</div></section>`
       + (m.status!=='prevu' ? lineupsHTML(m, evs) : '')
       + (fini ? delegHTML : '')
-      + (isStaff() || canManage(m) ? '<details class="histobox" id="histoBox"><summary>🕓 Historique des modifications</summary><div id="histoList"></div></details>' : ''));
+      + (isStaff() || canManage(m) ? '<details class="histobox" id="histoBox"><summary>🕓 Historique des modifications</summary><div id="histoList"></div></details>' : '')
+      + partPiedHTML());
     $('btnShareLive').onclick = () => shareLink(m);
     if ($('btnResume')) $('btnResume').onclick = () => partagerResume(m, evs).catch(() => toast('Image impossible à créer'));
     if (!arbLu){ arbLu = true; arbitresClub(m).then(d => { arbAcc = d; if (d.length && $('arbBox')) $('arbBox').innerHTML = arbitresHTML(m, arbAcc); }).catch(() => {}); }

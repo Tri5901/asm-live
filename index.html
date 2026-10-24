@@ -864,6 +864,15 @@ td.eqc{white-space:nowrap;text-align:center} td.eqc b{display:inline-block;min-w
 .meteo .meteoic{font-size:24px;line-height:1}
 .meteo b{display:block;font-size:14px}
 .meteo small{display:block;color:var(--muted);font-size:12.5px}
+/* Partenaires : 4 logos à la fois, discrets, en bas de page ; tuile blanche (logos prévus pour fond clair) */
+.pfoot{display:flex;flex-direction:column;align-items:center;gap:6px;margin:28px auto 8px;max-width:400px;text-decoration:none;color:var(--muted)}
+.pftuiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;width:100%}
+.pfoot small{font-size:11px;letter-spacing:.06em;text-transform:uppercase;opacity:.75}
+.pftuile{display:flex;align-items:center;justify-content:center;min-width:0;height:48px;background:#fff;border:1px solid #e6e2d6;border-radius:10px;overflow:hidden;transition:opacity .3s}
+.pftuile.fondu{opacity:0}
+.pftuile img{max-width:84%;max-height:78%;object-fit:contain}
+.pftuile .ptxt{padding:0 4px;font-size:10.5px;font-weight:700;color:#3a3a3a;text-align:center;line-height:1.2}
+@media (prefers-reduced-motion:reduce){.pftuile{transition:none}}
 </style>
 </head>
 <body>
