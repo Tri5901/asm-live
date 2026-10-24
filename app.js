@@ -601,6 +601,7 @@ const partsDuMoment = (decal = 0) => { const l = partOrdre(), t = Math.floor(Dat
   return Array.from({ length: PART_NB }, (_, k) => l[(t * PART_NB + k) % l.length]); };
 const partTuile = p => p[1] ? `<img src="partenaires/${p[1]}.webp" alt="${esc(p[0])}" decoding="async">` : `<span class="ptxt">${esc(p[0])}</span>`;
 function partPiedHTML(){
+  if (!isAdmin()) return '';   // pour l'instant visible des admins seulement (Tristan, 24/10)
   return `<a class="pfoot" href="${SITE_PARTENAIRES}" target="_blank" rel="noopener" aria-label="Nos partenaires (site du club)"><small>Avec le soutien de</small>
     <span class="pftuiles">${partsDuMoment().map(p => `<span class="pftuile" data-p="${esc(p[0])}">${partTuile(p)}</span>`).join('')}</span></a>`;
 }
