@@ -650,8 +650,9 @@ async function fetchMatch(id){
   ]);
   if (error || e2) throw (error || e2);
   if (m && m.compo_cachee && session){
-    const { data: p } = await sb.from('compos_privees').select('rosters').eq('match_id', id).maybeSingle();
-    if (p) m.rosters = p.rosters;
+    // compo cachée : la vue terrain (place de départ, changements de poste) est rangée avec elle
+    const { data: p } = await sb.from('compos_privees').select('rosters,terrain').eq('match_id', id).maybeSingle();
+    if (p){ m.rosters = p.rosters; if (p.terrain) m.terrain = { ...p.terrain, on: terrainActif(m) }; }
   }
   return { m, evs: evs || [] };
 }
@@ -838,7 +839,7 @@ function lineupsHTML(m, evs = []){
     ? `<button type="button" class="vistog${m.compo_cachee ? ' off' : ''}" id="compoVis" aria-pressed="${!m.compo_cachee}"><i></i>${m.compo_cachee ? 'Cachée au public' : 'Visible par tous'}</button>`
     : m.compo_cachee ? '<span class="vistog off static"><i></i>Cachée au public</span>' : '';
   return `<section class="log"><div class="loghead"><h2>Compositions</h2>${canManage(m) ? `<a class="link" href="#/gerer/${esc(m.id)}/compo">${has ? 'Modifier' : '📋 Saisir la compo'}</a>` : ''}</div>`
-    + (vis ? `<div class="visrow">${vis}<small>${m.compo_cachee ? 'Seuls les responsables d’équipe, les admins et le responsable score du match la voient.' : 'Tout le monde peut la voir sur la page du match.'}</small></div>` : '')
+    + (vis ? `<div class="visrow">${vis}<small>${m.compo_cachee ? 'Seuls les responsables d’équipe, les admins et le responsable score du match la voient.' + (m.status === 'prevu' ? ' Elle sera visible par tous au coup d’envoi.' : '') : 'Tout le monde peut la voir sur la page du match.'}</small></div>` : '')
     + (has && m.status !== 'prevu' && evs.some(e => e.k === 'sub') ? `<button type="button" class="link rempbtn" id="rempBtn">${lsGet('asm-voir-remp', false) ? 'Masquer les remplacements' : 'Afficher les remplacements'}</button>` : '')
     + (has ? `<div class="lineups${lsGet('asm-voir-remp', false) ? ' remp' : ''}">${side('H')}${side('A')}</div>` : '<div class="empty">Compo pas encore saisie.</div>')
     + '</section>';
@@ -862,6 +863,15 @@ const TERRAIN_DISPOS = {
 const nbTerrain = m => teamOf(m.equipe).joueurs || 11;
 const disposDe = m => Object.keys(TERRAIN_DISPOS).filter(f => TERRAIN_DISPOS[f].length === nbTerrain(m));
 const terrainActif = m => !!(m.terrain && m.terrain.on);
+// bouton « Vue terrain » : elle ne peut pas être activée tant que la compo est cachée au public ; déjà activée,
+// elle reste cachée avec la compo et s'affiche pour tous au coup d'envoi, en même temps qu'elle (Tristan, 24/10)
+function terrainTogHTML(m, id, txtOn){
+  const on = terrainActif(m), bloque = !!m.compo_cachee && !on;
+  const txt = bloque ? 'Compo cachée au public : la vue terrain ne peut pas être activée tant qu’elle est cachée.'
+    : on && m.compo_cachee ? `Cachée au public avec la compo${m.status === 'prevu' ? ', affichée pour tous au coup d’envoi' : ''}. Touche deux joueurs pour noter un changement de poste.`
+    : on ? txtOn : 'Affiche nos joueurs sur le terrain et sur le banc, minute par minute.';
+  return `<button type="button" class="vistog${on ? '' : ' off'}" id="${id}" aria-pressed="${on}"${bloque ? ' disabled' : ''}><i></i>Vue terrain</button><small>${txt}</small>`;
+}
 const terrainVue = new Map();   // par match : { T (null = dernière minute connue), sel }
 // place de départ : chaque poste reçoit le titulaire qui porte son numéro « habituel », les autres complètent
 function terrainDepart(f, tit){
@@ -1622,7 +1632,7 @@ async function matchView(id){
       + `<div class="mactions"><button class="pill" id="btnBell">🔔 ${exceptionnelle(m.equipe) ? 'Notifications des buts' : 'Buts des ' + esc(teamLabel(m.equipe))}</button><button class="pill" id="btnShareLive">↗ Partager</button>${m.status==='termine' && !m._partiel ? '<button class="pill" id="btnResume">📸 Résumé</button>' : ''}</div>`
       + liveCarteHTML(m)
       + (finPossible(m) && session ? '<div class="demcard fincard"><b>⏱️ Le chrono dépasse la ' + (2 * (m.half || 45) + 6) + 'e minute</b><small>Le match est sûrement fini. Tu peux arrêter le chrono : ton nom sera noté dans la chronologie.</small><button type="button" class="fbtn primary" id="finStop" style="width:100%;margin-top:8px">🏁 Arrêter le chrono</button></div>' : '')
-      + (!m._partiel && canManage(m) && (rosterOf(m, clubSide(m)).length || terrainActif(m)) ? `<div class="visrow terrow"><button type="button" class="vistog${terrainActif(m) ? '' : ' off'}" id="terrainTog" aria-pressed="${terrainActif(m)}"><i></i>Vue terrain</button><small>${terrainActif(m) ? 'Visible par tous. Touche deux joueurs pour noter un changement de poste.' : 'Affiche nos joueurs sur le terrain et sur le banc, minute par minute.'}</small></div>` : '')
+      + (!m._partiel && canManage(m) && (rosterOf(m, clubSide(m)).length || terrainActif(m)) ? `<div class="visrow terrow">${terrainTogHTML(m, 'terrainTog', 'Visible par tous. Touche deux joueurs pour noter un changement de poste.')}</div>` : '')
       + (terrainActif(m) && !m._partiel ? '<div id="terrainBox"></div>' : '')
       + demHTML()
       + (canManage(m) ? `<a class="fbtn primary big" href="#/gerer/${esc(m.id)}">Gérer ce match</a>` : '')
@@ -1659,6 +1669,7 @@ async function matchView(id){
     }
     if ($('terrainTog')) $('terrainTog').onclick = async () => {
       const on = !terrainActif(m), cfg = terrainCfg(m);
+      if (on && m.compo_cachee) return;   // compo cachée au public : pas d'activation
       $('terrainTog').disabled = true;
       const t = { ...(m.terrain || {}), on, f: cfg.f, df: cfg.f, d: cfg.d, p: cfg.p };
       const { data: upd, error } = await sb.from('matches').update({ terrain: t }).eq('id', m.id).select('id');
@@ -1918,8 +1929,8 @@ async function consoleView(id, openCompo){
     const save = t => { S.terrain = t; matchEcritAt[id] = Date.now(); saveLocal(); queue({kind:'match', match:id, fields:{terrain:t}}); };
     const has = rosterOf(S, clubSide(S)).length;
     if (!has){ box.innerHTML = ''; return; }
-    box.innerHTML = `<div class="visrow" style="margin-top:12px"><button type="button" class="vistog${terrainActif(S) ? '' : ' off'}" id="terrainTogCo" aria-pressed="${terrainActif(S)}"><i></i>Vue terrain</button><small>${terrainActif(S) ? 'Visible sur la page du match. Touche deux joueurs pour noter un changement de poste.' : 'Affiche nos joueurs sur le terrain et sur le banc, minute par minute.'}</small></div><div id="terrainBoxCo"></div>`;
-    $('terrainTogCo').onclick = () => { const cfg = terrainCfg(S); save({ ...(S.terrain || {}), on: !terrainActif(S), f: cfg.f, df: cfg.f, d: cfg.d, p: cfg.p }); toast(terrainActif(S) ? 'Vue terrain activée' : 'Vue terrain désactivée'); terrainCo(); };
+    box.innerHTML = `<div class="visrow" style="margin-top:12px">${terrainTogHTML(S, 'terrainTogCo', 'Visible sur la page du match. Touche deux joueurs pour noter un changement de poste.')}</div><div id="terrainBoxCo"></div>`;
+    $('terrainTogCo').onclick = () => { if (!terrainActif(S) && S.compo_cachee) return; const cfg = terrainCfg(S); save({ ...(S.terrain || {}), on: !terrainActif(S), f: cfg.f, df: cfg.f, d: cfg.d, p: cfg.p }); toast(terrainActif(S) ? 'Vue terrain activée' : 'Vue terrain désactivée'); terrainCo(); };
     if (terrainActif(S)) terrainMonter(S, S.events, $('terrainBoxCo'), save);
   }
   function renderSync(){
@@ -1970,6 +1981,8 @@ async function consoleView(id, openCompo){
       if (S.running){ f.acc = (+S.acc) + Date.now() - (+S.started_at); f.running = false; }
       else { f.started_at = Date.now(); f.running = true; }
       patch(f); renderClock();
+      // la base rend publique la compo cachée au coup d'envoi (et la vue terrain avec) : idem ici, sans l'envoyer
+      if (coupEnvoi && S.compo_cachee){ S.compo_cachee = false; saveLocal(); terrainCo(); }
       if (coupEnvoi) annulerCoupEnvoi();
     };
     $('btnPeriod').onclick = () => {
