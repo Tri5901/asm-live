@@ -523,6 +523,8 @@ document.addEventListener('visibilitychange', () => {
 });
 function debounce(fn, ms){ let t; return () => { clearTimeout(t); t = setTimeout(fn, ms); }; }
 
+// Octobre rose : petit ruban rose épinglé sur chaque match pendant le mois d'octobre (comme le logo rose du club)
+const RUBAN_ROSE = '<span class="mrose" role="img" aria-label="Octobre rose" title="Octobre rose : mois de sensibilisation au dépistage du cancer du sein"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a4 4 0 0 0-4 4c0 1.6.9 3.3 2.1 5.1L5 20.2l3 1.3 4-7 4 7 3-1.3-5.1-9.1C15.1 9.3 16 7.6 16 6a4 4 0 0 0-4-4Zm0 2a2 2 0 0 1 2 2c0 1-.6 2.4-2 4.4C10.6 8.4 10 7 10 6a2 2 0 0 1 2-2Z"/></svg></span>';
 // ---------- Accueil : liste des matchs ----------
 async function homeView(){
   // réseau lent : si on a ouvert une autre page pendant le chargement, la liste ne doit pas revenir l'écraser
@@ -580,7 +582,7 @@ function drawHome(matches, goalRows){
     const side = t => `<div class="mside${c===t?' club':''}">${logoOf(m,t) ? logoImg(m,t,'mlg') : '<span class="mlg ph"></span>'}<span>${esc(teamName(m,t))}</span></div>`;
     const rf = m.status === 'termine' ? ' f' + ({ V: 'w', D: 'l', N: 'n' })[resultOf(m, evs)] : '';
     return `<a class="mcard${m.status==='direct' ? ' live ' + rd[0] : ''}${rf}${me ? ' mine' : ''}" href="#/match/${esc(m.id)}">
-      <div class="mtop"><span class="tchip" title="${esc(teamLabel(m.equipe))}">${teamLetter(m.equipe)}</span><span class="mcomp">${CATS.length > 1 ? esc(catOf(m.equipe)) + (m.competition ? " · " : "") : ""}${esc(m.competition || (CATS.length > 1 ? "" : teamLabel(m.equipe)))}</span>${canManage(m) && !me ? `<span class="gerer" role="link" tabindex="0" data-href="#/gerer/${esc(m.id)}" aria-label="Gérer ce match">✎ Gérer</span>` : ''}${badge}</div>
+      <div class="mtop"><span class="tchip" title="${esc(teamLabel(m.equipe))}">${teamLetter(m.equipe)}</span><span class="mcomp">${CATS.length > 1 ? esc(catOf(m.equipe)) + (m.competition ? " · " : "") : ""}${esc(m.competition || (CATS.length > 1 ? "" : teamLabel(m.equipe)))}</span>${new Date().getMonth() === 9 ? RUBAN_ROSE : ''}${canManage(m) && !me ? `<span class="gerer" role="link" tabindex="0" data-href="#/gerer/${esc(m.id)}" aria-label="Gérer ce match">✎ Gérer</span>` : ''}${badge}</div>
       <div class="mrow">${side('H')}<div class="mmid">${mid}</div>${side('A')}</div>
       ${m.status === 'termine' ? '' /* match fini : plus de responsable score sur l'accueil (il reste sur la page du match) */
         : me ? `<div class="mdeleg" role="link" tabindex="0" data-href="#/gerer/${esc(m.id)}"><span><b>Tu es responsable score de ce match</b><small>C’est toi qui saisis le score et les remplacements.</small></span><span class="mdgo">Gérer ›</span></div>`
