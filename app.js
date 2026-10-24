@@ -26,6 +26,10 @@ const catTeams = c => EQUIPES.filter(e => e.categorie === c).map(e => e.id);
 const exceptionnelle = n => !!teamOf(n).exceptionnelle;
 const catTeamsN = c => catTeams(c).filter(n => !exceptionnelle(n));
 const catsN = () => CATS.filter(c => catTeamsN(c).length);
+// classements : seulement les équipes suivies sur la FFF (pas les exceptionnelles, ni les Loisirs, qui jouent hors FFF)
+const avecClassement = n => !exceptionnelle(n) && teamOf(n).fff_classement !== null;
+const catTeamsC = c => catTeams(c).filter(avecClassement);
+const catsC = () => CATS.filter(c => catTeamsC(c).length);
 // nom court dans sa catégorie : « U18 A » → « A », « Seniors B » → « B », « Loisirs » → « Loisirs »
 const shortIn = n => { const t = teamOf(n); return t.nom.startsWith(t.categorie + ' ') ? t.nom.slice(t.categorie.length + 1) : t.nom === t.categorie ? t.nom : t.court; };
 // équipe féminine (catégorie « … F ») : « Femme du match », « Joueuse »
@@ -38,9 +42,9 @@ function teamsText(ids){
     return l.length === 1 ? teamLabel(l[0]) : c + ' ' + l.map(teamLetter).join(', '); }).filter(Boolean).join(' · ');
 }
 // Filtre catégorie + équipe (accueil, classements, stats) : f = { cat, team } ; all = propose « tout le club » / « toute la catégorie »
-// normales = sans les équipes exceptionnelles (stats, classements)
+// normales = sans les équipes exceptionnelles (stats) ; 'classement' = seulement celles qui ont un classement
 function teamFilterHTML(f, all = true, extra = () => '', normales = false){
-  const CC = normales ? catsN() : CATS, ct = normales ? catTeamsN : catTeams;
+  const CC = normales === 'classement' ? catsC() : normales ? catsN() : CATS, ct = normales === 'classement' ? catTeamsC : normales ? catTeamsN : catTeams;
   const cat = f.cat || (all ? '' : CC[0]);
   const cats = (all ? [['', 'Tout le club']] : []).concat(CC.map(c => [c, c]));
   const teams = cat ? ct(cat) : [];
@@ -48,7 +52,7 @@ function teamFilterHTML(f, all = true, extra = () => '', normales = false){
     ${teams.length > 1 || (!all && teams.length) ? `<div class="chipbar teambar" role="group" aria-label="Équipe">${(all ? [0] : []).concat(teams).map(n => `<button type="button" data-fteam="${n}" class="${(f.team||0)===n?'on':''}" aria-pressed="${(f.team||0)===n}">${n ? esc(shortIn(n)) + extra(n) : 'Toutes'}</button>`).join('')}</div>` : ''}</div>`;
 }
 function bindTeamFilter(root, f, all, onChange, normales = false){
-  root.querySelectorAll('[data-fcat]').forEach(b => b.onclick = () => { f.cat = b.dataset.fcat; f.team = all ? 0 : ((normales ? catTeamsN : catTeams)(f.cat)[0] || 0); onChange(); });
+  root.querySelectorAll('[data-fcat]').forEach(b => b.onclick = () => { f.cat = b.dataset.fcat; f.team = all ? 0 : ((normales === 'classement' ? catTeamsC : normales ? catTeamsN : catTeams)(f.cat)[0] || 0); onChange(); });
   root.querySelectorAll('[data-fteam]').forEach(b => b.onclick = () => { f.team = +b.dataset.fteam; if (f.team) f.cat = catOf(f.team); onChange(); });
 }
 const inFilter = (f, eq) => f.team ? (eq || 1) === f.team : f.cat ? catOf(eq) === f.cat : true;
@@ -2808,9 +2812,9 @@ async function classementsView(){
   let openClub = null;
   const rankOf = n => { const r = byTeam[n]; const l = r && r.lignes.find(x => x[10] === CLUB_FFF); return l ? l[0] : null; };
   const draw = () => {
-    if (!clsF.team || exceptionnelle(clsF.team)){ clsF.team = (homeF.team && !exceptionnelle(homeF.team) ? homeF.team : 0) || catTeamsN(homeF.cat && catsN().includes(homeF.cat) ? homeF.cat : catsN()[0])[0] || TEAMS[0]; clsF.cat = catOf(clsF.team); }
+    if (!clsF.team || !avecClassement(clsF.team)){ clsF.team = (homeF.team && avecClassement(homeF.team) ? homeF.team : 0) || catTeamsC(homeF.cat && catsC().includes(homeF.cat) ? homeF.cat : catsC()[0])[0] || TEAMS[0]; clsF.cat = catOf(clsF.team); }
     const cur = clsF.team, r = byTeam[cur];
-    const chips = teamFilterHTML(clsF, false, n => { const k = rankOf(n); return k ? ` · ${k}${k===1?'er':'e'}` : ''; }, true);
+    const chips = teamFilterHTML(clsF, false, n => { const k = rankOf(n); return k ? ` · ${k}${k===1?'er':'e'}` : ''; }, 'classement');
     if (!r){ view.innerHTML = chips + `<div class="empty">${teamOf(cur).fff_classement === null ? 'Pas de championnat suivi pour les ' + esc(teamLabel(cur)) + '.' : 'Classement pas encore disponible pour les ' + esc(teamLabel(cur)) + '.'}</div>` + majHTML(); bind(); return; }
     const d = new Date(r.updated_at).toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'});
     const hasRes = Array.isArray(r.resultats) && r.resultats.length > 0;
@@ -2858,7 +2862,7 @@ async function classementsView(){
       <button class="fbtn" id="majBtn" style="width:100%;margin-top:10px"${enAttente ? ' disabled' : ''}>${enAttente ? 'Mise à jour en attente…' : '↻ Mettre à jour les classements'}</button></div>`;
   };
   const bind = () => {
-    bindTeamFilter(view, clsF, false, draw, true);
+    bindTeamFilter(view, clsF, false, draw, 'classement');
     view.querySelectorAll('tr.tap').forEach(tr => {
       const go = () => { openClub = openClub === tr.dataset.club ? null : tr.dataset.club; draw(); };
       tr.onclick = go;
