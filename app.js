@@ -654,7 +654,8 @@ function niveaux(m){
   if (!m.opp_niveau || !/coupe|challenge|troph/i.test(m.competition || '')) return null;
   const home = lsGet('asm-home', null);
   const champ = ((home && home.matches || []).find(x => x.equipe === m.equipe && / · J\d+$/.test(x.competition)) || {}).competition;
-  const notre = champ ? champ.replace(/ · J\d+$/, '').replace(/ · .*$/, '') : '';
+  // sans match de championnat dans l'appli (équipe exceptionnelle, ex. U18 en Gambardella) : niveau indiqué sur l'équipe
+  const notre = champ ? champ.replace(/ · J\d+$/, '').replace(/ · .*$/, '') : (teamOf(m.equipe).niveau || '');
   const a = NIV_ORDRE(notre), b = NIV_ORDRE(m.opp_niveau);
   return { [clubSide(m)]: notre, [oppSide(m)]: m.opp_niveau, d: a != null && b != null ? a - b : null };
 }
