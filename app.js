@@ -2199,12 +2199,21 @@ async function consoleView(id, openCompo){
     let cur = order[0], paste = false, errs = new Set(), msg = '';
     const counts = t => { const tit = ed[t].filter(p=>!p.sub).length; return {tit, rem: ed[t].length - tit}; };
     const nextNum = t => { const used = new Set(ed[t].map(p=>+p.n).filter(Boolean)); let n = 1; while (used.has(n)) n++; return String(n); };
+    // n° 12 à 14 : remplaçant d'office (Tristan, 24/10) ; corrigé vers un autre numéro, il redevient titulaire,
+    // sauf s'il avait été mis remplaçant à la main
+    const autoRemp = p => {
+      if (['12', '13', '14'].includes(String(p.n))){ if (!p.sub){ p.sub = true; p.subAuto = true; } }
+      else if (p.subAuto){ p.sub = false; p.subAuto = false; }
+    };
     // sans numéro connu, la case reste vide (« n° à venir ») : la photo de la feuille la complétera
-    const addPlayer = (t, p) => ed[t].push({
-      n: !p.n ? '' : !ed[t].some(x => x.n === String(p.n)) ? String(p.n) : nextNum(t),
-      name: p.name || '',
-      sub: p.sub !== undefined ? p.sub : counts(t).tit >= 11
-    });
+    const addPlayer = (t, p) => {
+      const q = {
+        n: !p.n ? '' : !ed[t].some(x => x.n === String(p.n)) ? String(p.n) : nextNum(t),
+        name: p.name || '',
+        sub: p.sub !== undefined ? p.sub : counts(t).tit >= 11
+      };
+      autoRemp(q); ed[t].push(q);
+    };
     // Photo sur une compo déjà préparée : on reconnaît chaque joueur par son nom (même mal lu, ou « NOM Prénom »),
     // on complète son numéro et titulaire / remplaçant en gardant l'orthographe saisie ; les inconnus sont ajoutés
     const memeJoueur = (a, b) => {
@@ -2248,7 +2257,7 @@ async function consoleView(id, openCompo){
       deja.forEach((q, k) => { if (!vus.has(k) && pris.has(String(q.n))) q.n = ''; });
       lus.forEach((p, j) => {
         const i = lien[j];
-        if (i >= 0){ const q = deja[i]; if (q.n !== String(p.n)) num++; q.n = String(p.n); if (p.sub !== undefined) q.sub = p.sub; }
+        if (i >= 0){ const q = deja[i]; if (q.n !== String(p.n)) num++; q.n = String(p.n); if (p.sub !== undefined) q.sub = p.sub; autoRemp(q); }
         else { addPlayer(t, p); ajout++; }
       });
       const absents = deja.filter((q, k) => k < deja.length - ajout && !vus.has(k)).map(q => q.name);
@@ -2301,21 +2310,29 @@ async function consoleView(id, openCompo){
         ${msg ? `<div class="msg err" style="margin-top:10px">${esc(msg)}</div>` : ''}
         <div class="foot" style="margin-top:12px"><button class="fbtn primary" id="luSave">Enregistrer</button><button class="fbtn" id="luCancel">Annuler</button></div>`);
       const body = $('shBody');
-      if ($('luProp')) $('luProp').onclick = () => { Object.entries(props).forEach(([i, n]) => { if (!ed[cur][i].n) ed[cur][i].n = n; }); draw(); toast('Numéros ajoutés : vérifie-les avant d’enregistrer'); };
+      if ($('luProp')) $('luProp').onclick = () => { Object.entries(props).forEach(([i, n]) => { if (!ed[cur][i].n){ ed[cur][i].n = n; autoRemp(ed[cur][i]); } }); draw(); toast('Numéros ajoutés : vérifie-les avant d’enregistrer'); };
       body.querySelectorAll('.luteams button').forEach(b => b.onclick = () => { cur = b.dataset.t; paste = false; draw(); });
       body.querySelectorAll('.lrow').forEach(row => {
         const i = +row.dataset.i, p = ed[cur][i];
         const num = row.querySelector('.ln'), nm = row.querySelector('.lname');
-        num.oninput = () => { num.value = num.value.replace(/\D/g, ''); p.n = num.value ? String(+num.value) : ''; };
+        // titulaire / remplaçant mis à jour sur place, sans tout redessiner (la saisie garde le curseur)
+        const majLigne = () => {
+          autoRemp(p);
+          row.classList.toggle('sub', !!p.sub);
+          row.querySelector('.ltog').textContent = p.sub ? 'Remp.' : 'Titul.';
+          const c = counts(cur);
+          body.querySelector('.lubar > span').innerHTML = `<b>${plural(c.tit, 'titulaire')}</b> · ${plural(c.rem, 'remplaçant')}`;
+        };
+        num.oninput = () => { num.value = num.value.replace(/\D/g, ''); p.n = num.value ? String(+num.value) : ''; majLigne(); };
         nm.oninput = () => {
           p.name = nm.value;
           // nom choisi dans la liste : reprend son numéro habituel si la case est vide ou libre
           const known = (pastPlayers || []).find(x => x.name === nm.value);
-          if (known && !ed[cur].some((x, k) => k !== i && x.n === known.n)) { p.n = known.n; num.value = known.n; }
+          if (known && !ed[cur].some((x, k) => k !== i && x.n === known.n)) { p.n = known.n; num.value = known.n; majLigne(); }
         };
         nm.onchange = () => { if (cur === clubSide(S) && sosie(p.name, i)) draw(); }; // nom proche d'un joueur connu : propose-le
         nm.onkeydown = e => { if (e.key === 'Enter'){ e.preventDefault(); addPlayer(cur, {}); draw(true); } };
-        row.querySelector('.ltog').onclick = () => { p.sub = !p.sub; draw(); };
+        row.querySelector('.ltog').onclick = () => { p.sub = !p.sub; p.subAuto = false; draw(); };
         row.querySelector('.ldel').onclick = () => { ed[cur].splice(i, 1); errs.clear(); draw(); };
       });
       body.querySelectorAll('.lsosie').forEach(b => b.onclick = () => {
