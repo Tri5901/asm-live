@@ -88,9 +88,17 @@ async function envoyer(fich, fichNiv) {
     matchs.sort((a, b) => b[0].localeCompare(a[0]));
     futurs.sort((a, b) => a[0].localeCompare(b[0]));
     const prochain = futurs.find(f => new Date(f[0]) > Date.now() && new Date(f[0]) < new Date(m.kickoff)) || null;
+    // notre forme relevée sur la FFF (équipe dont l'appli n'a pas les matchs, ex. U18 en Gambardella) :
+    // d.nous = { code: "<n° de club FFF de notre équipe>", saison: [lignes de sa page Saison] } → 5 derniers résultats officiels
+    let forme_nous = null;
+    if (d.nous && Array.isArray(d.nous.saison)) {
+      forme_nous = d.nous.saison.filter(r => /^\d+$/.test(String(r[9]).trim()) && /^\d+$/.test(String(r[10]).trim()) && compSite(r[1], 'x') && quand(r[0]))
+        .map(r => { const dom = r[2] === d.nous.code, p = +(dom ? r[9] : r[10]), c = +(dom ? r[10] : r[9]); return [quand(r[0]).toISOString(), p > c ? 'V' : p < c ? 'D' : 'N']; })
+        .sort((a, b) => b[0].localeCompare(a[0])).slice(0, 5).map(x => x[1]);
+    }
     const adv_infos = { maj: auj, champ,
       cls: ligneCls ? [+ligneCls[0], +ligneCls[2], +ligneCls[3], +ligneCls[4], +ligneCls[5], +ligneCls[6], +ligneCls[7], +ligneCls[8], C.length] : null,
-      matchs: matchs.slice(0, 6), prochain };
+      matchs: matchs.slice(0, 6), prochain, ...(forme_nous && forme_nous.length ? { forme_nous } : {}) };
     const advNom = m.club_side === 'H' ? m.away_name : m.home_name;
     const bilan = matchs.map(x => x[5] > x[6] ? 'V' : x[5] < x[6] ? 'D' : 'N').slice(0, 5).join('');
     console.log(`FICHE ${advNom} (${m.competition}) : ${champ || '?'}${ligneCls ? ', ' + ligneCls[0] + 'e' : ''}, forme ${bilan || '-'}, ${matchs.length} match(s) officiel(s)`);

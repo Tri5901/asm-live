@@ -1129,7 +1129,7 @@ function coupeAdvHTML(m){
     ${c ? `<div><span>${esc(a.champ)}</span><b>${rg(c[0])}${c[8] ? ' sur ' + c[8] : ''} · ${c[1]} pt${c[1] > 1 ? 's' : ''} en ${c[2]} match${c[2] > 1 ? 's' : ''}</b></div>` : ''}
     ${L.length ? `<div><span>Bilan officiel</span><b>${tot.V} V · ${tot.N} N · ${tot.D} D · ${tot.bp} buts pour, ${tot.bc} contre</b></div>` : ''}
     ${forme.length ? `<div><span>Leur forme</span>${pastilles(forme)}</div>` : ''}
-    ${nos.length ? `<div><span>Forme ${esc(teamLabel(m.equipe))}</span>${pastilles(nos)}</div>` : ''}</div>
+    ${nos.length || (a.forme_nous || []).length ? `<div><span>Forme ${esc(teamLabel(m.equipe))}</span>${pastilles(nos.length ? nos : a.forme_nous)}</div>` : ''}</div>
     ${L.length ? `<div class="sec">Leurs derniers matchs</div><ul class="cderniers">${L.slice(0, 5).map(ligne).join('')}</ul>` : ''}
     ${p ? `<div class="cprochain">⏭️ Avant de nous jouer : <b>${esc(jour(p[0]))} ${esc(heure(p[0]))}</b>, ${p[2] ? 'contre' : 'à'} ${esc(p[3])}${p[5] ? ' (' + rg(p[5]) + ')' : ''} · ${esc(p[1])}</div>` : ''}
     <p class="note csrc">Relevé sur le site de la FFF le ${esc(new Date(a.maj + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }))}. Forme : le match le plus récent à gauche.</p></section>`;
