@@ -41,6 +41,7 @@ function compSite(comp, champ) {
   const t = c.match(/(\d+)\s*(?:er|ème|e)\s*tour|tour\s*(\d+)/i);
   const n = t && (t[1] || t[2]);
   if (/coupe de france/i.test(c)) return n && 'Coupe de France · ' + tour(n);
+  if (/gambardella/i.test(c)) return n && 'Coupe Gambardella · ' + tour(n);
   if (/pays de la loire/i.test(c)) return n && 'Coupe des Pays de la Loire · ' + tour(n);
   if (/challenge du district/i.test(c)) return n && 'Challenge du District · ' + tour(n);
   if (/coupe du district/i.test(c)) return n && 'Coupe du District · ' + tour(n);

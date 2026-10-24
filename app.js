@@ -20,6 +20,12 @@ const teamLabel = n => teamOf(n).nom;
 const clubTeamName = n => teamOf(n).nom_club;
 const catOf = n => teamOf(n).categorie;
 const catTeams = c => EQUIPES.filter(e => e.categorie === c).map(e => e.id);
+// équipe ajoutée pour un match exceptionnel (equipes.exceptionnelle, ex. les U18 en Coupe Gambardella) : visible dans la liste
+// des matchs, mais ni dans les stats, ni dans les classements, ni dans le choix des notifications (ses notifications vont à tous
+// ceux qui suivent au moins une équipe : la base l'ajoute d'elle-même à leurs abonnements)
+const exceptionnelle = n => !!teamOf(n).exceptionnelle;
+const catTeamsN = c => catTeams(c).filter(n => !exceptionnelle(n));
+const catsN = () => CATS.filter(c => catTeamsN(c).length);
 // nom court dans sa catégorie : « U18 A » → « A », « Seniors B » → « B », « Loisirs » → « Loisirs »
 const shortIn = n => { const t = teamOf(n); return t.nom.startsWith(t.categorie + ' ') ? t.nom.slice(t.categorie.length + 1) : t.nom === t.categorie ? t.nom : t.court; };
 // équipe féminine (catégorie « … F ») : « Femme du match », « Joueuse »
@@ -32,15 +38,17 @@ function teamsText(ids){
     return l.length === 1 ? teamLabel(l[0]) : c + ' ' + l.map(teamLetter).join(', '); }).filter(Boolean).join(' · ');
 }
 // Filtre catégorie + équipe (accueil, classements, stats) : f = { cat, team } ; all = propose « tout le club » / « toute la catégorie »
-function teamFilterHTML(f, all = true, extra = () => ''){
-  const cat = f.cat || (all ? '' : CATS[0]);
-  const cats = (all ? [['', 'Tout le club']] : []).concat(CATS.map(c => [c, c]));
-  const teams = cat ? catTeams(cat) : [];
+// normales = sans les équipes exceptionnelles (stats, classements)
+function teamFilterHTML(f, all = true, extra = () => '', normales = false){
+  const CC = normales ? catsN() : CATS, ct = normales ? catTeamsN : catTeams;
+  const cat = f.cat || (all ? '' : CC[0]);
+  const cats = (all ? [['', 'Tout le club']] : []).concat(CC.map(c => [c, c]));
+  const teams = cat ? ct(cat) : [];
   return `<div class="tfilter">${cats.length > 1 || !all ? `<div class="chipbar catbar" role="group" aria-label="Catégorie">${cats.map(([v, l]) => `<button type="button" data-fcat="${esc(v)}" class="${cat===v?'on':''}" aria-pressed="${cat===v}">${esc(l)}</button>`).join('')}</div>` : ''}
     ${teams.length > 1 || (!all && teams.length) ? `<div class="chipbar teambar" role="group" aria-label="Équipe">${(all ? [0] : []).concat(teams).map(n => `<button type="button" data-fteam="${n}" class="${(f.team||0)===n?'on':''}" aria-pressed="${(f.team||0)===n}">${n ? esc(shortIn(n)) + extra(n) : 'Toutes'}</button>`).join('')}</div>` : ''}</div>`;
 }
-function bindTeamFilter(root, f, all, onChange){
-  root.querySelectorAll('[data-fcat]').forEach(b => b.onclick = () => { f.cat = b.dataset.fcat; f.team = all ? 0 : (catTeams(f.cat)[0] || 0); onChange(); });
+function bindTeamFilter(root, f, all, onChange, normales = false){
+  root.querySelectorAll('[data-fcat]').forEach(b => b.onclick = () => { f.cat = b.dataset.fcat; f.team = all ? 0 : ((normales ? catTeamsN : catTeams)(f.cat)[0] || 0); onChange(); });
   root.querySelectorAll('[data-fteam]').forEach(b => b.onclick = () => { f.team = +b.dataset.fteam; if (f.team) f.cat = catOf(f.team); onChange(); });
 }
 const inFilter = (f, eq) => f.team ? (eq || 1) === f.team : f.cat ? catOf(eq) === f.cat : true;
@@ -237,7 +245,9 @@ async function chargerStats(){
     sb.from('events').select('match_id,t,k,n,in_n,out_n,min,sort')
   ]);
   if (error || e2) throw (error || e2);
-  const r = { ms, evs }; lsSet('asm-stats', r); return r;
+  // matchs des équipes exceptionnelles (U18 en Gambardella…) : hors stats
+  const garde = (ms || []).filter(m => !exceptionnelle(m.equipe)), ids = new Set(garde.map(m => m.id));
+  const r = { ms: garde, evs: (evs || []).filter(e => ids.has(e.match_id)) }; lsSet('asm-stats', r); return r;
 }
 // joueurs du club (noms écrits dans nos compos) avec leur nombre de matchs
 function joueursClub(ms){
@@ -1406,7 +1416,7 @@ async function hdmSaisonRemplir(box, filtre){
   if (!hdmSaisonCache || Date.now() - hdmSaisonAt > 5 * 60000){ const { data, error } = await sb.rpc('hdm_gagnants'); if (!error){ hdmSaisonCache = data || []; hdmSaisonAt = Date.now(); } }
   if (!box.isConnected || !hdmSaisonCache) return;
   // ex aequo : 1 titre pour chacun, en signalant ceux obtenus à égalité
-  const L = hdmSaisonCache.filter(filtre), parMatch = {};
+  const L = hdmSaisonCache.filter(x => !exceptionnelle(x.equipe) && filtre(x)), parMatch = {};
   L.forEach(x => { parMatch[x.match_id] = (parMatch[x.match_id] || 0) + 1; });
   const C = {}, E = {}, D = {}, Q = {};   // Q : équipes pour lesquelles le joueur a été élu (nombre de titres par équipe)
   L.forEach(x => { C[x.joueur] = (C[x.joueur] || 0) + 1; if (parMatch[x.match_id] > 1) E[x.joueur] = (E[x.joueur] || 0) + 1;
@@ -1600,7 +1610,7 @@ async function matchView(id){
     view.innerHTML = `<a class="back" href="#/">← Tous les matchs</a>` + boardHTML(m, evs, false) + niveauHTML(m) + lieuHTML(m)
       + `<div id="arbBox">${arbitresHTML(m, arbAcc)}</div>`
       + (meteoUtile(m) ? `<div id="meteoBox">${meteoCache}</div>` : '')
-      + `<div class="mactions"><button class="pill" id="btnBell">🔔 Buts des ${esc(teamLabel(m.equipe))}</button><button class="pill" id="btnShareLive">↗ Partager</button>${m.status==='termine' && !m._partiel ? '<button class="pill" id="btnResume">📸 Résumé</button>' : ''}</div>`
+      + `<div class="mactions"><button class="pill" id="btnBell">🔔 ${exceptionnelle(m.equipe) ? 'Notifications des buts' : 'Buts des ' + esc(teamLabel(m.equipe))}</button><button class="pill" id="btnShareLive">↗ Partager</button>${m.status==='termine' && !m._partiel ? '<button class="pill" id="btnResume">📸 Résumé</button>' : ''}</div>`
       + liveCarteHTML(m)
       + (finPossible(m) && session ? '<div class="demcard fincard"><b>⏱️ Le chrono dépasse la ' + (2 * (m.half || 45) + 6) + 'e minute</b><small>Le match est sûrement fini. Tu peux arrêter le chrono : ton nom sera noté dans la chronologie.</small><button type="button" class="fbtn primary" id="finStop" style="width:100%;margin-top:8px">🏁 Arrêter le chrono</button></div>' : '')
       + (!m._partiel && canManage(m) && (rosterOf(m, clubSide(m)).length || terrainActif(m)) ? `<div class="visrow terrow"><button type="button" class="vistog${terrainActif(m) ? '' : ' off'}" id="terrainTog" aria-pressed="${terrainActif(m)}"><i></i>Vue terrain</button><small>${terrainActif(m) ? 'Visible par tous. Touche deux joueurs pour noter un changement de poste.' : 'Affiche nos joueurs sur le terrain et sur le banc, minute par minute.'}</small></div>` : '')
@@ -2707,9 +2717,9 @@ async function classementsView(){
   let openClub = null;
   const rankOf = n => { const r = byTeam[n]; const l = r && r.lignes.find(x => x[10] === CLUB_FFF); return l ? l[0] : null; };
   const draw = () => {
-    if (!clsF.team){ clsF.team = homeF.team || catTeams(homeF.cat || CATS[0])[0] || TEAMS[0]; clsF.cat = catOf(clsF.team); }
+    if (!clsF.team || exceptionnelle(clsF.team)){ clsF.team = (homeF.team && !exceptionnelle(homeF.team) ? homeF.team : 0) || catTeamsN(homeF.cat && catsN().includes(homeF.cat) ? homeF.cat : catsN()[0])[0] || TEAMS[0]; clsF.cat = catOf(clsF.team); }
     const cur = clsF.team, r = byTeam[cur];
-    const chips = teamFilterHTML(clsF, false, n => { const k = rankOf(n); return k ? ` · ${k}${k===1?'er':'e'}` : ''; });
+    const chips = teamFilterHTML(clsF, false, n => { const k = rankOf(n); return k ? ` · ${k}${k===1?'er':'e'}` : ''; }, true);
     if (!r){ view.innerHTML = chips + `<div class="empty">${teamOf(cur).fff_classement === null ? 'Pas de championnat suivi pour les ' + esc(teamLabel(cur)) + '.' : 'Classement pas encore disponible pour les ' + esc(teamLabel(cur)) + '.'}</div>` + majHTML(); bind(); return; }
     const d = new Date(r.updated_at).toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'});
     const hasRes = Array.isArray(r.resultats) && r.resultats.length > 0;
@@ -2757,7 +2767,7 @@ async function classementsView(){
       <button class="fbtn" id="majBtn" style="width:100%;margin-top:10px"${enAttente ? ' disabled' : ''}>${enAttente ? 'Mise à jour en attente…' : '↻ Mettre à jour les classements'}</button></div>`;
   };
   const bind = () => {
-    bindTeamFilter(view, clsF, false, draw);
+    bindTeamFilter(view, clsF, false, draw, true);
     view.querySelectorAll('tr.tap').forEach(tr => {
       const go = () => { openClub = openClub === tr.dataset.club ? null : tr.dataset.club; draw(); };
       tr.onclick = go;
@@ -2863,7 +2873,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
     const modeBar = `<div class="seg statmode" role="group" aria-label="Affichage">${[['joueurs', 'Tous les joueurs'], ['buteurs', 'Buteurs par équipe']].map(([v, l]) => `<button type="button" data-mode="${v}" class="${statMode===v?'on':''}" aria-pressed="${statMode===v}">${l}</button>`).join('')}</div>`;
     view.innerHTML = modeBar + `
       <div class="seasons">${seasons.length > 1 ? `<label>Saison <select id="season">${seasons.map(s=>`<option${s===statSeason?' selected':''}>${s}</option>`).join('')}</select></label> ` : (statSeason ? `<b>Saison ${statSeason}</b> ` : '')}</div>
-      ${teamFilterHTML(statF, true)}
+      ${teamFilterHTML(statF, true, undefined, true)}
       <div class="chipbar compbar" role="group" aria-label="Compétition">${[['', 'Tout'], ['championnat', 'Championnat'], ['coupe', 'Coupes']].map(([v, l]) => `<button data-comp="${v}" class="${statComp===v?'on':''}" aria-pressed="${statComp===v}">${l}</button>`).join('')}</div>
       <div class="kpis">
         <div class="kpi"><b>${list.length}</b><span>Matchs</span></div>
@@ -2884,7 +2894,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
     });
     hdmSaisonRemplir($('hdmSaison'), x => seasonOf(x.kickoff) === statSeason && inFilter(statF, x.equipe)).catch(() => {});
     const s = $('season'); if (s) s.onchange = () => { statSeason = s.value; draw(); };
-    bindTeamFilter(view, statF, true, draw);
+    bindTeamFilter(view, statF, true, draw, true);
     view.querySelectorAll('[data-comp]').forEach(b => b.onclick = () => { statComp = b.dataset.comp; draw(); });
     view.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { statMode = b.dataset.mode; draw(); });
     view.querySelectorAll('[data-voir]').forEach(b => b.onclick = () => {
@@ -3428,13 +3438,14 @@ function openBell(preselect){
     $('bOk').onclick = closeSheet; return;
   }
   const cur = new Set(lsGet('asm-follow', []));
-  if (preselect && !cur.size) cur.add(preselect);
+  if (preselect && !exceptionnelle(preselect) && !cur.size) cur.add(preselect);
   const denied = Notification.permission === 'denied';
   openSheet(`<h3 id="shTitle">Notifications de buts</h3>
     <p>Reçois une notification à chaque but et chaque carton des équipes choisies, même appli fermée.</p>
     ${denied ? '<div class="msg err">Les notifications sont bloquées pour ce site. Autorise-les dans les réglages du téléphone (ou du navigateur), puis reviens ici.</div>' : ''}
     <div class="msg" id="bState">Vérification de ce téléphone…</div>
-    <div class="follow">${CATS.map(c => `<div class="fcat">${esc(c)}</div>` + catTeams(c).map(n => `<label class="fl"><input type="checkbox" value="${n}"${cur.has(n)?' checked':''}><span>${esc(teamLabel(n))}</span></label>`).join('')).join('')}</div>
+    <div class="follow">${catsN().map(c => `<div class="fcat">${esc(c)}</div>` + catTeamsN(c).map(n => `<label class="fl"><input type="checkbox" value="${n}"${cur.has(n)?' checked':''}><span>${esc(teamLabel(n))}</span></label>`).join('')).join('')}</div>
+    ${EQUIPES.some(e => e.exceptionnelle) ? `<p class="note" style="margin:6px 0 0">Matchs exceptionnels (${esc(teamsText(EQUIPES.filter(e => e.exceptionnelle).map(e => e.id)))}) : envoyés à tous ceux qui suivent au moins une équipe.</p>` : ''}
     ${isAdmin() ? `<label class="fl fladmin"><input type="checkbox" id="bAdmin"${lsGet('asm-follow-admin', false) ? ' checked' : ''}><span>👤 Nouveaux comptes à valider <small>(admins)</small></span></label>` : ''}
     <div class="foot" style="margin-top:12px"><button class="fbtn primary" id="bSave">Enregistrer</button><button class="fbtn" id="bNo">Annuler</button></div>
     ${popupGuideHTML()}
