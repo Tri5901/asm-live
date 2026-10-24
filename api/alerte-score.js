@@ -46,7 +46,7 @@ module.exports = async (req, res) => {
   let sent = 0;
   await Promise.all(targets.map(async s => {
     const payload = JSON.stringify({ title: s.titre, body: s.texte, url: s.url, tag: 'alerte-score-' + s.url });
-    try { await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 3600 }); sent++; }
+    try { await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 3600, urgency: 'high' }); sent++; }
     catch (e) { /* téléphone désabonné : ignoré */ }
   }));
   res.json({ sent, rattrapees });

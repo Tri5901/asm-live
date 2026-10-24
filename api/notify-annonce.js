@@ -27,7 +27,7 @@ module.exports = async (req, res) => {
   const payload = JSON.stringify({ title: b.titre.trim(), body: b.texte.trim(), url: '/#/match/' + b.match_id, tag: 'annonce-' + b.match_id });
   let sent = 0;
   await Promise.all(targets.map(async s => {
-    try { await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 3600 }); sent++; }
+    try { await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 3600, urgency: 'high' }); sent++; }
     catch (e) { /* téléphone désabonné : ignoré */ }
   }));
   res.json({ cibles: targets.length, sent });
