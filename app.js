@@ -365,6 +365,7 @@ async function loadProfile(){
   const { data: p, error } = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
   if (!error){ profile = p; lsSet('asm-profile', p); }
   renderAcct();
+  setTimeout(cguPrevenir, 1500);
 }
 function renderAcct(){
   presTrack();
@@ -3130,36 +3131,71 @@ async function statsViewFrom(playerArg, { ms, evs }){
 }
 
 // ---------- Conditions générales d'utilisation ----------
-const CGU_VERSION = '2026-10-11';
+const CGU_VERSION = '2026-10-24';
+// ce qui a changé depuis la version précédente (affiché une fois aux comptes existants)
+const CGU_CHANGEMENTS = [
+  'Les partenaires du club apparaissent en bas des pages (« Avec le soutien de »).',
+  'Les arbitres du match (officiels FFF et bénévoles du club) sont affichés sur la page du match.',
+  'Un nouveau compte reconnu dans les compositions devient « joueur » tout seul.',
+  'Nouvelles notifications : annonces d’un match (ex. « match dans 2 h ») et alertes.',
+  'Visuels de résultats préparés avec des photos de matchs du club.',
+  'Liste des services extérieurs contactés (météo, adresses, logos).'
+];
 function cguHTML(){
   return `<h2>Conditions générales d’utilisation</h2>
-  <p class="note">Version du 11 octobre 2026 (vidéo en direct)</p>
+  <p class="note">Version du 24 octobre 2026</p>
   <h3>1. L’appli</h3>
   <p>« AS Mésanger Live » (asm-live.vercel.app) est une appli indépendante pour suivre en direct les matchs des équipes de l’AS Mésanger : scores, buteurs, cartons, remplacements, compositions, classements et statistiques des joueurs. <b>Ce n’est pas l’appli officielle de l’AS Mésanger</b> : elle est réalisée et gérée bénévolement par des personnes proches du club, et elle n’engage pas le club. Elle est gratuite, sans garantie de disponibilité ni d’exactitude : les informations officielles restent celles de la FFF et du club.</p>
+  <p><b>Partenaires :</b> en bas de l’accueil et des pages de match, le bandeau « Avec le soutien de » présente les partenaires de l’AS Mésanger, repris de la page Partenaires du site du club. Ce sont les partenaires du club, pas de l’appli : ils n’ont accès à aucune donnée. Les logos sont hébergés avec l’appli, sans traceur ni publicité ciblée ; un appui ouvre la page Partenaires du site du club. Les logos restent la propriété de leurs entreprises.</p>
   <h3>2. Utilisation sans compte</h3>
-  <p>Tout le monde peut suivre les matchs, les classements et les stats sans compte. Les notifications (buts, cartons, début de match) sont facultatives : tu les actives et les désactives toi-même depuis la cloche 🔔. L’image « résumé du match » à partager est fabriquée sur ton téléphone.</p>
+  <p>Tout le monde peut suivre les matchs, les classements et les stats sans compte. Les notifications (buts, cartons, début de match, annonces ponctuelles d’un match comme « match dans 2 h », alertes) sont facultatives : tu les actives et les désactives toi-même depuis la cloche 🔔. L’image « résumé du match » à partager est fabriquée sur ton téléphone.</p>
   <h3>3. Compte</h3>
-  <p>Un compte sert à participer : saisir le score d’un match (responsable score), gérer les matchs d’une équipe, voter pour l’homme du match, voir ses propres stats, et pour les bénévoles du groupe arbitres, donner ses disponibilités. Tu crées ton compte avec ton prénom, ton nom et ton email, et tu choisis un mot de passe que tu gardes secret. Un nouveau compte est validé par un administrateur de l’appli, qui choisit son rôle (supporter, joueur, dirigeant, responsable d’équipe, admin). Les administrateurs de l’appli peuvent à tout moment modifier le rôle d’un compte ou le supprimer (par exemple en cas d’usage abusif, de compte en double ou inutilisé).</p>
+  <p>Un compte sert à participer : saisir le score d’un match (responsable score), gérer les matchs d’une équipe, voter pour l’homme ou la femme du match, voir ses propres stats, et pour les bénévoles du groupe arbitres, donner ses disponibilités. Tu crées ton compte avec ton prénom, ton nom et ton email, et tu choisis un mot de passe que tu gardes secret. Un nouveau compte est « supporter », ou directement « joueur » s’il correspond à un joueur des compositions (même prénom et nom, ou lien « C’est moi »). Un administrateur de l’appli confirme ensuite chaque nouveau compte et peut changer son rôle (supporter, joueur, dirigeant, responsable d’équipe, admin). Les administrateurs de l’appli peuvent à tout moment modifier le rôle d’un compte ou le supprimer (par exemple en cas d’usage abusif, de compte en double ou inutilisé).</p>
   <p><b>Responsable score :</b> tu peux demander à saisir un match ; un responsable de l’équipe ou un administrateur accepte ou refuse. À moins d’1 h du coup d’envoi (ou une fois le match commencé), s’il n’y a toujours personne, le premier qui le demande devient responsable score tout de suite, et les responsables et administrateurs en sont prévenus.</p>
-  <h3>4. Homme du match</h3>
-  <p>Après un match, chaque compte peut voter une fois pour l’homme du match, pendant 24 h, et peut changer son vote pendant ce temps. Le vote est secret : personne ne voit pour qui tu as voté. Pendant le vote, seuls les administrateurs voient le nombre de voix ; ensuite, tout le monde voit le ou les élus (ex aequo possibles), sans le nombre de voix, et les responsables et administrateurs voient aussi les autres joueurs qui ont reçu des voix. Le joueur élu peut être prévenu par une notification.</p>
+  <h3>4. Homme ou femme du match</h3>
+  <p>Après un match, chaque compte peut voter une fois pour l’homme ou la femme du match, pendant 24 h, et peut changer son vote pendant ce temps. Le vote est secret : personne ne voit pour qui tu as voté. Seuls les administrateurs voient le nombre de voix, pendant et après le vote. Une fois le vote clos, tout le monde voit le ou les élus (ex aequo possibles), sans le nombre de voix, dans la page du match et dans les stats (derniers élus du week-end, classement de la saison) ; les responsables et administrateurs voient aussi les autres joueurs qui ont reçu des voix. Le joueur élu peut être prévenu par une notification.</p>
   <h3>5. Délégués et arbitres</h3>
-  <p>Les responsables et les administrateurs ajoutent au « groupe arbitres » les bénévoles qui font délégué ou arbitre pour les matchs seniors, avec les postes qu’ils peuvent tenir et, si besoin, leur numéro de licence. Les membres du groupe indiquent leurs disponibilités et leurs préférences chaque semaine ; les responsables et administrateurs les voient pour organiser les désignations. Les membres reçoivent des notifications (désignation, relance pour les dispos, rappel la veille du match, poste devenu inutile). Les officiels désignés par la FFF sont relevés sur la page publique du match pour savoir de quels postes on a besoin ; leurs noms ne sont pas enregistrés.</p>
+  <p>Les responsables et les administrateurs ajoutent au « groupe arbitres » les bénévoles qui font délégué ou arbitre pour les matchs seniors, avec les postes qu’ils peuvent tenir et, si besoin, leur numéro de licence. Les membres du groupe indiquent leurs disponibilités et leurs préférences chaque semaine ; les responsables et administrateurs les voient pour organiser les désignations. Les membres reçoivent des notifications (désignation, relance pour les dispos, rappel la veille du match, poste devenu inutile). Les disponibilités et les préférences ne sont visibles que des responsables et des administrateurs.</p>
+  <p><b>Sur la page publique du match</b>, tout le monde voit l’arbitrage : les arbitres officiels désignés par la FFF (noms relevés sur les pages publiques de la FFF), l’arbitrage prévu par la convocation du club (arbitre officiel, fourni par l’adversaire ou nom du bénévole, arbitre de touche, police de terrain) et les bénévoles du club qui ont accepté un poste.</p>
   <h3>6. Vidéo en direct des tirs au but</h3>
   <p>Pendant une séance de tirs au but, un compte peut filmer en direct (image et son) depuis son téléphone ; tout le monde peut regarder, même sans compte. La vidéo n’est pas enregistrée : elle passe par le service LiveKit (serveurs en Europe) et disparaît à la fin du live. Celui qui filme s’engage à respecter les personnes filmées (demander leur accord pour les plans rapprochés, ne pas filmer de mineurs sans l’accord de leurs parents). Le responsable score, les responsables d’équipe et les administrateurs peuvent couper un live à tout moment.</p>
   <h3>7. Bon usage</h3>
   <p>Tu t’engages à saisir des informations exactes (scores, buteurs, cartons, compositions), à ne pas noter d’actions en double avec une autre personne, et à respecter les joueurs, les adversaires et les arbitres. Chaque modification d’un match est enregistrée avec son auteur et son heure (historique visible par les responsables et les administrateurs de l’appli).</p>
-  <h3>8. Données personnelles</h3>
+  <h3>8. Publications et photos</h3>
+  <p>Les administrateurs peuvent préparer dans l’appli les visuels de résultats publiés sur les réseaux du club, à partir des scores, des buteurs et de photos de matchs déjà publiées par le club (Facebook, site). Si tu ne veux pas apparaître sur une photo, demande son retrait à un administrateur : elle ne sera plus utilisée.</p>
+  <h3>9. Données personnelles</h3>
   <p><b>Ce qui est enregistré :</b> pour un compte, ton prénom, ton nom, ton email, ton rôle, les équipes que tu gères, le joueur auquel tu as lié ton compte, la date d’acceptation de ces conditions, les saisies que tu fais sur les matchs, tes demandes pour être responsable score et tes votes pour l’homme du match ; pour les membres du groupe arbitres, leurs postes, leur numéro de licence s’il est indiqué, leurs disponibilités et leurs désignations. Pour tous les visiteurs : l’abonnement aux notifications si tu l’actives (les administrateurs voient quels comptes les ont activées, sur combien d’appareils et pour quelles équipes), et, pendant que l’appli est ouverte, la page consultée et le fait d’être connecté ou non (pour compter les personnes en ligne).</p>
   <p><b>Mesure d’audience :</b> pour compter les visites, ton téléphone garde un identifiant tiré au hasard ; l’appli note, par jour, le nombre d’ouvertures et le type de pages consultées (accueil, match, classements…), et le compte s’il est connecté. Ni adresse IP, ni localisation, ni outil de publicité ou de suivi extérieur. Seuls les administrateurs voient ces statistiques.</p>
-  <p><b>Compositions et matchs :</b> les noms des joueurs apparaissent dans les compositions, la chronologie et les stats des matchs. Les compos de l’AS Mésanger peuvent être reprises automatiquement des convocations publiées par le club (avec l’heure de rendez-vous au stade) ; les compos et résultats des adversaires, les horaires et les classements viennent des pages publiques de la FFF.</p>
+  <p><b>Compositions et matchs :</b> les noms des joueurs apparaissent dans les compositions, la chronologie et les stats des matchs. Les compos de l’AS Mésanger peuvent être reprises automatiquement des convocations publiées par le club (avec l’heure de rendez-vous au stade) ; les compos et résultats des adversaires, les horaires, les classements et les noms des arbitres officiels viennent des pages publiques de la FFF.</p>
   <p><b>Photos de feuille de match :</b> la lecture d’une photo de compo se fait sur ton téléphone ; la photo n’est pas envoyée ni conservée.</p>
   <p><b>À quoi elles servent :</b> uniquement au fonctionnement de l’appli (suivi des matchs, stats, notifications, organisation des délégués et arbitres). Elles ne sont ni vendues, ni utilisées pour de la publicité.</p>
-  <p><b>Où elles sont :</b> chez les hébergeurs de l’appli (Supabase pour la base de données, Vercel pour le site et l’envoi des notifications).</p>
+  <p><b>Où elles sont :</b> chez les hébergeurs de l’appli (Supabase pour la base de données, Vercel pour le site et l’envoi des notifications, LiveKit pendant une vidéo en direct).</p>
+  <p><b>Services extérieurs :</b> pour afficher certaines informations, ton téléphone contacte directement Open-Meteo (météo du match), la Base adresse nationale (api-adresse.data.gouv.fr, position du stade pour la météo), jsDelivr (bibliothèques techniques de l’appli) et le serveur de logos de la FFF (logos des clubs). Comme pour tout site, ces services reçoivent l’adresse IP de ton appareil ; aucune donnée de ton compte ne leur est transmise.</p>
   <p><b>Combien de temps :</b> tant que ton compte existe. Si ton compte est supprimé (par toi ou par un administrateur), ton accès et ton email sont effacés et tu ne peux plus te connecter ; ton prénom et ton nom restent dans l’historique des matchs et actions que tu as saisis (et dans les compos où tu as joué).</p>
-  <p><b>Tes droits :</b> tu peux consulter, corriger ton nom (« Mon compte »), supprimer ton compte (« Mon compte » → « Supprimer mon compte »), demander à un responsable de te retirer du groupe arbitres, ou à un administrateur de l’appli de corriger ou retirer ton nom d’une composition ou de l’historique. Tu peux aussi saisir la CNIL (cnil.fr).</p>
-  <h3>9. Évolutions</h3>
-  <p>Ces conditions peuvent évoluer ; la date de version ci-dessus change alors.</p>`;
+  <p><b>Tes droits :</b> tu peux consulter, corriger ton nom (« Mon compte »), supprimer ton compte (« Mon compte » → « Supprimer mon compte »), demander à un responsable de te retirer du groupe arbitres, ou à un administrateur de l’appli de corriger ou retirer ton nom d’une composition ou de l’historique, ou de ne plus utiliser une photo où tu apparais. Tu peux aussi saisir la CNIL (cnil.fr).</p>
+  <h3>10. Évolutions</h3>
+  <p>Ces conditions peuvent évoluer ; la date de version ci-dessus change alors, et un message prévient les comptes à leur prochaine ouverture de l’appli.</p>`;
+}
+// Compte créé avec une version plus ancienne des conditions : on prévient une fois (« J’ai compris »),
+// et on le note dans le compte (métadonnées) pour ne plus le montrer, sur aucun appareil.
+// Jamais pendant la saisie d’un match (#/gerer) ni par-dessus une fenêtre déjà ouverte.
+let cguMontre = false;
+function cguPrevenir(){
+  if (cguMontre || !session || !profile) return;
+  const vu = session.user && session.user.user_metadata && session.user.user_metadata.cgu_vu;
+  if (profile.cgu_version === CGU_VERSION || vu === CGU_VERSION || lsGet('asm-cgu-vu', '') === CGU_VERSION) return;
+  if (/^#\/(gerer|connexion|cgu)/.test(location.hash) || document.body.classList.contains('open')) return;
+  cguMontre = true;
+  openSheet(`<div class="cgu"><h2>Les conditions d’utilisation ont changé</h2>
+    <p>Voici ce qui est nouveau depuis ta dernière visite :</p>
+    <ul style="margin:0 0 10px;padding-left:20px;font-size:14px;line-height:1.45">${CGU_CHANGEMENTS.map(t => `<li>${esc(t)}</li>`).join('')}</ul>
+    <p><button type="button" class="link" id="cguLire" style="padding:0">Lire les conditions complètes</button></p></div>
+    <button class="fbtn primary" id="cguVu" style="width:100%;margin-top:12px">J’ai compris</button>`, 'tall');
+  $('cguLire').onclick = () => { closeSheet(); location.hash = '#/cgu'; };
+  $('cguVu').onclick = async () => {
+    lsSet('asm-cgu-vu', CGU_VERSION); closeSheet();
+    try { await sb.auth.updateUser({ data: { cgu_vu: CGU_VERSION, cgu_vu_at: new Date().toISOString() } }); } catch (e) {}
+  };
 }
 function cguView(){
   view.innerHTML = `<a class="back" href="#/compte">← Retour</a><div class="card cgu">${cguHTML()}</div>`;
