@@ -556,8 +556,11 @@ table.cls tr.clsdet td{padding:0 0 10px;text-align:left}
 .advcard h3,.hdm h3,.saison h3{font-family:"Barlow Condensed",sans-serif;font-size:18px;font-weight:800;margin:0 0 8px;text-transform:uppercase;letter-spacing:.3px}
 .advcard,.hdm,.saison{margin:0 0 14px}
 .formeb{display:flex;gap:4px}
-.mcard .mtop .mrose{flex:none;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#fff;color:#D81B60;box-shadow:0 0 0 2px rgba(216,27,96,.35)}
-.mcard .mtop .mrose svg{width:15px;height:15px}
+/* Octobre rose : bandeau rose sur les matchs du jour choisi (même en direct) */
+.mcard.orose .mtop,.mcard.live.orose .mtop{background:linear-gradient(110deg,#880E4F 0%,#E91E63 100%);color:#fff}
+.mcard.orose .mtop .tchip{background:#fff;color:#880E4F}
+.mcard .mtop .mrose{flex:none;display:inline-flex;align-items:center;gap:4px;font:700 12px "Barlow Condensed",sans-serif;letter-spacing:.5px;text-transform:uppercase;color:#fff;white-space:nowrap}
+.mcard .mtop .mrose svg{width:14px;height:14px}
 .cderniers{list-style:none;margin:0 0 10px;padding:0;background:var(--surface);border:1px solid var(--line);border-radius:14px}
 .cderniers li{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line)}
 .cderniers li:last-child{border-bottom:0}
