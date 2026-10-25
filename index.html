@@ -400,6 +400,33 @@ table.cls tr.me td.rk,table.cls tr.me td.tm{color:var(--ink);font-weight:800}
 .rbadge.r-delegue{background:var(--club);color:#000}
 .rbadge.r-dirigeant{background:color-mix(in srgb,var(--club) 22%,transparent);color:var(--ink)}
 .rbadge.r-pending{background:color-mix(in srgb,var(--red) 18%,transparent);color:var(--red)}
+/* rôles cumulés (pastilles) et fiche d'une personne (admin) */
+.rbadges{display:flex;flex-wrap:wrap;gap:4px}
+.rbadges .rbadge{margin-top:4px}
+.arow.atap{cursor:pointer}
+@media (hover:hover){.arow.atap:hover{background:color-mix(in srgb,var(--club) 8%,transparent)}}
+.fiche .card{margin-bottom:12px}
+.fiche .fh{margin:0 0 8px;font-family:"Barlow Condensed",sans-serif;font-size:22px;font-weight:800}
+.fdl{margin:12px 0 0;display:grid;gap:8px}
+.fdl>div{display:grid;grid-template-columns:minmax(0,10em) minmax(0,1fr);gap:10px;font-size:14px}
+.fdl dt{color:var(--muted)}
+.fdl dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+.fdl dd small{color:var(--muted);font-weight:500}
+.fmatchs{margin-top:10px}
+.fmatchs summary{cursor:pointer;font-weight:600;font-size:14px}
+.fmatchs a{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:13.5px}
+.fmatchs a span,.fmatchs a small{color:var(--muted);white-space:nowrap}
+.fmatchs a b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rmulti{display:flex;flex-wrap:wrap;gap:6px}
+.rmulti button{padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--bg);font-weight:600;font-size:14px;min-height:40px}
+.rmulti button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.rmulti button:disabled{opacity:.6;cursor:not-allowed}
+.ecath{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
+.ecath>small{color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+.catall{padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:var(--bg);font-size:12.5px;font-weight:600}
+.catall.on{background:var(--club);border-color:var(--club);color:#000}
+.eqpick button:disabled{opacity:.75;cursor:default}
+@media (max-width:420px){.fdl>div{grid-template-columns:1fr;gap:0}}
 .amod{flex:none;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--bg);font-weight:600;font-size:14px;min-height:40px}
 .secwarn{color:var(--red)}
 .eqpick{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
