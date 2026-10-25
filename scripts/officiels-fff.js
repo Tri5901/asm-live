@@ -17,7 +17,9 @@ const H = { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'applic
 async function liste() {
   const d0 = new Date().toISOString(), d1 = new Date(Date.now() + 10 * 864e5).toISOString();
   const r = await fetch(URL_ + `/rest/v1/matches?select=id,kickoff,equipe,home_name,away_name,competition,fff_match,officiels&status=eq.prevu&equipe=in.(1,2,3,4,5)&kickoff=gte.${d0}&kickoff=lt.${d1}&order=kickoff`, { headers: H });
-  const ms = await r.json();
+  // catégories masquées sur le site : rien
+  const visibles = new Set((await (await fetch(URL_ + '/rest/v1/equipes?select=id&actif=eq.true', { headers: H })).json()).map(e => e.id));
+  const ms = (await r.json()).filter(m => visibles.has(m.equipe));
   if (!ms.length) return console.log('RIEN pas de match seniors dans les 10 prochains jours');
   ms.forEach(m => console.log(m.fff_match
     ? `${m.id} https://epreuves.fff.fr${m.fff_match}   (${m.home_name} – ${m.away_name}, ${m.competition}) [${m.officiels || 'par défaut'}]`

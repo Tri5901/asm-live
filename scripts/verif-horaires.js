@@ -21,7 +21,9 @@ const os = require('os');
 const URL_ = 'https://xzzttulqlydcespgkpnx.supabase.co';
 const KEY = 'sb_publishable_VwLyp5ROGzidc4oHWehoLg_kIehYAcE';
 const H = { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' };
-const CLUB = '516995';
+// codes club FFF : le club (seniors, féminines) et le groupement jeunes GJ Mésanger St Géréon
+const CLUBS = ['516995', '560414'];
+const estNous = c => CLUBS.includes(String(c));
 const LOGO = code => 'https://cdn-transverse.azureedge.net/phlogos/BC' + code + '.jpg';
 const MOIS = { JAN: 1, FEV: 2, 'FÉV': 2, MAR: 3, AVR: 4, MAI: 5, JUN: 6, JUIN: 6, JUI: 7, JUIL: 7, AOU: 8, 'AOÛ': 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12, 'DÉC': 12 };
 
@@ -93,7 +95,7 @@ async function ecarts(file, fichNiv, fichLieux) {
   const cls = await (await fetch(URL_ + '/rest/v1/classements?select=equipe,lignes', { headers: H })).json();
   const r = await fetch(URL_ + '/rest/v1/matches?select=id,equipe,competition,kickoff,status,club_side,home_name,away_name,opp_logo,opp_niveau,lieu,adresse,surface,fff_match', { headers: H });
   const tous = await r.json();
-  const champDe = eq => ((tous.find(x => x.equipe === eq && / · J\d+$/.test(x.competition)) || {}).competition || '').replace(/ · J\d+$/, '') || null;
+  const champDe = eq => ((tous.find(x => x.equipe === eq && / · J\d+$/.test(x.competition)) || {}).competition || '').replace(/ · J\d+$/, '').replace(/ · Phase \d+$/, '') || null;
   // nom des adversaires déjà connus sur le site, par code club FFF (sans le numéro d'équipe réserve)
   const nomClub = {};
   tous.forEach(m => { const c = (m.opp_logo || '').match(/BC(\d+)\./); if (c) nomClub[c[1]] ||= (m.club_side === 'H' ? m.away_name : m.home_name).replace(/\s+\d+$/, ''); });
@@ -104,17 +106,38 @@ async function ecarts(file, fichNiv, fichLieux) {
     const champ = (duSite.find(x => / · J\d+$/.test(x.competition)) || {}).competition?.replace(/ · J\d+$/, '');
     const nous = (duSite.find(x => x.club_side) || {});
     const nomNous = nous.club_side === 'H' ? nous.home_name : nous.away_name;
+    // jeunes : championnat en phases (« District 1 · Phase 1 · J3 »), les journées repartent à 1 à chaque phase.
+    // Un match est rangé dans la phase dont il tombe dans les dates (à une semaine près) ; après la dernière, c'est la suivante
+    // (niveau repris du libellé FFF : « Départemental 2 U15 … » → « District 2 · Phase 2 »).
+    const phases = {};
+    duSite.forEach(x => {
+      const p = x.competition.match(/^(.* · Phase (\d+)) · J\d+$/);
+      if (!p) return;
+      const t = new Date(x.kickoff).getTime(), ph = phases[p[1]] ||= { n: +p[2], min: t, max: t };
+      ph.min = Math.min(ph.min, t); ph.max = Math.max(ph.max, t);
+    });
+    const champDe2 = (t, comp) => {
+      const l = Object.entries(phases);
+      if (!l.length) return champ;
+      const dans = l.find(([, p]) => t >= p.min - 7 * 864e5 && t <= p.max + 7 * 864e5);
+      if (dans) return dans[0];
+      const [lab, der] = l.sort((a, b) => b[1].n - a[1].n)[0];
+      if (t < der.min) return null;                                       // avant la dernière phase connue : on n'y touche pas
+      const niv = niveauDe(comp);
+      return (/^(District|Régional|National) /.test(niv || '') ? niv : lab.replace(/ · Phase \d+$/, '')) + ' · Phase ' + (der.n + 1);
+    };
     for (const row of list) {
       let quand, comp, cDom, nDom, cExt, nExt, uDom, uExt, uMatch;
       if (row.length >= 6) [quand, comp, cDom, nDom, cExt, nExt, uDom, uExt, uMatch] = row;
       else { [quand, , comp] = row; [nDom, nExt] = String(row[1]).split(' - '); }
       if (/EXEMPT/i.test(nDom + ' ' + nExt)) continue;
-      const appComp = compSite(comp, champ);
       const m = String(quand).toUpperCase().match(/(\d{1,2})\s+([A-ZÉÛ]+)\.?\s+(\d{4})\s*-\s*(\d{1,2})H(\d{2})/);
-      if (!appComp || !m || !MOIS[m[2]]) continue;                     // compétition inconnue ou pas d'heure
+      if (!m || !MOIS[m[2]]) continue;                                     // pas d'heure
       const fff = parisToUTC(+m[3], MOIS[m[2]], +m[1], +m[4], +m[5]);
+      const appComp = compSite(comp, champDe2(fff.getTime(), comp));
+      if (!appComp) continue;                                              // compétition inconnue
       const site = duSite.find(x => x.competition === appComp);
-      const domNous = cDom ? cDom === CLUB : /MESANGER/i.test(nDom);
+      const domNous = cDom ? estNous(cDom) : /MESANGER/i.test(nDom);
       const cAdv = domNous ? cExt : cDom, nAdv = domNous ? nExt : nDom, uAdv = domNous ? uExt : uDom;
       // niveau de l'adversaire (coupes seulement)
       const coupe = !/ · J\d+$/.test(appComp);
@@ -203,7 +226,7 @@ async function comparer(file, corriger, fichNiv, fichLieux) {
 }
 
 // utilisé aussi par scripts/adversaires-coupe.js
-module.exports = { URL_, H, CLUB, MOIS, parisToUTC, compSite, niveauDe, titre };
+module.exports = { URL_, H, CLUBS, estNous, MOIS, parisToUTC, compSite, niveauDe, titre };
 if (require.main === module){
 const [cmd, arg, arg2, arg3] = process.argv.slice(2);
 (cmd === 'pages' ? pages() : cmd === 'comparer' ? comparer(arg, false, arg2, arg3) : cmd === 'corriger' ? comparer(arg, true, arg2, arg3) : Promise.reject(new Error('usage : pages | comparer <json> [niveaux|-] [lieux] | corriger <json> [niveaux|-] [lieux]')))

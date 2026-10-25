@@ -1269,7 +1269,7 @@ async function adversaireRemplir(m, box){
   const memes = r.lignes.filter(l => l[10] === code);
   const l = memes.find(x => numEquipe(x[1]) === numEquipe(advNom)) || (memes.length === 1 ? memes[0] : null);
   if (!l) return;
-  const nous = r.lignes.find(x => x[10] === CLUB_FFF);
+  const nous = r.lignes.find(x => estNous(x[10]));
   // forme : ses 5 derniers résultats dans la poule
   const forme = (r.resultats || []).filter(x => (x[2] === code && x[3] === l[1]) || (x[6] === code && x[7] === l[1]))
     .sort((a, b) => String(b[1]).localeCompare(String(a[1]))).slice(0, 5)
@@ -1468,7 +1468,7 @@ async function convocRemplir(k, box){
 
 // ---------- Classements : la saison de notre équipe (évolution, série, buteurs) ----------
 function saisonHTML(r){
-  const nous = r.lignes.find(l => l[10] === CLUB_FFF);
+  const nous = r.lignes.find(l => estNous(l[10]));
   if (!nous || !Array.isArray(r.resultats) || !r.resultats.length) return '';
   const cle = (c, n) => c + '|' + n, equipes = new Set(r.lignes.map(l => cle(l[10], l[1]))), moi = cle(nous[10], nous[1]);
   const res = r.resultats.filter(x => x[4] != null && x[5] != null && equipes.has(cle(x[2], x[3])) && equipes.has(cle(x[6], x[7])))
@@ -2809,7 +2809,9 @@ async function readSheetPhoto(file, stat, onFound){
 
 // ---------- Classements (recopiés depuis la FFF) ----------
 // Ligne : [rang, équipe, pts, joués, gagnés, nuls, perdus, buts pour, buts contre, diff, code club FFF]
-const CLUB_FFF = '516995';
+// codes club FFF : le club (seniors, féminines) et le groupement jeunes GJ Mésanger St Géréon
+const CLUBS_FFF = ['516995', '560414'];
+const estNous = c => CLUBS_FFF.includes(c);
 const clsF = { cat: '', team: 0 };
 async function classementsView(){
   let rows = lsGet('asm-cls', null), maj = null, nous = lsGet('asm-cls-nous', []);
@@ -2840,12 +2842,12 @@ async function classementsView(){
     const resultats = Array.isArray(r.resultats) ? [...r.resultats] : [];
     nous.filter(m => m.equipe === r.equipe).forEach(m => {
       const j = jourISO(m.kickoff);
-      if (resultats.some(x => (x[2] === CLUB_FFF || x[6] === CLUB_FFF) && String(x[1]).slice(0, 10) === j)) return;   // déjà sur la FFF
+      if (resultats.some(x => (estNous(x[2]) || estNous(x[6])) && String(x[1]).slice(0, 10) === j)) return;   // déjà sur la FFF
       const code = ((m.opp_logo || '').match(/BC(\d+)\./) || [])[1];
       const advNom = m.club_side === 'H' ? m.away_name : m.home_name;
       const memeClub = lignes.filter(l => l[10] === code);
       const adv = memeClub.find(l => numEq(l[1]) === numEq(advNom)) || (memeClub.length === 1 ? memeClub[0] : null);
-      const moi = lignes.find(l => l[10] === CLUB_FFF);
+      const moi = lignes.find(l => estNous(l[10]));
       if (!adv || !moi) return;
       const pour = m.club_side === 'H' ? m.bH : m.bA, contre = m.club_side === 'H' ? m.bA : m.bH;
       [[moi, pour, contre], [adv, contre, pour]].forEach(([l, p, c]) => {
@@ -2854,7 +2856,7 @@ async function classementsView(){
       });
       const domMoi = m.club_side === 'H';
       const heure = new Date(m.kickoff).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' });
-      resultats.push(['app-' + m.id, j + 'T' + heure, domMoi ? CLUB_FFF : adv[10], domMoi ? moi[1] : adv[1], m.bH, m.bA, domMoi ? adv[10] : CLUB_FFF, domMoi ? adv[1] : moi[1]]);
+      resultats.push(['app-' + m.id, j + 'T' + heure, domMoi ? moi[10] : adv[10], domMoi ? moi[1] : adv[1], m.bH, m.bA, domMoi ? adv[10] : moi[10], domMoi ? adv[1] : moi[1]]);
       ajouts.push(m);
     });
     if (!ajouts.length) return r;
@@ -2868,7 +2870,7 @@ async function classementsView(){
   const index = () => { Object.keys(byTeam).forEach(k => delete byTeam[k]); (rows || []).forEach(r => { byTeam[r.equipe] = provisoire(r); }); };
   index();
   let openClub = null;
-  const rankOf = n => { const r = byTeam[n]; const l = r && r.lignes.find(x => x[10] === CLUB_FFF); return l ? l[0] : null; };
+  const rankOf = n => { const r = byTeam[n]; const l = r && r.lignes.find(x => estNous(x[10])); return l ? l[0] : null; };
   const draw = () => {
     if (!clsF.team || !avecClassement(clsF.team)){ clsF.team = (homeF.team && avecClassement(homeF.team) ? homeF.team : 0) || catTeamsC(homeF.cat && catsC().includes(homeF.cat) ? homeF.cat : catsC()[0])[0] || TEAMS[0]; clsF.cat = catOf(clsF.team); }
     const cur = clsF.team, r = byTeam[cur];
@@ -2880,7 +2882,7 @@ async function classementsView(){
       <div class="clshead"><h2>${esc(teamLabel(cur))}</h2><span>${esc(r.competition)}</span></div>
       <div class="tblwrap"><table class="cls">
         <thead><tr><th>#</th><th>Équipe</th><th>Pts</th><th>J</th><th>G</th><th>N</th><th>P</th><th>Diff</th></tr></thead>
-        <tbody>${r.lignes.map(l => `<tr class="${l[10]===CLUB_FFF ? 'me' : ''}${hasRes ? ' tap' : ''}${hasRes && l[10]===openClub ? ' open' : ''}"${hasRes ? ` data-club="${esc(l[10])}" tabindex="0" aria-expanded="${l[10]===openClub}"` : ''}>
+        <tbody>${r.lignes.map(l => `<tr class="${estNous(l[10]) ? 'me' : ''}${hasRes ? ' tap' : ''}${hasRes && l[10]===openClub ? ' open' : ''}"${hasRes ? ` data-club="${esc(l[10])}" tabindex="0" aria-expanded="${l[10]===openClub}"` : ''}>
           <td class="rk">${l[0]}</td>
           <td class="tm"><div class="tmi">${l[10] ? `<img src="https://cdn-transverse.azureedge.net/phlogos/BC${esc(l[10])}.jpg" alt="" loading="lazy" onerror="this.remove()">` : ''}<span>${esc(l[1])}</span></div></td>
           <td class="pts">${l[2]}</td><td>${l[3]}</td><td>${l[4]}</td><td>${l[5]}</td><td>${l[6]}</td><td>${l[9] > 0 ? '+' + l[9] : l[9]}</td></tr>${hasRes && l[10]===openClub ? `<tr class="clsdet"><td colspan="8">${histHTML(r, l)}</td></tr>` : ''}`).join('')}</tbody>
@@ -2903,7 +2905,7 @@ async function classementsView(){
       const adv = dom ? x[7] : x[3], advCode = dom ? x[6] : x[2];
       const dt = new Date(x[1]).toLocaleDateString('fr-FR', {day:'numeric', month:'short'});
       return { res, html: `<li><span class="hres ${res}">${res}</span><span class="hdt">${esc(dt)}</span>
-        <span class="hadv">${advCode ? `<img src="https://cdn-transverse.azureedge.net/phlogos/BC${esc(advCode)}.jpg" alt="" loading="lazy" onerror="this.remove()">` : ''}<span>${dom ? 'contre' : 'à'} ${advCode === CLUB_FFF ? `<b>${esc(adv)}</b>` : esc(adv)}</span></span>
+        <span class="hadv">${advCode ? `<img src="https://cdn-transverse.azureedge.net/phlogos/BC${esc(advCode)}.jpg" alt="" loading="lazy" onerror="this.remove()">` : ''}<span>${dom ? 'contre' : 'à'} ${estNous(advCode) ? `<b>${esc(adv)}</b>` : esc(adv)}</span></span>
         <b class="hsc">${pour}–${contre}</b></li>` };
     });
     const n = k => rows.filter(x => x.res === k).length;

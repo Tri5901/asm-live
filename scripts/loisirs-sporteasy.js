@@ -59,6 +59,9 @@ function versMatch(e){
 
 (async () => {
   const args = process.argv.slice(2), essai = args.includes('essai');
+  // catégorie Loisirs masquée sur le site : rien à faire
+  const [eq] = await (await fetch(SUPABASE_URL + '/rest/v1/equipes?select=actif&categorie=eq.Loisirs', { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY } })).json();
+  if (eq && !eq.actif) return console.log('RIEN catégorie Loisirs masquée sur le site');
   let src = args.find(a => a !== 'essai');
   if (!src){
     const f = path.join(DIR, 'loisirs-ics.url');

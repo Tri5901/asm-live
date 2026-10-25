@@ -4,8 +4,11 @@
 //   node scripts/maj-classements.js poules         → liste des pages « Résultats / calendrier » des poules (« numéro adresse »)
 //   node scripts/maj-classements.js envoyer <json>  → enregistre les classements relevés (fichier JSON)
 // Format du JSON : { "1": { "lignes": [[rang, nom, pts, J, G, N, P, bp, bc, diff, codeClub], ...],
+//                          "poule": "https://epreuves.fff.fr/competition/engagement/…/phase/1/2",
 //                          "resultats": [[idMatch, 'DIM 20 SEP 2026 - 15H00', codeDom, nomDom, butsDom, butsExt, codeExt, nomExt], ...] }, ... }
 // « resultats » est facultatif ; les matchs déjà enregistrés sont gardés (fusion par idMatch).
+// « poule » (facultatif) : si elle change (nouvelle phase des jeunes), la base la retient et repart de résultats vides.
+// Seules les catégories visibles sur le site sont listées (pages, poules).
 // La clé secrète est lue dans C:\Users\Utilisateur\.asm-live\classements.key (jamais dans le dépôt).
 const fs = require('fs');
 const path = require('path');
@@ -57,8 +60,11 @@ async function envoyer(file) {
   const data = JSON.parse(fs.readFileSync(file, 'utf8'));
   for (const [e, v] of Object.entries(data)) {
     if (!Array.isArray(v.lignes) || v.lignes.length < 2) throw new Error('équipe ' + e + ' : classement vide');
-    if (!v.lignes.some(l => l[10] === '516995')) throw new Error('équipe ' + e + ' : AS Mésanger absente du classement');
+    // le club (516995) ou, pour les jeunes, le groupement GJ Mésanger St Géréon (560414)
+    if (!v.lignes.some(l => l[10] === '516995' || l[10] === '560414')) throw new Error('équipe ' + e + ' : AS Mésanger absente du classement');
     if (v.resultats) v.resultats = normResultats(v.resultats);
+    // lien de la poule relevé sur la page du classement : tenu à jour par la base (nouvelle phase des jeunes)
+    if (v.poule !== undefined && !/^https:\/\/epreuves\.fff\.fr\/competition\/engagement\/\d+-[a-z0-9-]+\/phase\/\d+\/\d+$/.test(v.poule || '')) delete v.poule;
   }
   const r = await fetch(URL_ + '/rest/v1/rpc/enregistrer_classements', { method: 'POST', headers: H, body: JSON.stringify({ p_secret: secret, p_data: data }) });
   const out = await r.text();

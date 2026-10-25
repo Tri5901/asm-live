@@ -15,7 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { URL_, H, CLUB, MOIS, parisToUTC, compSite, niveauDe, titre } = require('./verif-horaires.js');
+const { URL_, H, estNous, MOIS, parisToUTC, compSite, niveauDe, titre } = require('./verif-horaires.js');
 
 const FFF = 'https://epreuves.fff.fr';
 const coupe = c => !/ · J\d+$/.test(c || '');
@@ -30,14 +30,15 @@ const json = async u => { const r = await fetch(URL_ + '/rest/v1/' + u, { header
 async function liste(fich) {
   const data = JSON.parse(fs.readFileSync(fich, 'utf8'));
   const tous = await json('matches?select=id,equipe,competition,kickoff,status,club_side,home_name,away_name&status=eq.prevu');
+  const visibles = new Set((await json('equipes?select=id&actif=eq.true')).map(e => e.id));   // catégories masquées : rien
   const now = Date.now();
-  const aVenir = tous.filter(m => coupe(m.competition) && new Date(m.kickoff) > now && new Date(m.kickoff) - now < 21 * 864e5);
+  const aVenir = tous.filter(m => visibles.has(m.equipe) && coupe(m.competition) && new Date(m.kickoff) > now && new Date(m.kickoff) - now < 21 * 864e5);
   if (!aVenir.length) return console.log('AUCUN match de coupe dans les 3 semaines');
   for (const m of aVenir) {
     const row = (data[String(m.equipe)] || []).find(r => r.length >= 8 && compSite(r[1]) === m.competition);
     const adv = m.club_side === 'H' ? m.away_name : m.home_name;
     if (!row) { console.log(`SANS-PAGE ${m.id} (${m.competition} · ${adv})`); continue; }
-    const u = base(row[2] === CLUB ? row[7] : row[6]);
+    const u = base(estNous(row[2]) ? row[7] : row[6]);
     console.log(`COUPE ${m.id} ${FFF}${u}/saison ${FFF}${u}/classement (équipe ${m.equipe} · ${m.competition} · ${adv})`);
   }
 }
@@ -51,7 +52,7 @@ async function envoyer(fich, fichNiv) {
   const nomClub = {};
   tous.forEach(m => { const c = (m.opp_logo || '').match(/BC(\d+)\./); if (c) nomClub[c[1]] ||= (m.club_side === 'H' ? m.away_name : m.home_name).replace(/\s+\d+$/, ''); });
   const nomDe = (code, nom) => { const num = (String(nom).match(/\s(\d+)$/) || [])[1]; return nomClub[code] ? nomClub[code] + (num ? ' ' + num : '') : joli(nom); };
-  const champDe = eq => ((tous.find(x => x.equipe === eq && / · J\d+$/.test(x.competition)) || {}).competition || '').replace(/ · J\d+$/, '') || null;
+  const champDe = eq => ((tous.find(x => x.equipe === eq && / · J\d+$/.test(x.competition)) || {}).competition || '').replace(/ · J\d+$/, '').replace(/ · Phase \d+$/, '') || null;
   const chercher = new Set(), envois = [];
   const auj = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
   for (const [id, d] of Object.entries(data)) {
@@ -59,7 +60,7 @@ async function envoyer(fich, fichNiv) {
     if (!m) { console.log('INCONNU ' + id); continue; }
     const cAdv = ((m.opp_logo || '').match(/BC(\d+)\./) || [])[1];
     const vus = new Set();
-    const lignes = (d.saison || []).filter(r => r.length >= 11 && cAdv && (r[2] === cAdv || r[4] === cAdv) && r[2] !== CLUB && r[4] !== CLUB)
+    const lignes = (d.saison || []).filter(r => r.length >= 11 && cAdv && (r[2] === cAdv || r[4] === cAdv) && !estNous(r[2]) && !estNous(r[4]))
       .filter(r => { const k = norm(r[0]) + '|' + r[2] + '|' + r[4]; if (vus.has(k)) return false; vus.add(k); return true; });
     // son championnat : « Régional 1 Intersport - Senior Journée 3 » → « Régional 1 »
     const lc = lignes.find(r => /journ[ée]e/i.test(r[1]) && !/amica/i.test(r[1]));

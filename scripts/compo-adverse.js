@@ -16,7 +16,9 @@ const H = { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'applic
 async function liste() {
   const depuis = new Date(Date.now() - 8 * 864e5).toISOString();
   const r = await fetch(URL_ + `/rest/v1/matches?select=id,equipe,club_side,home_name,away_name,rosters,fff_match&status=eq.termine&kickoff=gte.${depuis}&fff_match=not.is.null&fff_feuille_at=is.null&order=kickoff`, { headers: H });
-  const ms = await r.json();
+  // catégories masquées sur le site : rien
+  const visibles = new Set((await (await fetch(URL_ + '/rest/v1/equipes?select=id&actif=eq.true', { headers: H })).json()).map(e => e.id));
+  const ms = (await r.json()).filter(m => visibles.has(m.equipe));
   if (!ms.length) return console.log('RIEN toutes les feuilles de match de la semaine sont traitées');
   ms.forEach(m => { const adv = m.club_side === 'A' ? 'H' : 'A'; const vide = !((m.rosters || {})[adv] || []).some(p => (p.name || '').trim());
     console.log(`${m.id} https://epreuves.fff.fr${m.fff_match}   (${m.home_name} – ${m.away_name}, adversaire : ${m.club_side === 'A' ? m.home_name : m.away_name}) [${vide ? 'compo adverse à remplir' : 'compo adverse déjà remplie'}]`); });
