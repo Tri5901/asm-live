@@ -2,18 +2,14 @@
 //   node scripts/loisirs-sporteasy.js                 → lit le lien du calendrier (C:\Users\Utilisateur\.asm-live\loisirs-ics.url)
 //   node scripts/loisirs-sporteasy.js <fichier|lien>  → lit ce calendrier (.ics, webcal:// ou https://)
 //   … essai                                          → affiche les matchs trouvés, n'envoie rien
-// Envoi : fonction loisirs_sync (supabase/loisirs.sql), avec la clé des classements. Les entraînements et autres
-// événements sont ignorés ; un match déjà commencé n'est plus modifié ; rien n'est supprimé.
+// Envoi : fonction loisirs_sync (supabase/loisirs.sql), avec la clé des classements. Seuls les matchs à venir partent :
+// le calendrier ne donne pas les scores (ils restent sur SportEasy), un match passé serait resté « à venir ».
+// Les entraînements et autres événements sont ignorés ; un match déjà commencé n'est plus modifié ; rien n'est supprimé.
 const fs = require('fs'), path = require('path'), os = require('os');
 const DIR = path.join(os.homedir(), '.asm-live');
 const SUPABASE_URL = 'https://xzzttulqlydcespgkpnx.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_VwLyp5ROGzidc4oHWehoLg_kIehYAcE';
-
-// noms sous lesquels l'équipe peut apparaître dans un intitulé d'événement
-const NOUS = /\b(?:as\s*)?m[ée]sanger(?:\s+loisirs?)?\b|\basm(?:\s+loisirs?)?\b|\bloisirs?\s+asm\b/i;
-// morceau d'intitulé qui nomme la compétition ou la saison (« Saison 2026/2027 ») : jamais pris pour l'adversaire
-const COMPET = /saison|championnat|journ[ée]e|poule|\b\d{4}\s*[\/-]\s*\d{4}\b/i;
-const PAS_MATCH =/entra[iî]nement|training|r[ée]union|assembl[ée]e|soir[ée]e|repas|f[êe]te|tournoi de p[ée]tanque|non sportif/i;
+const NOUS = 'AS Mésanger Loisirs';
 
 // lignes « pliées » (RFC 5545 : une ligne qui commence par un espace continue la précédente), puis les VEVENT
 function lireIcs(txt){
@@ -42,32 +38,22 @@ function dateIcs(p){
   const paris = new Date(brut.toLocaleString('en-US', { timeZone: 'Europe/Paris' })), utc = new Date(brut.toLocaleString('en-US', { timeZone: 'UTC' }));
   return new Date(brut.getTime() - (paris - utc));
 }
-// « AS Mésanger Loisirs - FC Ligné », « Match : Ligné vs ASM Loisirs », « Loisirs ASM / Riaillé (ext.) »…
+// intitulés SportEasy : « Domicile / Extérieur - Compétition » (« HerblAnetz / AS Mésanger Loisirs - Loisirs ASM - Saison
+// 2026/2027 », « AS Mésanger Loisirs / Seniors AS Mésanger D - Match amical ») ; un nom d'équipe peut lui-même contenir
+// « / » (« Oudon / Couffé ») : on se repère sur notre nom. Sans « / » (« AS Mésanger Loisirs - Entraînement », tournoi,
+// repas…) : pas un match.
 function versMatch(e){
-  const titre = (e.SUMMARY || {}).val || '', desc = (e.DESCRIPTION || {}).val || '', cat = (e.CATEGORIES || {}).val || '';
-  const tout = `${titre}\n${desc}\n${cat}`;
+  const titre = (e.SUMMARY || {}).val || '';
   if ((e.STATUS || {}).val === 'CANCELLED') return { ignore: 'annulé', titre };
-  if (PAS_MATCH.test(titre) || PAS_MATCH.test(cat)) return { ignore: 'pas un match', titre };
-  const net = titre.replace(/^\s*(?:match|rencontre|championnat|coupe|amical)\s*[:\-–]\s*/i, '').trim();
-  const parts = net.split(/\s+(?:vs\.?|contre|[-–\/])\s+/i).map(s => s.trim()).filter(Boolean).filter(p => !COMPET.test(p) || NOUS.test(p));
-  // intitulé réduit à notre nom (« Loisirs ASM - Saison 2026/2027 ») : adversaire pas encore connu
-  if (parts.length === 1 && NOUS.test(parts[0])) parts.push('');
-  let club_side = null, adversaire = '';
-  if (parts.length >= 2){
-    const iNous = parts.findIndex(p => NOUS.test(p));
-    if (iNous === 0){ club_side = /ext[ée]rieur|\(ext\.?\)/i.test(tout) ? 'A' : 'H'; adversaire = parts.slice(1).filter(Boolean).join(' - '); }
-    else if (iNous > 0){ club_side = 'A'; adversaire = parts.slice(0, iNous).join(' - '); }
-  }
-  if (!club_side){
-    // pas de « nous » dans le titre : SportEasy met souvent l'adversaire seul, et domicile / extérieur à part
-    if (!/match|rencontre|vs|contre|domicile|ext[ée]rieur/i.test(tout)) return { ignore: 'pas un match', titre };
-    adversaire = (parts.length ? parts[parts.length - 1] : net).replace(/\((?:dom\.?|ext\.?|domicile|ext[ée]rieur)\)/ig, '').trim();
-    club_side = /ext[ée]rieur|\(ext\.?\)|\bext\b/i.test(tout) ? 'A' : 'H';
-  }
-  adversaire = adversaire.replace(/\((?:dom\.?|ext\.?|domicile|ext[ée]rieur)\)/ig, '').replace(/\s+/g, ' ').trim();
-  if (!adversaire || /^(?:adversaire\s+)?(?:[àa]\s+d[ée]terminer|tbd|inconnu)$/i.test(adversaire)) adversaire = '';
+  const i = titre.indexOf(' - ');
+  const equipes = (i < 0 ? titre : titre.slice(0, i)).trim(), quoi = i < 0 ? '' : titre.slice(i + 3);
+  let club_side, adversaire;
+  if (equipes.startsWith(NOUS + ' / ')){ club_side = 'H'; adversaire = equipes.slice(NOUS.length + 3); }
+  else if (equipes.endsWith(' / ' + NOUS)){ club_side = 'A'; adversaire = equipes.slice(0, -(NOUS.length + 3)); }
+  else return { ignore: 'pas un match', titre };
+  adversaire = adversaire.replace(/\s+/g, ' ').trim();
   const lieu = ((e.LOCATION || {}).val || '').trim();
-  const competition = /amical/i.test(tout) ? 'Match amical' : /coupe/i.test(tout) ? 'Coupe loisirs' : 'Championnat loisirs';
+  const competition = /amical/i.test(quoi) ? 'Match amical' : /coupe/i.test(quoi) ? 'Coupe loisirs' : 'Championnat loisirs';
   return { uid: (e.UID || {}).val, kickoff: dateIcs(e.DTSTART), club_side, adversaire, competition, lieu: lieu.split(',')[0].trim(), adresse: lieu, titre };
 }
 
@@ -82,11 +68,13 @@ function versMatch(e){
   const txt = /^(webcal|https?):/i.test(src) ? await (await fetch(src.replace(/^webcal:/i, 'https:'))).text() : fs.readFileSync(src, 'utf8');
   if (!/BEGIN:VCALENDAR/.test(txt)){ console.error('Ce n\'est pas un calendrier .ics'); process.exit(1); }
   const tous = lireIcs(txt).map(versMatch);
-  const matchs = tous.filter(m => !m.ignore && m.uid && m.kickoff);
+  const depuis = Date.now() - 3 * 3600e3;
+  const matchs = tous.filter(m => !m.ignore && m.uid && m.kickoff && m.kickoff.getTime() > depuis);
+  const passes = tous.filter(m => !m.ignore && m.kickoff && m.kickoff.getTime() <= depuis).length;
   const ignores = tous.filter(m => m.ignore);
   const fmt = d => d.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-  console.log(`${matchs.length} match(s), ${ignores.length} autre(s) événement(s) ignoré(s)`);
-  matchs.sort((a, b) => a.kickoff - b.kickoff).forEach(m => console.log(`  ${fmt(m.kickoff)}  ${m.club_side === 'H' ? 'dom.' : 'ext.'}  ${m.adversaire || '(adversaire à déterminer)'}  · ${m.competition}${m.lieu ? ' · ' + m.lieu : ''}`));
+  console.log(`${matchs.length} match(s) à venir, ${passes} déjà joué(s) (pas envoyés : pas de score dans le calendrier), ${ignores.length} autre(s) événement(s) ignoré(s)`);
+  matchs.sort((a, b) => a.kickoff - b.kickoff).forEach(m => console.log(`  ${fmt(m.kickoff)}  ${m.club_side === 'H' ? 'dom.' : 'ext.'}  ${m.adversaire}  · ${m.competition}${m.lieu ? ' · ' + m.lieu : ''}`));
   ignores.forEach(m => console.log(`  ignoré (${m.ignore}) : ${m.titre}`));
   if (essai) return;
   const cle = fs.readFileSync(path.join(DIR, 'classements.key'), 'utf8').trim();
