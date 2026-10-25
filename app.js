@@ -7,14 +7,26 @@ const CLUB = 'AS Mésanger';
 // Équipes du club, rangées par catégorie (table « equipes » de la base ; liste de secours ci-dessous).
 // Ajouter une catégorie = ajouter des lignes dans la base : tout le site s'adapte.
 const EQUIPES_DEFAUT = ['A', 'B', 'C', 'D', 'E'].map((c, i) => ({ id: i + 1, categorie: 'Senior M', cat_ordre: 1, ordre: i + 1, nom: 'Senior ' + c, court: c, nom_club: CLUB + ' ' + c }));
-let EQUIPES = [], TEAMS = [], CATS = [];
+let EQUIPES = [], TEAMS = [], CATS = [], EQUIPES_BRUT = null;
+// catégories cachées (page Admin › Catégories) : seuls les admins les voient, marquées « masquée » ; le compte est lu
+// dans la copie locale (setEquipes sert avant le chargement du profil), puis la liste est refaite après la connexion
+const adminLocal = () => { const p = lsGet('asm-profile', null); return !!p && (p.role === 'admin' || (Array.isArray(p.roles) && p.roles.includes('admin'))); };
 function setEquipes(list){
-  EQUIPES = (Array.isArray(list) && list.length ? list : EQUIPES_DEFAUT).filter(e => e.actif !== false)
+  EQUIPES_BRUT = list;
+  const adm = adminLocal();
+  EQUIPES = (Array.isArray(list) && list.length ? list : EQUIPES_DEFAUT).filter(e => e.actif !== false || adm)
     .sort((a, b) => a.cat_ordre - b.cat_ordre || a.ordre - b.ordre);
   TEAMS = EQUIPES.map(e => e.id);
   CATS = [...new Set(EQUIPES.map(e => e.categorie))];
 }
-const teamOf = n => EQUIPES.find(e => e.id === (n || 1)) || { id: n, categorie: '?', nom: 'Équipe ' + n, court: String(n), nom_club: CLUB };
+// équipe inconnue (catégorie cachée pour ce visiteur) : traitée comme anonyme
+const teamOf = n => EQUIPES.find(e => e.id === (n || 1)) || { id: n, categorie: '?', nom: 'Équipe ' + n, court: String(n), nom_club: CLUB, anonyme: true };
+const masquee = n => teamOf(n).actif === false;
+const catMasquee = c => { const l = catTeams(c); return l.length > 0 && l.every(masquee); };
+// catégorie anonymisée (jeunes) : aucun joueur n'est montré au public, seulement les résultats de l'équipe ;
+// ceux qui gèrent le match (responsables, admins, responsable score) voient toujours les noms
+const anonyme = n => !!teamOf(n).anonyme;
+const anonPublic = m => anonyme(m.equipe) && !canManage(m);
 const teamLetter = n => teamOf(n).court;
 const teamLabel = n => teamOf(n).nom;
 const clubTeamName = n => teamOf(n).nom_club;
@@ -48,8 +60,10 @@ function teamFilterHTML(f, all = true, extra = () => '', normales = false){
   const cat = f.cat || (all ? '' : CC[0]);
   const cats = (all ? [['', 'Tout le club']] : []).concat(CC.map(c => [c, c]));
   const teams = cat ? ct(cat) : [];
-  return `<div class="tfilter">${cats.length > 1 || !all ? `<div class="chipbar catbar" role="group" aria-label="Catégorie">${cats.map(([v, l]) => `<button type="button" data-fcat="${esc(v)}" class="${cat===v?'on':''}" aria-pressed="${cat===v}">${esc(l)}</button>`).join('')}</div>` : ''}
-    ${teams.length > 1 || (!all && teams.length) ? `<div class="chipbar teambar" role="group" aria-label="Équipe">${(all ? [0] : []).concat(teams).map(n => `<button type="button" data-fteam="${n}" class="${(f.team||0)===n?'on':''}" aria-pressed="${(f.team||0)===n}">${n ? esc(shortIn(n)) + extra(n) : 'Toutes'}</button>`).join('')}</div>` : ''}</div>`;
+  // admins : catégorie ou équipe cachée au public marquée « masquée »
+  const masq = '<small class="masq">masquée</small>';
+  return `<div class="tfilter">${cats.length > 1 || !all ? `<div class="chipbar catbar" role="group" aria-label="Catégorie">${cats.map(([v, l]) => `<button type="button" data-fcat="${esc(v)}" class="${cat===v?'on':''}" aria-pressed="${cat===v}">${esc(l)}${v && catMasquee(v) ? masq : ''}</button>`).join('')}</div>` : ''}
+    ${teams.length > 1 || (!all && teams.length) ? `<div class="chipbar teambar" role="group" aria-label="Équipe">${(all ? [0] : []).concat(teams).map(n => `<button type="button" data-fteam="${n}" class="${(f.team||0)===n?'on':''}" aria-pressed="${(f.team||0)===n}">${n ? esc(shortIn(n)) + extra(n) + (masquee(n) && !catMasquee(cat) ? masq : '') : 'Toutes'}</button>`).join('')}</div>` : ''}</div>`;
 }
 function bindTeamFilter(root, f, all, onChange, normales = false){
   root.querySelectorAll('[data-fcat]').forEach(b => b.onclick = () => { f.cat = b.dataset.fcat; f.team = all ? 0 : ((normales === 'classement' ? catTeamsC : normales ? catTeamsN : catTeams)(f.cat)[0] || 0); onChange(); });
@@ -109,7 +123,8 @@ const oppSide = m => clubSide(m)==='H' ? 'A' : 'H';
 const goals = (evs, t) => evs.filter(e=>e.k==='goal' && e.t===t).length;
 const rosterOf = (m, t) => ((m.rosters||{})[t]||[]);
 const nameOf = (m, t, n) => { const p = rosterOf(m,t).find(p=>p.n===String(n)); return p ? p.name : ''; };
-const who = (m, t, n, none) => n === 'CSC' ? 'Contre son camp (CSC)' : n ? `n°${n}${nameOf(m,t,n) ? ' ' + nameOf(m,t,n) : ''}` : none;
+// catégorie anonymisée : ni nom ni numéro pour le public
+const who = (m, t, n, none) => n === 'CSC' ? 'Contre son camp (CSC)' : anonPublic(m) ? '' : n ? `n°${n}${nameOf(m,t,n) ? ' ' + nameOf(m,t,n) : ''}` : none;
 const rosterSorted = (m, t) => [...rosterOf(m,t)].sort((a,b)=>(+a.n || 999)-(+b.n || 999)); // sans numéro : à la fin
 // plus de 11 titulaires (ex. compo importée de la convocation, tous titulaires) : les plus grands numéros passent remplaçants.
 // Seulement si tous les titulaires ont un numéro, sinon on ne peut pas savoir qui est sur le banc.
@@ -198,6 +213,7 @@ function timelineHTML(m, evs, editable){
       const rest = evs.filter(e => !(e.k === 'goal' && !e.min));
       const lines = ['H', 'A'].map(t => {
         const g = nomin.filter(e => e.t === t); if (!g.length) return '';
+        if (anonPublic(m)) return `<div><b>${esc(teamName(m, t))}</b> : ${g.length} but${g.length > 1 ? 's' : ''}</div>`;
         const named = g.filter(e => e.n).map(e => who(m, t, e.n, '')), anon = g.length - named.length;
         return `<div><b>${esc(teamName(m, t))}</b> : ${esc([...named, ...(anon ? [anon > 1 ? anon + ' buteurs non renseignés' : '1 buteur non renseigné'] : [])].join(', '))}</div>`;
       }).join('');
@@ -224,7 +240,7 @@ function timelineHTML(m, evs, editable){
     lastP = e.p;
     let detail = '';
     if (e.k==='goal') detail = who(m,e.t,e.n,'Buteur non précisé');
-    if (e.k==='sub') detail = `Sort ${who(m,e.t,e.out_n,'?')} · Entre ${who(m,e.t,e.in_n,'?')}`;
+    if (e.k==='sub') detail = anonPublic(m) ? '' : `Sort ${who(m,e.t,e.out_n,'?')} · Entre ${who(m,e.t,e.in_n,'?')}`;
     if (e.k==='yellow'||e.k==='white'||e.k==='red') detail = who(m,e.t,e.n,'Joueur non précisé');
     const by = isAdmin() && people ? `<div class="evby">Saisi par ${esc(personName(e.created_by))}${e.created_at ? ' à ' + hhmm(e.created_at) : ''}</div>` : '';
     const moi = estMoi(m, e);
@@ -249,8 +265,10 @@ async function chargerStats(){
     sb.from('events').select('match_id,t,k,n,in_n,out_n,min,sort')
   ]);
   if (error || e2) throw (error || e2);
-  // matchs des équipes exceptionnelles (U18 en Gambardella…) : hors stats
-  const garde = (ms || []).filter(m => !exceptionnelle(m.equipe)), ids = new Set(garde.map(m => m.id));
+  // matchs des équipes exceptionnelles (U18 en Gambardella…) : hors stats ; catégories cachées : admins seulement ;
+  // catégories anonymisées : résultats de l'équipe seulement (aucune compo gardée, même sur ce téléphone)
+  const garde = (ms || []).filter(m => !exceptionnelle(m.equipe) && (!EQUIPES_BRUT || EQUIPES.some(e => e.id === m.equipe)))
+    .map(m => anonyme(m.equipe) ? { ...m, rosters: { H: [], A: [] } } : m), ids = new Set(garde.map(m => m.id));
   const r = { ms: garde, evs: (evs || []).filter(e => ids.has(e.match_id)) }; lsSet('asm-stats', r); return r;
 }
 // joueurs du club (noms écrits dans nos compos) avec leur nombre de matchs
@@ -365,9 +383,10 @@ async function loadProfile(){
   if (!sb) return;
   const { data } = await sb.auth.getSession();
   session = data.session;
-  if (!session){ profile = null; lsSet('asm-profile', null); renderAcct(); return; }
+  if (!session){ profile = null; lsSet('asm-profile', null); setEquipes(EQUIPES_BRUT); renderAcct(); return; }
   const { data: p, error } = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
   if (!error){ profile = p; lsSet('asm-profile', p); }
+  setEquipes(EQUIPES_BRUT);   // admin : les catégories cachées réapparaissent (et disparaissent pour les autres)
   renderAcct();
   setTimeout(cguPrevenir, 1500);
 }
@@ -483,6 +502,7 @@ async function route(){
     if (page==='connexion') return loginView();
     if (page==='compte') return accountView();
     if (page==='cgu') return cguView();
+    if (page==='admin' && arg==='categories') return await categoriesView();
     if (page==='admin') return await (arg === 'stats' ? siteStatsView() : arg === 'publications' ? publicationsView() : adminView());
     if (page==='officiels') return await officielsView();
     location.hash = '#/';
@@ -886,15 +906,18 @@ function lineupsHTML(m, evs = []){
       + '</div>';
   };
   const has = rosterOf(m,'H').length || rosterOf(m,'A').length;
+  // catégorie anonymisée : aucune compo pour le public (la base la garde privée en permanence)
+  if (anonPublic(m)) return '';
   // compo cachée : le public sait seulement si elle a été saisie
   if (m.compo_cachee && !canManage(m)) return m.compo_cachee_saisie
     ? '<section class="log"><div class="loghead"><h2>Compositions</h2></div><div class="empty">🔒 Compo saisie, non accessible au public.</div></section>' : '';
   if (!has && !canManage(m)) return '';
-  const vis = isTeamManager(m.equipe)
+  const vis = anonyme(m.equipe) ? '<span class="vistog off static"><i></i>Cachée au public</span>'
+    : isTeamManager(m.equipe)
     ? `<button type="button" class="vistog${m.compo_cachee ? ' off' : ''}" id="compoVis" aria-pressed="${!m.compo_cachee}"><i></i>${m.compo_cachee ? 'Cachée au public' : 'Visible par tous'}</button>`
     : m.compo_cachee ? '<span class="vistog off static"><i></i>Cachée au public</span>' : '';
   return `<section class="log"><div class="loghead"><h2>Compositions</h2>${canManage(m) ? `<a class="link" href="#/gerer/${esc(m.id)}/compo">${has ? 'Modifier' : '📋 Saisir la compo'}</a>` : ''}</div>`
-    + (vis ? `<div class="visrow">${vis}<small>${m.compo_cachee ? 'Seuls les responsables d’équipe, les admins et le responsable score du match la voient.' + (m.status === 'prevu' ? ' Elle sera visible par tous au coup d’envoi.' : '') : 'Tout le monde peut la voir sur la page du match.'}</small></div>` : '')
+    + (vis ? `<div class="visrow">${vis}<small>${anonyme(m.equipe) ? 'Catégorie anonymisée : la compo n’est jamais visible du public, seuls ceux qui gèrent le match la voient.' : m.compo_cachee ? 'Seuls les responsables d’équipe, les admins et le responsable score du match la voient.' + (m.status === 'prevu' ? ' Elle sera visible par tous au coup d’envoi.' : '') : 'Tout le monde peut la voir sur la page du match.'}</small></div>` : '')
     + (has && m.status !== 'prevu' && evs.some(e => e.k === 'sub') ? `<button type="button" class="link rempbtn" id="rempBtn">${lsGet('asm-voir-remp', false) ? 'Masquer les remplacements' : 'Afficher les remplacements'}</button>` : '')
     + (has ? `<div class="lineups${lsGet('asm-voir-remp', false) ? ' remp' : ''}">${side('H')}${side('A')}</div>` : '<div class="empty">Compo pas encore saisie.</div>')
     + '</section>';
@@ -1355,7 +1378,8 @@ async function partagerResume(m, evs){
   evs.filter(e => e.k === 'goal' && e.t === cs).sort((a, b) => (+a.sort || 0) - (+b.sort || 0)).forEach(e => {
     const n = e.n === 'CSC' ? 'CSC' : e.n ? (nameOf(m, cs, e.n) || 'n°' + e.n) : 'Buteur inconnu';
     parJ.set(n, [...(parJ.get(n) || []), String(e.min || '').replace(/'$/, '') + '’']); });
-  const lignes = [...parJ], nb = Math.min(lignes.length, 6);
+  // catégorie anonymisée : l'image se partage, donc jamais de buteurs, même pour un responsable
+  const lignes = anonyme(m.equipe) ? [] : [...parJ], nb = Math.min(lignes.length, 6);
   if (nb){
     const pas = nb > 4 ? 56 : nb > 3 ? 62 : 68, taille = nb > 4 ? 40 : nb > 3 ? 46 : 52, y0 = 930;
     T('NOS BUTEURS', W / 2, y0 - 50, 40, JAUNE, { poids: 700 });
@@ -1490,7 +1514,7 @@ async function hdmSaisonRemplir(box, filtre){
   if (!hdmSaisonCache || Date.now() - hdmSaisonAt > 5 * 60000){ const { data, error } = await sb.rpc('hdm_gagnants'); if (!error){ hdmSaisonCache = data || []; hdmSaisonAt = Date.now(); } }
   if (!box.isConnected || !hdmSaisonCache) return;
   // ex aequo : 1 titre pour chacun, en signalant ceux obtenus à égalité
-  const L = hdmSaisonCache.filter(x => !exceptionnelle(x.equipe) && filtre(x)), parMatch = {};
+  const L = hdmSaisonCache.filter(x => !exceptionnelle(x.equipe) && !anonyme(x.equipe) && filtre(x)), parMatch = {};
   L.forEach(x => { parMatch[x.match_id] = (parMatch[x.match_id] || 0) + 1; });
   const C = {}, E = {}, D = {}, Q = {};   // Q : équipes pour lesquelles le joueur a été élu (nombre de titres par équipe)
   L.forEach(x => { C[x.joueur] = (C[x.joueur] || 0) + 1; if (parMatch[x.match_id] > 1) E[x.joueur] = (E[x.joueur] || 0) + 1;
@@ -1604,6 +1628,8 @@ async function matchView(id){
   let { m, evs } = cached || await fresh;
   if (!here()) return;
   if (!m){ view.innerHTML = '<div class="empty">Ce match n\'existe plus.</div>'; return; }
+  // catégorie cachée (page Admin › Catégories) : pas de page publique, même avec le lien
+  if (!isAdmin() && EQUIPES_BRUT && !EQUIPES.some(e => e.id === m.equipe)){ view.innerHTML = '<div class="empty">Ce match n’est pas public.</div>'; return; }
   // Demandes pour être responsable score (match sans responsable) : visibles par le demandeur et par les responsables de l'équipe
   let dem = [];
   const loadDem = async () => {
@@ -1687,11 +1713,11 @@ async function matchView(id){
       + `<div class="mactions"><button class="pill" id="btnBell">🔔 ${exceptionnelle(m.equipe) ? 'Notifications des buts' : 'Buts des ' + esc(teamLabel(m.equipe))}</button><button class="pill" id="btnShareLive">↗ Partager</button>${m.status==='termine' && !m._partiel ? '<button class="pill" id="btnResume">📸 Résumé</button>' : ''}</div>`
       + liveCarteHTML(m)
       + (finPossible(m) && session ? '<div class="demcard fincard"><b>⏱️ Le chrono dépasse la ' + (2 * (m.half || 45) + 6) + 'e minute</b><small>Le match est sûrement fini. Tu peux arrêter le chrono : ton nom sera noté dans la chronologie.</small><button type="button" class="fbtn primary" id="finStop" style="width:100%;margin-top:8px">🏁 Arrêter le chrono</button></div>' : '')
-      + (!m._partiel && canManage(m) && (rosterOf(m, clubSide(m)).length || terrainActif(m)) ? `<div class="visrow terrow">${terrainTogHTML(m, 'terrainTog', 'Visible par tous. Touche deux joueurs pour noter un changement de poste.')}</div>` : '')
+      + (!m._partiel && canManage(m) && disposDe(m).length && (rosterOf(m, clubSide(m)).length || terrainActif(m)) ? `<div class="visrow terrow">${terrainTogHTML(m, 'terrainTog', 'Visible par tous. Touche deux joueurs pour noter un changement de poste.')}</div>` : '')
       + (terrainActif(m) && !m._partiel ? '<div id="terrainBox"></div>' : '')
       + demHTML()
       + (canManage(m) ? `<a class="fbtn primary big" href="#/gerer/${esc(m.id)}">Gérer ce match</a>` : '')
-      + (fini ? `<div id="hdmBox">${hdmCache}</div>` : delegHTML)
+      + (fini ? (anonyme(m.equipe) ? '' : `<div id="hdmBox">${hdmCache}</div>`) : delegHTML)
       + (isAdmin() && people ? `<div class="audit">Match créé par ${esc(personName(m.created_by))}${m.rosters_at ? ` · Compo saisie par ${esc(personName(m.rosters_by))} le ${esc(fmtDate(m.rosters_at))}` : ''}</div>` : '')
       + (m._partiel ? '<div class="loading">Chargement des détails…</div>' : (m.status==='prevu' ? rdvHTML(m) + `<div id="advBox">${advCache}</div>` + lineupsHTML(m, evs) : '')
       + `<section class="log"><div class="loghead"><h2>Chronologie</h2></div><div id="events">${timelineHTML(m, evs, false)}</div></section>`
@@ -1984,7 +2010,7 @@ async function consoleView(id, openCompo){
     const box = $('terrainCo'); if (!box) return;
     const save = t => { S.terrain = t; matchEcritAt[id] = Date.now(); saveLocal(); queue({kind:'match', match:id, fields:{terrain:t}}); };
     const has = rosterOf(S, clubSide(S)).length;
-    if (!has){ box.innerHTML = ''; return; }
+    if (!has || !disposDe(S).length){ box.innerHTML = ''; return; }   // pas de dispositif pour le foot à 4 ou à 5 (U7, U9)
     box.innerHTML = `<div class="visrow" style="margin-top:12px">${terrainTogHTML(S, 'terrainTogCo', 'Visible sur la page du match. Touche deux joueurs pour noter un changement de poste.')}</div><div id="terrainBoxCo"></div>`;
     $('terrainTogCo').onclick = () => { if (!terrainActif(S) && S.compo_cachee) return; const cfg = terrainCfg(S); save({ ...(S.terrain || {}), on: !terrainActif(S), f: cfg.f, df: cfg.f, d: cfg.d, p: cfg.p }); toast(terrainActif(S) ? 'Vue terrain activée' : 'Vue terrain désactivée'); terrainCo(); };
     if (terrainActif(S)) terrainMonter(S, S.events, $('terrainBoxCo'), save);
@@ -2248,7 +2274,13 @@ async function consoleView(id, openCompo){
     if (pastPlayers) return pastPlayers;
     pastPlayers = [];
     try{
-      const { data } = await sb.from('matches').select('rosters,club_side,kickoff').eq('equipe', S.equipe || 1).neq('id', id).order('kickoff', {ascending:false}).limit(40);
+      const { data } = await sb.from('matches').select('id,rosters,club_side,kickoff').eq('equipe', S.equipe || 1).neq('id', id).order('kickoff', {ascending:false}).limit(40);
+      // compos cachées ou catégorie anonymisée : les noms sont dans les compos privées (lisibles par ceux qui gèrent le match)
+      const vides = (data || []).filter(r => !(((r.rosters || {})[r.club_side]) || []).length).map(r => r.id);
+      if (vides.length){
+        const { data: pv } = await sb.from('compos_privees').select('match_id,rosters').in('match_id', vides);
+        (pv || []).forEach(x => { const r = data.find(y => y.id === x.match_id); if (r) r.rosters = x.rosters; });
+      }
       const map = new Map();
       (data||[]).forEach(r => (((r.rosters||{})[r.club_side])||[]).forEach(p => {
         const k = playerKey(p.name || ''); if (!k) return;
@@ -2912,6 +2944,8 @@ async function statsViewFrom(playerArg, { ms, evs }){
     const list = ms.filter(m => seasonOf(m.kickoff)===statSeason && inFilter(statF, m.equipe)
       && (!statComp || (statComp === 'coupe') === isCup(m)));
     const ids = new Set(list.map(m=>m.id));
+    // filtre sur une équipe ou une catégorie anonymisée : seulement les chiffres de l'équipe
+    const anonSel = statF.team ? anonyme(statF.team) : statF.cat ? catTeams(statF.cat).every(anonyme) : false;
     const byMatch = {}; evs.forEach(e => { if (ids.has(e.match_id)) (byMatch[e.match_id] ||= []).push(e); });
     const P = {}; let unknownGoals = 0, cscGoals = 0;
     const get = name => { const k = playerKey(name); return P[k] ||= {k, name, mj:0, tit:0, goals:0, y:0, w:0, r:0, eqs:{}}; };
@@ -2956,7 +2990,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
       });
     }
     const boardHTML = eq => {
-      const B = boards[eq]; if (!B) return '';
+      const B = boards[eq]; if (!B || anonyme(eq)) return '';
       const sc = Object.values(B.players).filter(p => p.goals).sort((a, b) => b.goals - a.goals || a.mj - b.mj || a.name.localeCompare(b.name, 'fr'));
       let rank = 0, prev = null;
       // les 3 premiers, le reste derrière « Voir plus »
@@ -2977,10 +3011,11 @@ async function statsViewFrom(playerArg, { ms, evs }){
         <div class="kpi"><b>${ga}</b><span>Encaissés</span></div>
       </div>
       ${isStaff() ? aCompleterHTML(list.filter(m => m.status === 'termine'), byMatch) : ''}
-      ${statMode === 'joueurs' && (statF.cat || statF.team) ? '<div id="hdmSaison"></div>' : ''}
-      <input id="statQ" class="dpq statq" type="search" placeholder="🔍 Rechercher un joueur…" autocomplete="off" enterkeyhint="search" value="${esc(statQ)}" aria-label="Rechercher un joueur">
+      ${statMode === 'joueurs' && (statF.cat || statF.team) && !anonSel ? '<div id="hdmSaison"></div>' : ''}
+      ${anonSel ? '<div class="empty">🔒 Catégorie anonymisée : les joueurs ne sont pas affichés, seulement les résultats de l’équipe.</div>' : ''}
+      <input id="statQ" class="dpq statq" type="search" placeholder="🔍 Rechercher un joueur…" autocomplete="off" enterkeyhint="search" value="${esc(statQ)}" aria-label="Rechercher un joueur"${anonSel ? ' hidden' : ''}>
       <div class="empty" id="statNone" hidden>Aucun joueur ne correspond à cette recherche.</div>
-      ${statMode === 'buteurs' ? (CATS.map(c => { const h = catTeams(c).map(boardHTML).join(''); return h ? `<div class="sec">${esc(c)}</div>` + h : ''; }).join('') || '<div class="empty">Aucun match avec ce filtre.</div>') : rows.length ? `<div class="tblwrap"><table class="stats"><thead><tr>${COLS.map(([k,l])=>`<th class="${statSort.key===k?'on':''}" aria-sort="${statSort.key===k?(statSort.dir<0?'descending':'ascending'):'none'}"><button data-k="${k}">${l}${statSort.key===k?(statSort.dir<0?' ▾':' ▴'):''}</button></th>`).join('')}</tr></thead>
+      ${anonSel ? '' : statMode === 'buteurs' ? (CATS.map(c => { const h = catTeams(c).map(boardHTML).join(''); return h ? `<div class="sec">${esc(c)}</div>` + h : ''; }).join('') || '<div class="empty">Aucun match avec ce filtre.</div>') : rows.length ? `<div class="tblwrap"><table class="stats"><thead><tr>${COLS.map(([k,l])=>`<th class="${statSort.key===k?'on':''}" aria-sort="${statSort.key===k?(statSort.dir<0?'descending':'ascending'):'none'}"><button data-k="${k}">${l}${statSort.key===k?(statSort.dir<0?' ▾':' ▴'):''}</button></th>`).join('')}</tr></thead>
         <tbody>${rows.map(p=>`<tr class="prow${p.k === monJoueur() ? ' moi' : ''}" data-pk="${esc(p.k)}" data-nm="${esc(p.name)}" tabindex="0"><td>${esc(p.name)}</td>${cell(p.goals)}${cell(p.mj)}${cell(p.tit)}${cell(p.y)}${cell(p.w)}${cell(p.r)}</tr>`).join('')}${cscGoals ? `<tr class="csc"><td>CSC <small>(contre son camp adverse)</small></td>${cell(cscGoals)}<td></td><td></td><td></td><td></td><td></td></tr>` : ''}</tbody></table></div>`
         : `<div class="empty">Les stats apparaîtront après le premier match dont la composition de l'${CLUB} a été saisie.</div>`}
       <p class="note">${statComp === 'coupe' ? 'Matchs de coupe uniquement. ' : statComp ? 'Matchs de championnat uniquement. ' : ''}Stats des joueurs de l'${CLUB}, calculées à partir des compositions et de la chronologie de chaque match.${unknownGoals ? ` ${unknownGoals} but${unknownGoals>1?'s':''} sans buteur identifié.` : ''}</p>`;
@@ -3709,8 +3744,44 @@ function noterVisite(page){
     .then(({ error }) => { if (admin && !error) lsSet('asm-vid-exclu', true); }, () => {});
 }
 // onglets de l'espace admin (onglet « Admin » du menu, visible des seuls admins)
-const ADMIN_ONGLETS = [['acces', '#/admin', '👥 Accès'], ['arbitres', '#/officiels', '🟨 Arbitres'], ['pubs', '#/admin/publications', '📣 Publications'], ['stats', '#/admin/stats', '📊 Statistiques']];
+const ADMIN_ONGLETS = [['acces', '#/admin', '👥 Accès'], ['categories', '#/admin/categories', '🗂️ Catégories'], ['arbitres', '#/officiels', '🟨 Arbitres'], ['pubs', '#/admin/publications', '📣 Publications'], ['stats', '#/admin/stats', '📊 Statistiques']];
 const adminTabs = cur => `<div class="seg admtabs" role="tablist">${ADMIN_ONGLETS.map(([k, h, l]) => `<a href="${h}" class="${cur === k ? 'on' : ''}" role="tab" aria-selected="${cur === k}">${l}</a>`).join('')}</div>`;
+
+// ---------- Admin › Catégories : montrer ou cacher chaque catégorie sur tout le site, l'anonymiser ----------
+// Une ligne par catégorie (toutes ses équipes ensemble) ; fonction admin_categorie de la base (supabase/categories-admin.sql).
+async function categoriesView(){
+  if (!isAdmin()){ location.hash = '#/compte'; return; }
+  const tok = route.cur;
+  if (!view.querySelector('.catadm')) view.innerHTML = `<div class="acc">${adminTabs('categories')}<div class="loading">Chargement…</div></div>`;
+  const { data, error } = await sb.from('equipes').select('*').order('cat_ordre').order('ordre');
+  if (route.cur !== tok) return;
+  if (error || !data || !data.length){ view.innerHTML = `<div class="acc">${adminTabs('categories')}<div class="empty">${isNetErr(error) ? 'Pas de réseau.' : 'Impossible de charger les catégories.'}</div></div>`; return; }
+  // le reste du site suit tout de suite (pastilles, matchs, stats)
+  lsSet('asm-equipes', data); setEquipes(data);
+  const cats = [...new Set(data.map(e => e.categorie))];
+  const etat = (l, k) => l.every(e => e[k]) ? 'on' : l.some(e => e[k]) ? 'mixte' : 'off';
+  const tog = (c, k, val, label) => `<button type="button" class="vistog${val === 'on' ? '' : ' off'}" data-cat="${esc(c)}" data-k="${k}" aria-pressed="${val === 'on'}"><i></i>${label}${val === 'mixte' ? ' <small>(en partie)</small>' : ''}</button>`;
+  view.innerHTML = `<div class="acc catadm">${adminTabs('categories')}
+    <div class="acctop"><h1>Catégories</h1></div>
+    <p class="note"><b>Visible</b> : la catégorie apparaît pour tout le monde (matchs, stats, classements, notifications). Cachée, seuls les admins la voient, marquée « masquée ».</p>
+    <p class="note"><b>Anonymiser</b> : aucun joueur n’est montré au public (compos, buteurs, cartons, stats des joueurs, homme du match) ; il reste les résultats et les stats de l’équipe. Ceux qui gèrent les matchs voient toujours les noms.</p>
+    <div class="catlist">${cats.map(c => { const l = data.filter(e => e.categorie === c);
+      return `<div class="catrow"><div class="catnom"><b>${esc(c)}</b><small>${esc(l.map(e => e.nom).join(' · '))}</small></div>
+        <div class="cattog">${tog(c, 'actif', etat(l, 'actif'), 'Visible')}${tog(c, 'anonyme', etat(l, 'anonyme'), 'Anonymiser')}</div></div>`; }).join('')}</div></div>`;
+  const changer = async (b, c, k, val) => {
+    b.disabled = true;
+    const { error: e2 } = await sb.rpc('admin_categorie', { p_categorie: c, p_visible: k === 'actif' ? val : null, p_anonyme: k === 'anonyme' ? val : null });
+    if (e2){ toast(isNetErr(e2) ? 'Pas de réseau' : 'Modification refusée'); b.disabled = false; return; }
+    toast(k === 'actif' ? (val ? c + ' : visible par tous' : c + ' : cachée, admins seulement') : (val ? c + ' : joueurs anonymisés' : c + ' : joueurs de nouveau visibles'));
+    categoriesView();
+  };
+  view.querySelectorAll('.catrow [data-cat]').forEach(b => b.onclick = () => {
+    const c = b.dataset.cat, k = b.dataset.k, val = b.getAttribute('aria-pressed') !== 'true';
+    // ne plus anonymiser publie les compos de tous ses matchs : on demande d'abord
+    if (k === 'anonyme' && !val) return askConfirm('Ne plus anonymiser ' + c + ' ?', 'Les compos de tous ses matchs (noms des joueurs, buteurs, cartons) redeviennent visibles par tout le monde.', 'Rendre les joueurs visibles', () => changer(b, c, k, val));
+    changer(b, c, k, val);
+  });
+}
 
 // ---------- Admin › Publications : post des résultats du week-end (photothèque par équipe, visuels, recadrage) ----------
 // Facebook et Instagram ne sont pas encore reliés : le brouillon se prépare tout seul, l'admin télécharge ou partage
@@ -4372,7 +4443,7 @@ renderAcct();
 if (sb){
   sb.auth.onAuthStateChange((ev, s) => {
     session = s;
-    if (ev === 'SIGNED_OUT'){ profile = null; lsSet('asm-profile', null); renderAcct(); }
+    if (ev === 'SIGNED_OUT'){ profile = null; lsSet('asm-profile', null); setEquipes(EQUIPES_BRUT); renderAcct(); }
   });
   loadProfile().catch(()=>{}).finally(() => { routePret = true; route(); flush(); });
   // réseau très lent : on n'attend pas le compte plus de 4 s
