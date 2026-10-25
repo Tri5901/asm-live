@@ -8,12 +8,14 @@ const CLUB = 'AS Mésanger';
 // Ajouter une catégorie = ajouter des lignes dans la base : tout le site s'adapte.
 const EQUIPES_DEFAUT = ['A', 'B', 'C', 'D', 'E'].map((c, i) => ({ id: i + 1, categorie: 'Senior M', cat_ordre: 1, ordre: i + 1, nom: 'Senior ' + c, court: c, nom_club: CLUB + ' ' + c }));
 let EQUIPES = [], TEAMS = [], CATS = [], EQUIPES_BRUT = null;
-// catégories cachées (page Admin › Catégories) : seuls les admins les voient, marquées « masquée » ; le compte est lu
-// dans la copie locale (setEquipes sert avant le chargement du profil), puis la liste est refaite après la connexion
+// catégories cachées (page Admin › Catégories) : cachées à tous, admins compris ; un admin peut les afficher avec la
+// pastille « 👁 Masquées » (Tristan, 25/10), elles sont alors marquées « masquée ». Le compte est lu dans la copie locale
+// (setEquipes sert avant le chargement du profil), puis la liste est refaite après la connexion
 const adminLocal = () => { const p = lsGet('asm-profile', null); return !!p && (p.role === 'admin' || (Array.isArray(p.roles) && p.roles.includes('admin'))); };
+const voirMasquees = () => adminLocal() && !!lsGet('asm-voir-masquees', false);
 function setEquipes(list){
   EQUIPES_BRUT = list;
-  const adm = adminLocal();
+  const adm = voirMasquees();
   EQUIPES = (Array.isArray(list) && list.length ? list : EQUIPES_DEFAUT).filter(e => e.actif !== false || adm)
     .sort((a, b) => a.cat_ordre - b.cat_ordre || a.ordre - b.ordre);
   TEAMS = EQUIPES.map(e => e.id);
@@ -60,14 +62,24 @@ function teamFilterHTML(f, all = true, extra = () => '', normales = false){
   const cat = f.cat || (all ? '' : CC[0]);
   const cats = (all ? [['', 'Tout le club']] : []).concat(CC.map(c => [c, c]));
   const teams = cat ? ct(cat) : [];
-  // admins : catégorie ou équipe cachée au public marquée « masquée »
+  // admins : catégorie ou équipe cachée au public marquée « masquée » (quand la pastille « 👁 Masquées » est activée)
   const masq = '<small class="masq">masquée</small>';
-  return `<div class="tfilter">${cats.length > 1 || !all ? `<div class="chipbar catbar" role="group" aria-label="Catégorie">${cats.map(([v, l]) => `<button type="button" data-fcat="${esc(v)}" class="${cat===v?'on':''}" aria-pressed="${cat===v}">${esc(l)}${v && catMasquee(v) ? masq : ''}</button>`).join('')}</div>` : ''}
+  const vm = adminLocal() && (EQUIPES_BRUT || []).some(e => e.actif === false)
+    ? `<button type="button" class="vmasq${voirMasquees() ? ' on' : ''}" data-voirmasq aria-pressed="${voirMasquees()}">👁 Masquées</button>` : '';
+  return `<div class="tfilter">${cats.length > 1 || !all || vm ? `<div class="chipbar catbar" role="group" aria-label="Catégorie">${vm}${cats.map(([v, l]) => `<button type="button" data-fcat="${esc(v)}" class="${cat===v?'on':''}" aria-pressed="${cat===v}">${esc(l)}${v && catMasquee(v) ? masq : ''}</button>`).join('')}</div>` : ''}
     ${teams.length > 1 || (!all && teams.length) ? `<div class="chipbar teambar" role="group" aria-label="Équipe">${(all ? [0] : []).concat(teams).map(n => `<button type="button" data-fteam="${n}" class="${(f.team||0)===n?'on':''}" aria-pressed="${(f.team||0)===n}">${n ? esc(shortIn(n)) + extra(n) + (masquee(n) && !catMasquee(cat) ? masq : '') : 'Toutes'}</button>`).join('')}</div>` : ''}</div>`;
 }
 function bindTeamFilter(root, f, all, onChange, normales = false){
   root.querySelectorAll('[data-fcat]').forEach(b => b.onclick = () => { f.cat = b.dataset.fcat; f.team = all ? 0 : ((normales === 'classement' ? catTeamsC : normales ? catTeamsN : catTeams)(f.cat)[0] || 0); onChange(); });
   root.querySelectorAll('[data-fteam]').forEach(b => b.onclick = () => { f.team = +b.dataset.fteam; if (f.team) f.cat = catOf(f.team); onChange(); });
+  // admins : afficher / cacher les catégories masquées (retenu sur ce téléphone), partout sur le site
+  root.querySelectorAll('[data-voirmasq]').forEach(b => b.onclick = () => {
+    lsSet('asm-voir-masquees', !voirMasquees()); setEquipes(EQUIPES_BRUT);
+    if (f.cat && !CATS.includes(f.cat)){ f.cat = ''; f.team = 0; }
+    if (f.team && !TEAMS.includes(f.team)) f.team = 0;
+    toast(voirMasquees() ? 'Catégories masquées affichées (admins)' : 'Catégories masquées cachées');
+    route();
+  });
 }
 const inFilter = (f, eq) => f.team ? (eq || 1) === f.team : f.cat ? catOf(eq) === f.cat : true;
 // Logo de chaque équipe : celui du club, ou celui de l'adversaire s'il est connu
@@ -655,8 +667,8 @@ setInterval(() => {
 }, 1000);
 
 function drawHome(matches, goalRows){
-  // matchs d'une équipe désactivée (ex. match de test) : visibles seulement des admins
-  if (!isAdmin()) matches = matches.filter(m => EQUIPES.some(e => e.id === m.equipe));
+  // matchs d'une équipe cachée : cachés à tous (un admin les affiche avec la pastille « 👁 Masquées »)
+  matches = matches.filter(m => EQUIPES.some(e => e.id === m.equipe));
   const byMatch = {};
   goalRows.forEach(g => { (byMatch[g.match_id] ||= []).push({k:'goal', t:g.t}); });
   const isMine = m => !!myId() && m.delegue_id === myId() && m.status !== 'termine';
@@ -3975,7 +3987,7 @@ async function categoriesView(){
   const tog = (c, k, val, label) => `<button type="button" class="vistog${val === 'on' ? '' : ' off'}" data-cat="${esc(c)}" data-k="${k}" aria-pressed="${val === 'on'}"><i></i>${label}${val === 'mixte' ? ' <small>(en partie)</small>' : ''}</button>`;
   view.innerHTML = `<div class="acc catadm">${adminTabs('categories')}
     <div class="acctop"><h1>Catégories</h1></div>
-    <p class="note"><b>Visible</b> : la catégorie apparaît pour tout le monde (matchs, stats, classements, notifications). Cachée, seuls les admins la voient, marquée « masquée ».</p>
+    <p class="note"><b>Visible</b> : la catégorie apparaît pour tout le monde (matchs, stats, classements, notifications). Cachée, elle disparaît pour tout le monde, admins compris ; un admin peut l’afficher avec la pastille « 👁 Masquées » (accueil, stats), elle est alors marquée « masquée ».</p>
     <p class="note"><b>Anonymiser</b> : aucun joueur n’est montré au public (compos, buteurs, cartons, stats des joueurs, homme du match) ; il reste les résultats et les stats de l’équipe. Ceux qui gèrent les matchs voient toujours les noms.</p>
     <div class="catlist">${cats.map(c => { const l = data.filter(e => e.categorie === c);
       return `<div class="catrow"><div class="catnom"><b>${esc(c)}</b><small>${esc(equipesCourt(c, l))}</small></div>
