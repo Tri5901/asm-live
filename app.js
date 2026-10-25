@@ -3341,7 +3341,7 @@ function nameView(force){
       const { data: id, error } = await sb.rpc('demander_nom', { p_nom: fmtNom($('nmPrenom').value) + ' ' + fmtNom($('nmNom').value) });
       if (error){ $('nmGo').disabled = false; toast(isNetErr(error) ? 'Pas de réseau' : /déjà ton nom/.test(error.message) ? 'C’est déjà ton nom' : 'Prénom et nom obligatoires'); return; }
       // les admins sont prévenus par une notification (une seule par demande)
-      fetch('api/notify-nom', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token }, body: JSON.stringify({ id }) }).catch(() => {});
+      fetch('api/notify-signup', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token }, body: JSON.stringify({ type: 'nom', id }) }).catch(() => {});
       toast('Demande envoyée : un administrateur doit la valider');
       versCompte();
       return;
