@@ -389,6 +389,8 @@ function bindDelegPick(btn, curNom, onPick){
 }
 let people = null;
 let accQ = '';   // recherche de la page Accès (gardée quand la page se redessine)
+let accF = { statut: '', role: '', cat: '' };   // filtres de la page Accès (statut : '' | on | notif | confirm)
+let accAppliquer = null;   // refait les filtres de la page Accès (présence, notifs, équipes arrivent après coup)
 async function loadPeople(){
   if (!isAdmin()) return {};
   if (!people){ const { data } = await sb.from('profiles').select('id,nom,email,role'); people = {}; (data||[]).forEach(p => { people[p.id] = (p.nom || p.email || 'Sans nom') + (p.role === 'supprime' ? ' (compte supprimé)' : ''); }); }
@@ -3482,11 +3484,16 @@ async function equipesDesJoueurs(){
   (pr || []).forEach(c => { const m = parId.get(c.match_id); if (m) compter(m, c.rosters); });
   spans.forEach(sp => {
     const e = fois.get(playerKey(sp.dataset.joueur));
-    if (!e || !document.body.contains(sp)) return;
+    if (!document.body.contains(sp)) return;
+    if (!e){ if (sp.textContent.trim() === '⚽') sp.remove(); return; }   // relié mais pas encore joué : rien à montrer
     const max = Math.max(...Object.values(e)), ids = Object.keys(e).map(Number).filter(n => e[n] === max);
-    const nomEq = n => ((EQUIPES_BRUT || []).find(x => x.id === n) || {}).nom || teamLabel(n);   // catégories cachées comprises
-    sp.insertAdjacentHTML('beforeend', ` · <b>${esc(ids.map(nomEq).join(', '))}</b>`);
+    const eq = n => (EQUIPES_BRUT || []).find(x => x.id === n) || {};   // catégories cachées comprises
+    sp.insertAdjacentHTML('beforeend', `${sp.textContent.trim() === '⚽' ? ' ' : ' · '}<b>${esc(ids.map(n => eq(n).nom || teamLabel(n)).join(', '))}</b>`);
+    // le filtre par catégorie compte aussi la catégorie où il joue
+    const r = sp.closest('.arow');
+    if (r) r.dataset.cats = [...new Set([...(r.dataset.cats || '').split('|').filter(Boolean), ...ids.map(n => eq(n).categorie).filter(Boolean)])].join('|');
   });
+  if (accAppliquer) accAppliquer();
 }
 // Page Accès : changements de nom demandés par les comptes, à accepter ou refuser (supabase/nom-validation.sql)
 async function nomDemandesAdmin(comptes){
@@ -3525,27 +3532,40 @@ async function adminView(){
   const initial = p => esc(nameOf(p).trim().charAt(0).toUpperCase());
   const teamsOf = p => p.role === 'delegue' ? (p.equipes || []) : [];
 
-  // une ligne par personne, rangée selon son rôle principal ; ses rôles cumulés en pastilles ; la toucher ouvre sa fiche
-  const row = p => `<div class="arow atap" data-uid="${esc(p.id)}" role="link" tabindex="0">
+  // catégories d'une personne pour le filtre : celles dont elle est responsable (le joueur ajoute la sienne ensuite)
+  const toutes = equipesToutes(), catDeEq = n => (toutes.find(e => e.id === n) || {}).categorie;
+  const catsDe = p => [...new Set([...(p.categories || []), ...teamsOf(p).map(catDeEq)].filter(Boolean))];
+  // une ligne par personne, rangée selon son rôle principal : le nom, ses rôles cumulés en pastilles, puis une ligne
+  // discrète (équipe jouée, notifs, en ligne) ; la toucher ouvre sa fiche, « Modifier » ses rôles
+  const row = p => `<div class="arow atap" data-uid="${esc(p.id)}" data-roles="${esc(rolesDe(p).join(' '))}" data-cats="${esc(catsDe(p).join('|'))}"
+      data-confirm="${p.a_confirmer ? 1 : 0}" data-q="${esc([nameOf(p), p.email, p.joueur].filter(Boolean).join(' '))}" role="link" tabindex="0">
       <span class="pav">${initial(p)}</span>
-      <div class="who"><b>${esc(nameOf(p))}${p.id === session.user.id ? ' <small>(toi)</small>' : ''}</b><small>${esc(p.email || '')}${p.a_confirmer && p.created_at ? ' · inscrit le ' + esc(new Date(p.created_at).toLocaleDateString('fr-FR')) : ''}</small>
-        <span class="rbadges">${rolesBadges(p)}</span>${p.joueur ? `<span class="ajoueur" data-joueur="${esc(p.joueur)}">⚽ ${esc(p.joueur)}</span>` : ''}<span class="anotif"></span><span class="onstate"></span></div>
+      <div class="who"><b>${esc(nameOf(p))}${p.id === session.user.id ? ' <small>(toi)</small>' : ''}</b>
+        ${p.a_confirmer ? `<small>${esc(p.email || '')}${p.created_at ? ' · inscrit le ' + esc(new Date(p.created_at).toLocaleDateString('fr-FR')) : ''}</small>` : ''}
+        <span class="rbadges">${rolesBadges(p)}</span>
+        <span class="ameta">${p.joueur ? `<span class="ajoueur" data-joueur="${esc(p.joueur)}">⚽${p.joueur !== nameOf(p) ? ' ' + esc(p.joueur) : ''}</span>` : ''}<span class="anotif"></span><span class="onstate"></span></span></div>
       ${p.a_confirmer ? `<button type="button" class="amod ok" data-edit="${esc(p.id)}">Valider</button>`
-        : `<button type="button" class="amod" data-edit="${esc(p.id)}">Modifier</button>`}
+        : `<button type="button" class="amod" data-edit="${esc(p.id)}" aria-label="Modifier les rôles de ${esc(nameOf(p))}">Modifier</button>`}
     </div>`;
   // nouveaux comptes (joueurs d'office) : à confirmer, ou rôle à changer, ou compte à supprimer
   const nouveaux = data.filter(p => p.a_confirmer).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
   const pendingN = data.filter(p => p.role === 'pending').length;
   view.innerHTML = `<div class="acc">${adminTabs('acces')}
     <div class="acctop"><h1>Accès</h1><a class="link" href="#/compte">← Mon compte</a></div>
-    <div class="acctotal"><b>${data.length}</b><span>compte${data.length>1?'s':''} créé${data.length>1?'s':''}<small>${[['admin','admin'],['delegue','responsable'],['dirigeant','dirigeant'],['joueur','joueur'],['supporter','supporter'],['pending','en attente']].map(([r,l])=>{const n=data.filter(p=>p.role===r).length; return n ? n+' '+l+(n>1&&r!=='pending'?'s':'') : '';}).filter(Boolean).join(' · ')}</small></span></div>
-    <p class="accon" id="accOnline"></p>
-    <p class="accnotif" id="accNotif"></p>
-    <div class="field accq"><input id="accQ" type="search" placeholder="🔎 Chercher une personne (nom, e-mail, joueur)" autocomplete="off" value="${esc(accQ)}"></div>
+    <div class="akpi" role="group" aria-label="Filtrer">
+      <button type="button" data-fs=""><b>${data.length}</b><small>compte${data.length > 1 ? 's' : ''}</small></button>
+      <button type="button" data-fs="on" class="kon"><b id="kOn">–</b><small>en ligne</small></button>
+      <button type="button" data-fs="notif"><b id="kNotif">–</b><small>notifs</small></button>
+      <button type="button" data-fs="confirm"${nouveaux.length ? ' class="kwarn"' : ''}><b>${nouveaux.length}</b><small>à valider</small></button>
+    </div>
+    <p class="note kanon" id="kAnon"></p>
+    <div class="field accq"><input id="accQ" type="search" placeholder="🔎 Chercher (nom, e-mail, joueur)" autocomplete="off" value="${esc(accQ)}"></div>
+    <div class="chipbar afiltre" id="fRole" role="group" aria-label="Rôle"></div>
+    <div class="chipbar afiltre" id="fCat" role="group" aria-label="Catégorie"></div>
+    <p class="note avide" id="accVide" hidden>Personne ne correspond à ces filtres.</p>
     <div id="nomDem"></div>
-    <p class="note" style="margin-top:4px">Un <b>responsable</b> crée et saisit les matchs de ses équipes. Un <b>joueur</b>, un <b>supporter</b> ou un <b>dirigeant</b> ne peut saisir que les matchs où il est responsable score. Un <b>admin</b> gère tout.</p>
+    <details class="anote"><summary>Qui peut faire quoi ?</summary><p>Un <b>responsable</b> crée et saisit les matchs de ses équipes (ou de toute une catégorie). Un <b>joueur</b>, un <b>supporter</b> ou un <b>dirigeant</b> ne peut saisir que les matchs où il est responsable score. Un <b>admin</b> gère tout. Les rôles se cumulent. Un nouveau compte est <b>supporter</b> : « Valider » choisit son rôle.</p></details>
     ${nouveaux.length ? `<div class="sec secwarn">Nouveaux comptes à confirmer · ${nouveaux.length}</div>
-      <p class="note" style="margin:0 0 6px">Ils sont <b>supporters</b> dès leur inscription (ils peuvent demander à être responsable score). <b>Valider</b> ouvre le choix du rôle (supporter, joueur, dirigeant, responsable, admin), puis <b>Valider le compte</b>. On peut aussi y supprimer le compte.</p>
       <div class="alist">${nouveaux.map(row).join('')}</div>` : ''}
     ${GROUPS.map(([r, t]) => {
       // responsables : dans l'ordre des catégories (Admin › Catégories) ; dans une catégorie, ceux de toute la catégorie
@@ -3560,7 +3580,7 @@ async function adminView(){
       return l.length ? `<div class="sec${r === 'pending' ? ' secwarn' : ''}">${t} · ${l.length}</div><div class="alist">${l.map(row).join('')}</div>` : '';
     }).join('')}
     ${supprimes ? `<div class="sec">Comptes supprimés · ${supprimes}</div>
-      <p class="note" style="margin:0 0 6px">Leur nom reste dans l’historique des matchs. Si la personne a recréé un compte, <b>rattache-le</b> : tout son historique passe sur le nouveau compte. Sinon tu peux l’<b>effacer</b> définitivement.</p>
+      <p class="note" style="margin:0 0 6px">Leur nom reste dans l’historique. <b>Rattacher</b> passe tout leur historique sur un compte recréé ; <b>Effacer</b> les retire définitivement.</p>
       <div class="alist">${deleted.map(p => `<div class="arow gone"><span class="pav">${initial(p)}</span><div class="who"><b>${esc(nameOf(p))}</b><small>${p.deleted_at ? 'Supprimé le ' + esc(new Date(p.deleted_at).toLocaleDateString('fr-FR')) : 'Compte supprimé'}</small></div><div class="gonebtns"><button type="button" class="amod" data-link="${esc(p.id)}">Rattacher</button><button type="button" class="amod danger" data-wipe="${esc(p.id)}">Effacer</button></div></div>`).join('')}</div>` : ''}
   </div>`;
 
@@ -3613,19 +3633,48 @@ async function adminView(){
   notifsAcces();
   nomDemandesAdmin(data);
   equipesDesJoueurs();
-  // recherche : nom, e-mail, joueur relié (sans accents ni majuscules) ; les groupes vides disparaissent
+  // Filtres (Tristan, 25/10) : tuiles (tous / en ligne / notifs / à valider), rôle, catégorie et recherche se cumulent ;
+  // les groupes vides disparaissent. Les comptes supprimés ne suivent que la recherche.
   const plat = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-  const chercher = () => {
-    const q = plat(accQ).trim();
-    view.querySelectorAll('.alist .arow').forEach(r => { r.hidden = !!q && !plat(r.innerText).includes(q); });
-    view.querySelectorAll('.alist').forEach(l => {
-      const vide = ![...l.querySelectorAll('.arow')].some(r => !r.hidden);
-      l.hidden = vide;
-      for (let s = l.previousElementSibling; s; s = s.previousElementSibling){ s.hidden = vide && !!q; if (s.classList.contains('sec')) break; }
-    });
+  const lignes = () => [...view.querySelectorAll('.alist .arow[data-uid]')];
+  const ROLES_F = [['admin', 'Admins'], ['responsable', 'Responsables'], ['dirigeant', 'Dirigeants'], ['joueur', 'Joueurs'], ['supporter', 'Supporters']];
+  const pastilles = () => {
+    const ls = lignes(), nb = f => ls.filter(f).length;
+    $('fRole').innerHTML = [['', 'Tous']].concat(ROLES_F).map(([v, l]) => { const n = v ? nb(r => r.dataset.roles.split(' ').includes(v)) : 0;
+      return v && !n ? '' : `<button type="button" data-fr="${v}" class="${accF.role === v ? 'on' : ''}" aria-pressed="${accF.role === v}">${l}${n ? `<small>${n}</small>` : ''}</button>`; }).join('');
+    const cats = [...new Set(equipesToutes().map(e => e.categorie))].filter(c => nb(r => r.dataset.cats.split('|').includes(c)));
+    $('fCat').innerHTML = cats.length ? [''].concat(cats).map(c => `<button type="button" data-fc="${esc(c)}" class="${accF.cat === c ? 'on' : ''}" aria-pressed="${accF.cat === c}">${c ? esc(c) + `<small>${nb(r => r.dataset.cats.split('|').includes(c))}</small>` : 'Toutes'}</button>`).join('') : '';
+    $('fCat').hidden = !cats.length;
+    $('fRole').querySelectorAll('[data-fr]').forEach(b => b.onclick = () => { accF.role = b.dataset.fr; appliquer(); });
+    $('fCat').querySelectorAll('[data-fc]').forEach(b => b.onclick = () => { accF.cat = b.dataset.fc; appliquer(); });
   };
-  $('accQ').oninput = e => { accQ = e.target.value; chercher(); };
-  if (accQ) chercher();
+  const appliquer = () => {
+    if (!$('accQ')) return;
+    const q = plat(accQ).trim(), filtre = accF.statut || accF.role || accF.cat;
+    view.querySelectorAll('.alist .arow').forEach(r => {
+      const d = r.dataset;
+      r.hidden = !d.uid ? !!filtre || (!!q && !plat(r.innerText).includes(q))
+        : (!!q && !plat(d.q).includes(q))
+          || (accF.statut === 'on' && d.on !== '1') || (accF.statut === 'notif' && d.notif !== '1') || (accF.statut === 'confirm' && d.confirm !== '1')
+          || (!!accF.role && !d.roles.split(' ').includes(accF.role)) || (!!accF.cat && !d.cats.split('|').includes(accF.cat));
+    });
+    let visibles = 0;
+    view.querySelectorAll('.alist').forEach(l => {
+      const n = [...l.querySelectorAll('.arow')].filter(r => !r.hidden).length; visibles += n;
+      l.hidden = !n;
+      for (let s = l.previousElementSibling; s; s = s.previousElementSibling){ s.hidden = !n; if (s.classList.contains('sec')) break; }
+    });
+    $('accVide').hidden = visibles > 0;
+    const ls = lignes();
+    $('kOn').textContent = ls.filter(r => r.dataset.on === '1').length;
+    $('kNotif').textContent = ls.filter(r => r.dataset.notif === '1').length;
+    view.querySelectorAll('.akpi [data-fs]').forEach(b => { const on = (accF.statut || '') === b.dataset.fs; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+    pastilles();
+  };
+  accAppliquer = appliquer;
+  view.querySelectorAll('.akpi [data-fs]').forEach(b => b.onclick = () => { accF.statut = accF.statut === b.dataset.fs ? '' : b.dataset.fs; appliquer(); });
+  $('accQ').oninput = e => { accQ = e.target.value; appliquer(); };
+  appliquer();
 
   // Rattacher un compte supprimé à un compte existant
   function linkAccount(old){
@@ -3670,7 +3719,7 @@ function respTexte(p){
     const l = equipesDeCat(c).filter(e => seules.includes(e.id));
     return !l.length ? '' : l.length === 1 ? l[0].nom : c + ' ' + l.map(e => e.court).join(', ');
   }).filter(Boolean);
-  return [...cats.map(c => c + ' (toute la catégorie)'), ...parCat].join(' · ') || 'aucune équipe';
+  return [...cats.map(c => 'tout ' + c), ...parCat].join(' · ') || 'aucune équipe';
 }
 function rolesBadges(p){
   if (p.role === 'pending') return '<span class="rbadge r-pending">En attente</span>';
@@ -4678,15 +4727,16 @@ async function notifsAcces(){
   const { data, error } = await sb.rpc('notifs_comptes');
   if (error || !data) return;
   const par = new Map(data.filter(x => x.user_id).map(x => [x.user_id, x])), anonymes = (data.find(x => !x.user_id) || {}).appareils || 0;
-  let n = 0;
+  // sur la ligne : « 🔔 A, B » (équipes suivies), rien sans notifs ; le filtre « notifs » lit data-notif
   document.querySelectorAll('.arow[data-uid]').forEach(r => {
     const x = par.get(r.dataset.uid), el = r.querySelector('.anotif'); if (!el) return;
-    if (x) n++;
+    r.dataset.notif = x ? '1' : '0';
     el.classList.toggle('on', !!x);
-    el.textContent = x ? '🔔 Notifs' + (x.appareils > 1 ? ' · ' + x.appareils + ' appareils' : '') + ((x.equipes || []).length ? ' · buts ' + x.equipes.map(teamLetter).join(', ') : '') : '🔕 Pas de notifs';
+    el.textContent = x ? '🔔 ' + ((x.equipes || []).length ? x.equipes.map(teamLetter).join(', ') : 'notifs') + (x.appareils > 1 ? ' (' + x.appareils + ' tél.)' : '') : '';
   });
-  const sum = $('accNotif');
-  if (sum) sum.textContent = '🔔 ' + n + ' compte' + (n > 1 ? 's ont' : ' a') + ' activé les notifications' + (anonymes ? ' · ' + anonymes + ' appareil' + (anonymes > 1 ? 's' : '') + ' sans compte' : '');
+  const sum = $('kAnon');
+  if (sum) sum.textContent = anonymes ? '📱 ' + anonymes + ' téléphone' + (anonymes > 1 ? 's' : '') + ' sans compte reçoi' + (anonymes > 1 ? 'vent' : 't') + ' aussi les notifs.' : '';
+  if (accAppliquer) accAppliquer();
 }
 function renderAdminOnline(){
   const rows = document.querySelectorAll('.arow[data-uid]'); if (!rows.length) return;
@@ -4694,10 +4744,10 @@ function renderAdminOnline(){
   rows.forEach(r => {
     const pages = u.get(r.dataset.uid), el = r.querySelector('.onstate');
     r.classList.toggle('isOn', !!pages);
-    if (el) el.textContent = pages ? 'En ligne · ' + [...pages].map(pageLabel).join(', ') : '';
+    r.dataset.on = pages ? '1' : '0';
+    if (el) el.textContent = pages ? '🟢 ' + [...pages].map(pageLabel).join(', ') : '';
   });
-  const sum = $('accOnline');
-  if (sum){ const n = [...u.keys()].filter(id => document.querySelector('.arow[data-uid="' + id + '"]')).length; sum.innerHTML = '<i></i>' + n + ' compte' + (n > 1 ? 's' : '') + ' connecté' + (n > 1 ? 's' : '') + ' en ce moment'; }
+  if (accAppliquer) accAppliquer();
 }
 function onlineHTML(){
   const metas = Object.values(presState).map(a => (a && a[0]) || {});
