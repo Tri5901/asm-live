@@ -388,6 +388,7 @@ function bindDelegPick(btn, curNom, onPick){
   };
 }
 let people = null;
+let accQ = '';   // recherche de la page Accès (gardée quand la page se redessine)
 async function loadPeople(){
   if (!isAdmin()) return {};
   if (!people){ const { data } = await sb.from('profiles').select('id,nom,email,role'); people = {}; (data||[]).forEach(p => { people[p.id] = (p.nom || p.email || 'Sans nom') + (p.role === 'supprime' ? ' (compte supprimé)' : ''); }); }
@@ -3462,8 +3463,8 @@ async function monJoueurBloc(){
   try{ data = await chargerStats(); if (location.hash.startsWith('#/compte')) dessine(); }
   catch(e){ if (!data && box()) box().innerHTML = '<div class="empty">Pas de réseau pour l’instant.</div>'; }
 }
-// Page Accès : à côté de « ⚽ joueur », les équipes où il a joué (Tristan, 25/10), d'après les compos de nos matchs,
-// y compris les compos privées des catégories anonymisées (lisibles par les admins) ; la plus jouée d'abord
+// Page Accès : à côté de « ⚽ joueur », son équipe (Tristan, 25/10) : celle où il a le plus joué (les deux en cas
+// d'égalité), d'après les compos de nos matchs, y compris les compos privées des catégories anonymisées (lisibles par les admins)
 async function equipesDesJoueurs(){
   const spans = [...view.querySelectorAll('.ajoueur[data-joueur]')];
   if (!spans.length) return;
@@ -3482,8 +3483,9 @@ async function equipesDesJoueurs(){
   spans.forEach(sp => {
     const e = fois.get(playerKey(sp.dataset.joueur));
     if (!e || !document.body.contains(sp)) return;
-    const ids = Object.keys(e).map(Number).sort((a, b) => e[b] - e[a]);
-    sp.insertAdjacentHTML('beforeend', ` · <b>${esc(teamsText(ids))}</b>`);
+    const max = Math.max(...Object.values(e)), ids = Object.keys(e).map(Number).filter(n => e[n] === max);
+    const nomEq = n => ((EQUIPES_BRUT || []).find(x => x.id === n) || {}).nom || teamLabel(n);   // catégories cachées comprises
+    sp.insertAdjacentHTML('beforeend', ` · <b>${esc(ids.map(nomEq).join(', '))}</b>`);
   });
 }
 // Page Accès : changements de nom demandés par les comptes, à accepter ou refuser (supabase/nom-validation.sql)
@@ -3539,16 +3541,22 @@ async function adminView(){
     <div class="acctotal"><b>${data.length}</b><span>compte${data.length>1?'s':''} créé${data.length>1?'s':''}<small>${[['admin','admin'],['delegue','responsable'],['dirigeant','dirigeant'],['joueur','joueur'],['supporter','supporter'],['pending','en attente']].map(([r,l])=>{const n=data.filter(p=>p.role===r).length; return n ? n+' '+l+(n>1&&r!=='pending'?'s':'') : '';}).filter(Boolean).join(' · ')}</small></span></div>
     <p class="accon" id="accOnline"></p>
     <p class="accnotif" id="accNotif"></p>
+    <div class="field accq"><input id="accQ" type="search" placeholder="🔎 Chercher une personne (nom, e-mail, joueur)" autocomplete="off" value="${esc(accQ)}"></div>
     <div id="nomDem"></div>
     <p class="note" style="margin-top:4px">Un <b>responsable</b> crée et saisit les matchs de ses équipes. Un <b>joueur</b>, un <b>supporter</b> ou un <b>dirigeant</b> ne peut saisir que les matchs où il est responsable score. Un <b>admin</b> gère tout.</p>
     ${nouveaux.length ? `<div class="sec secwarn">Nouveaux comptes à confirmer · ${nouveaux.length}</div>
       <p class="note" style="margin:0 0 6px">Ils sont <b>supporters</b> dès leur inscription (ils peuvent demander à être responsable score). <b>Valider</b> ouvre le choix du rôle (supporter, joueur, dirigeant, responsable, admin), puis <b>Valider le compte</b>. On peut aussi y supprimer le compte.</p>
       <div class="alist">${nouveaux.map(row).join('')}</div>` : ''}
     ${GROUPS.map(([r, t]) => {
-      // responsables : dernières équipes d'abord, la A en dernier (comme l'accueil), sans équipe à la fin ; les autres par nom
-      const rangEq = p => { const i = teamsOf(p).map(n => EQUIPES.findIndex(e => e.id === n)).filter(x => x >= 0); return i.length ? -Math.max(...i) : 999; };
+      // responsables : dans l'ordre des catégories (Admin › Catégories) ; dans une catégorie, ceux de toute la catégorie
+      // d'abord, puis ceux d'équipes, par ordre alphabétique ; sans équipe à la fin. Les autres groupes : par nom
+      // (catégories cachées comprises : l'ordre vient de la liste complète des équipes)
+      const tout = (EQUIPES_BRUT || EQUIPES).slice().sort((a, b) => a.cat_ordre - b.cat_ordre || a.ordre - b.ordre);
+      const ordreCats = [...new Set(tout.map(e => e.categorie))], catDe = n => (tout.find(e => e.id === n) || {}).categorie;
+      const rangCat = p => { const i = [...(p.categories || []), ...teamsOf(p).map(catDe)].map(c => ordreCats.indexOf(c)).filter(x => x >= 0); return i.length ? Math.min(...i) : 999; };
+      const deCat = p => (p.categories || []).some(c => ordreCats.indexOf(c) === rangCat(p)) ? 0 : 1;
       const l = data.filter(p => p.role === r && !p.a_confirmer)
-        .sort((a, b) => (r === 'delegue' ? rangEq(a) - rangEq(b) : 0) || nameOf(a).localeCompare(nameOf(b), 'fr'));
+        .sort((a, b) => (r === 'delegue' ? rangCat(a) - rangCat(b) || deCat(a) - deCat(b) : 0) || nameOf(a).localeCompare(nameOf(b), 'fr'));
       return l.length ? `<div class="sec${r === 'pending' ? ' secwarn' : ''}">${t} · ${l.length}</div><div class="alist">${l.map(row).join('')}</div>` : '';
     }).join('')}
     ${supprimes ? `<div class="sec">Comptes supprimés · ${supprimes}</div>
@@ -3556,9 +3564,36 @@ async function adminView(){
       <div class="alist">${deleted.map(p => `<div class="arow gone"><span class="pav">${initial(p)}</span><div class="who"><b>${esc(nameOf(p))}</b><small>${p.deleted_at ? 'Supprimé le ' + esc(new Date(p.deleted_at).toLocaleDateString('fr-FR')) : 'Compte supprimé'}</small></div><div class="gonebtns"><button type="button" class="amod" data-link="${esc(p.id)}">Rattacher</button><button type="button" class="amod danger" data-wipe="${esc(p.id)}">Effacer</button></div></div>`).join('')}</div>` : ''}
   </div>`;
 
-  // fiche de la personne : toute la ligne, ou le bouton « Modifier » / « Valider »
+  // la ligne (le nom) ouvre la fiche complète ; « Modifier » / « Valider » change les rôles tout de suite, dans une fenêtre
   const fiche = id => { location.hash = '#/admin/personne/' + id; };
-  view.querySelectorAll('[data-edit]').forEach(b => b.onclick = e => { e.stopPropagation(); fiche(b.dataset.edit); });
+  const modifier = id => {
+    const p = data.find(x => x.id === id); if (!p) return;
+    const st = rolesEtat(p, p.id === myId());
+    const dessine = () => {
+      openSheet(`<h3 id="shTitle">Rôles de ${esc(nameOf(p))}</h3>
+        <p class="note" style="margin:0 0 8px">Les rôles se cumulent : par exemple responsable et joueur, ou admin et responsable des U18 B.</p>
+        ${rolesEditeurHTML(st)}
+        <div class="foot" style="margin-top:12px"><button class="fbtn primary" id="rqSave">${p.a_confirmer ? 'Valider le compte' : 'Enregistrer'}</button><button class="fbtn" id="rqFiche">Voir la fiche</button></div>`);
+      rolesEditeurBind($('shBody'), st, dessine);
+      $('rqFiche').onclick = () => { closeSheet(); fiche(p.id); };
+      $('rqSave').onclick = async () => {
+        if (!st.roles.size){ toast('Choisis au moins un rôle'); return; }
+        $('rqSave').disabled = true;
+        if (p.a_confirmer){
+          const { data: upd, error } = await sb.from('profiles').update({ a_confirmer: false }).eq('id', p.id).select('id');
+          if (error || !upd || !upd.length){ $('rqSave').disabled = false; toast(isNetErr(error) ? 'Pas de réseau' : 'Modification refusée'); return; }
+        }
+        const refus = await rolesEnregistrer(p.id, st);
+        if (refus){ $('rqSave').disabled = false; toast(refus); return; }
+        if (st.me) await loadProfile().catch(() => {});
+        people = null; delegues = null; closeSheet();
+        toast(p.a_confirmer ? nameOf(p) + ' validé' : 'Rôles de ' + nameOf(p) + ' enregistrés');
+        adminView();
+      };
+    };
+    dessine();
+  };
+  view.querySelectorAll('[data-edit]').forEach(b => b.onclick = e => { e.stopPropagation(); modifier(b.dataset.edit); });
   view.querySelectorAll('.arow.atap').forEach(r => {
     r.onclick = () => fiche(r.dataset.uid);
     r.onkeydown = e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); fiche(r.dataset.uid); } };
@@ -3578,6 +3613,19 @@ async function adminView(){
   notifsAcces();
   nomDemandesAdmin(data);
   equipesDesJoueurs();
+  // recherche : nom, e-mail, joueur relié (sans accents ni majuscules) ; les groupes vides disparaissent
+  const plat = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const chercher = () => {
+    const q = plat(accQ).trim();
+    view.querySelectorAll('.alist .arow').forEach(r => { r.hidden = !!q && !plat(r.innerText).includes(q); });
+    view.querySelectorAll('.alist').forEach(l => {
+      const vide = ![...l.querySelectorAll('.arow')].some(r => !r.hidden);
+      l.hidden = vide;
+      for (let s = l.previousElementSibling; s; s = s.previousElementSibling){ s.hidden = vide && !!q; if (s.classList.contains('sec')) break; }
+    });
+  };
+  $('accQ').oninput = e => { accQ = e.target.value; chercher(); };
+  if (accQ) chercher();
 
   // Rattacher un compte supprimé à un compte existant
   function linkAccount(old){
@@ -3615,14 +3663,46 @@ async function adminView(){
 // rôles cumulés en pastilles ; responsable : ses catégories entières puis ses autres équipes
 function respTexte(p){
   const cats = Array.isArray(p.categories) ? p.categories : [];
-  const dans = new Set(EQUIPES.filter(e => cats.includes(e.categorie)).map(e => e.id));
+  const dans = dansCatsDe(new Set(cats));
   const seules = (p.equipes || []).filter(n => !dans.has(n));
-  return [...cats.map(c => c + ' (toute la catégorie)'), ...(seules.length ? [teamsText(seules)] : [])].join(' · ') || 'aucune équipe';
+  // équipes à part, regroupées par catégorie (cachées comprises) : « Senior M B, C · U13 A »
+  const parCat = [...new Set(equipesToutes().map(e => e.categorie))].map(c => {
+    const l = equipesDeCat(c).filter(e => seules.includes(e.id));
+    return !l.length ? '' : l.length === 1 ? l[0].nom : c + ' ' + l.map(e => e.court).join(', ');
+  }).filter(Boolean);
+  return [...cats.map(c => c + ' (toute la catégorie)'), ...parCat].join(' · ') || 'aucune équipe';
 }
 function rolesBadges(p){
   if (p.role === 'pending') return '<span class="rbadge r-pending">En attente</span>';
   return rolesDe(p).map(r => `<span class="rbadge r-${r === 'responsable' ? 'delegue' : r}">${r === 'admin' ? 'Admin'
     : r === 'responsable' ? 'Responsable · ' + esc(respTexte(p)) : esc((ROLES_LISTE.find(x => x[0] === r) || [r, r])[1])}</span>`).join('');
+}
+// Éditeur des rôles cumulables, partagé par la fiche et la fenêtre « Modifier » de la page Accès :
+// st = { roles, cats (catégories entières), eqs (équipes choisies en plus, hors catégories cochées), me }
+// toutes les équipes, catégories cachées comprises (on peut nommer un responsable avant de montrer sa catégorie)
+const equipesToutes = () => (EQUIPES_BRUT || EQUIPES).slice().sort((a, b) => a.cat_ordre - b.cat_ordre || a.ordre - b.ordre);
+const equipesDeCat = c => equipesToutes().filter(e => e.categorie === c);
+const dansCatsDe = cats => new Set(equipesToutes().filter(e => cats.has(e.categorie)).map(e => e.id));
+const rolesEtat = (p, me) => { const cats = new Set(p.categories || []); return { roles: new Set(rolesDe(p)), cats, eqs: new Set((p.equipes || []).filter(n => !dansCatsDe(cats).has(n))), me }; };
+function rolesEditeurHTML(st){
+  const resp = st.roles.has('admin') || st.roles.has('responsable'), inclus = dansCatsDe(st.cats);
+  return `<div class="rmulti" role="group" aria-label="Rôles">${ROLES_LISTE.map(([v, l]) => `<button type="button" data-r="${v}" class="${st.roles.has(v) ? 'on' : ''}" aria-pressed="${st.roles.has(v)}"${st.me && v === 'admin' ? ' disabled title="Tu ne peux pas retirer ton propre rôle admin"' : ''}>${l}</button>`).join('')}</div>
+    <small class="note">${st.roles.has('admin') ? 'Admin : gère toutes les équipes, les accès et les classements.' : st.roles.has('responsable') ? 'Responsable : crée et saisit les matchs des équipes choisies ci-dessous.' : 'Sans rôle admin ou responsable, il saisit seulement les matchs où il est responsable score.'}</small>
+    ${resp ? `<div class="field" style="margin-top:12px"><span>Responsable de</span>
+      <small style="margin:0 0 8px">Toute une catégorie : il gère aussi les équipes ajoutées plus tard dans cette catégorie.</small>
+      ${[...new Set(equipesToutes().map(e => e.categorie))].map(c => `<div class="eqcat"><div class="ecath"><small>${esc(c)}</small><button type="button" class="catall${st.cats.has(c) ? ' on' : ''}" data-cat="${esc(c)}" aria-pressed="${st.cats.has(c)}">${st.cats.has(c) ? '✓ Toute la catégorie' : 'Toute la catégorie'}</button></div>
+        <div class="eqpick">${equipesDeCat(c).map(e => { const n = e.id, on = inclus.has(n) || st.eqs.has(n); return `<button type="button" data-e="${n}" class="${on ? 'on' : ''}" aria-pressed="${on}"${inclus.has(n) ? ' disabled' : ''}><b>${esc(e.court)}</b><small>${esc(e.nom)}</small></button>`; }).join('')}</div></div>`).join('')}</div>` : ''}`;
+}
+function rolesEditeurBind(root, st, redraw){
+  root.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { const v = b.dataset.r; st.roles.has(v) ? st.roles.delete(v) : st.roles.add(v); redraw(); });
+  root.querySelectorAll('[data-cat]').forEach(b => b.onclick = () => { const c = b.dataset.cat; st.cats.has(c) ? st.cats.delete(c) : st.cats.add(c); equipesDeCat(c).forEach(e => st.eqs.delete(e.id)); redraw(); });
+  root.querySelectorAll('[data-e]').forEach(b => b.onclick = () => { const n = +b.dataset.e; st.eqs.has(n) ? st.eqs.delete(n) : st.eqs.add(n); redraw(); });
+}
+// enregistre les rôles ; renvoie le message à afficher en cas de refus, sinon null
+async function rolesEnregistrer(id, st){
+  const resp = st.roles.has('admin') || st.roles.has('responsable');
+  const { error } = await sb.rpc('admin_roles', { p_id: id, p_roles: [...st.roles], p_equipes: resp ? [...st.eqs] : [], p_categories: resp ? [...st.cats] : [] });
+  return !error ? null : isNetErr(error) ? 'Pas de réseau' : /propre rôle admin/.test(error.message) ? 'Tu ne peux pas retirer ton propre rôle admin' : /dernier admin/.test(error.message) ? 'Impossible : c’est le dernier admin' : 'Rôles refusés';
 }
 async function personneView(id){
   if (!isAdmin()){ location.hash = '#/compte'; return; }
@@ -3637,9 +3717,7 @@ async function personneView(id){
   const jourHeure = d => d ? new Date(d).toLocaleString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'jamais';
   const plur = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
   // éditeur : rôles cochés, catégories entières, équipes à part (celles des catégories cochées sont comprises)
-  const roles = new Set(rolesDe(F)), cats = new Set(F.categories || []);
-  const dansCats = () => new Set(EQUIPES.filter(e => cats.has(e.categorie)).map(e => e.id));
-  const eqs = new Set((F.equipes || []).filter(n => !dansCats().has(n)));
+  const st = rolesEtat(F, me);
   let [pre, nm] = splitNom(F.nom);
   let joueur = F.joueur || '';
   const tous = joueursClub((lsGet('asm-stats', null) || {}).ms);
@@ -3648,7 +3726,6 @@ async function personneView(id){
   const ligne = (t, v) => `<div><dt>${t}</dt><dd>${v}</dd></div>`;
 
   const draw = () => {
-    const resp = roles.has('admin') || roles.has('responsable'), inclus = dansCats();
     view.innerHTML = `<div class="acc fiche">${adminTabs('acces')}
       <div class="acctop"><h1>Fiche</h1><a class="link" href="#/admin">← Accès</a></div>
       <section class="card">
@@ -3684,12 +3761,7 @@ async function personneView(id){
       <section class="card">
         <h2 class="fh">Rôles</h2>
         <p class="note" style="margin:0 0 8px">Les rôles se cumulent : par exemple responsable et joueur, ou admin et responsable des U18 B.</p>
-        <div class="rmulti" role="group" aria-label="Rôles">${ROLES_LISTE.map(([v, l]) => `<button type="button" data-r="${v}" class="${roles.has(v) ? 'on' : ''}" aria-pressed="${roles.has(v)}"${me && v === 'admin' ? ' disabled title="Tu ne peux pas retirer ton propre rôle admin"' : ''}>${l}</button>`).join('')}</div>
-        <small class="note">${roles.has('admin') ? 'Admin : gère toutes les équipes, les accès et les classements.' : roles.has('responsable') ? 'Responsable : crée et saisit les matchs des équipes choisies ci-dessous.' : 'Sans rôle admin ou responsable, il saisit seulement les matchs où il est responsable score.'}</small>
-        ${resp ? `<div class="field" style="margin-top:12px"><span>Responsable de</span>
-          <small style="margin:0 0 8px">Toute une catégorie : il gère aussi les équipes ajoutées plus tard dans cette catégorie.</small>
-          ${CATS.map(c => `<div class="eqcat"><div class="ecath"><small>${esc(c)}</small><button type="button" class="catall${cats.has(c) ? ' on' : ''}" data-cat="${esc(c)}" aria-pressed="${cats.has(c)}">${cats.has(c) ? '✓ Toute la catégorie' : 'Toute la catégorie'}</button></div>
-            <div class="eqpick">${catTeams(c).map(n => { const on = inclus.has(n) || eqs.has(n); return `<button type="button" data-e="${n}" class="${on ? 'on' : ''}" aria-pressed="${on}"${inclus.has(n) ? ' disabled' : ''}><b>${esc(teamLetter(n))}</b><small>${esc(teamLabel(n))}</small></button>`; }).join('')}</div></div>`).join('')}</div>` : ''}
+        ${rolesEditeurHTML(st)}
         ${F.a_confirmer ? '<p class="note" style="margin:8px 0 0">Nouveau compte : choisis ses rôles puis valide.</p>' : ''}
         <div class="foot" style="margin-top:12px"><button class="fbtn primary" id="fiSave">${F.a_confirmer ? 'Valider le compte' : 'Enregistrer'}</button><a class="fbtn" href="#/admin">Retour</a></div>
       </section>
@@ -3700,9 +3772,7 @@ async function personneView(id){
       </section>
       ${me ? '' : '<button class="link danger-link" id="fiDel" style="width:100%;margin-top:4px">Supprimer ce compte</button>'}
     </div>`;
-    view.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { const v = b.dataset.r; roles.has(v) ? roles.delete(v) : roles.add(v); draw(); });
-    view.querySelectorAll('[data-cat]').forEach(b => b.onclick = () => { const c = b.dataset.cat; cats.has(c) ? cats.delete(c) : cats.add(c); catTeams(c).forEach(n => eqs.delete(n)); draw(); });
-    view.querySelectorAll('[data-e]').forEach(b => b.onclick = () => { const n = +b.dataset.e; eqs.has(n) ? eqs.delete(n) : eqs.add(n); draw(); });
+    rolesEditeurBind(view, st, draw);
     $('fiPre').oninput = e => { pre = e.target.value; }; $('fiNom').oninput = e => { nm = e.target.value; };
     $('fiJoueur').oninput = e => { joueur = e.target.value; };
     $('fiSave').onclick = enregistrer;
@@ -3724,20 +3794,15 @@ async function personneView(id){
 
   async function enregistrer(){
     if (!nomOk(pre + ' ' + nm) || fmtNom(pre).length < 2 || fmtNom(nm).length < 2){ toast('Prénom et nom obligatoires'); return; }
-    if (!roles.size){ toast('Choisis au moins un rôle'); return; }
+    if (!st.roles.size){ toast('Choisis au moins un rôle'); return; }
     $('fiSave').disabled = true;
     const nom = fmtNom(pre) + ' ' + fmtNom(nm);
     if (nom !== F.nom || F.a_confirmer){
       const { data: upd, error } = await sb.from('profiles').update({ nom, a_confirmer: false }).eq('id', F.id).select('id');
       if (error || !upd || !upd.length){ $('fiSave').disabled = false; toast(isNetErr(error) ? 'Pas de réseau' : 'Modification refusée'); return; }
     }
-    const resp = roles.has('admin') || roles.has('responsable');
-    const { error: e2 } = await sb.rpc('admin_roles', { p_id: F.id, p_roles: [...roles], p_equipes: resp ? [...eqs] : [], p_categories: resp ? [...cats] : [] });
-    if (e2){
-      $('fiSave').disabled = false;
-      toast(isNetErr(e2) ? 'Pas de réseau' : /propre rôle admin/.test(e2.message) ? 'Tu ne peux pas retirer ton propre rôle admin' : /dernier admin/.test(e2.message) ? 'Impossible : c’est le dernier admin' : 'Rôles refusés');
-      return;
-    }
+    const refus = await rolesEnregistrer(F.id, st);
+    if (refus){ $('fiSave').disabled = false; toast(refus); return; }
     if ((joueur || '').trim() !== (F.joueur || '')) await sb.rpc('lier_joueur', { p_user: F.id, p_nom: joueur.trim() || null });
     if (me) await loadProfile().catch(() => {});
     people = null; delegues = null;
