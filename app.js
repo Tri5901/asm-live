@@ -3267,15 +3267,22 @@ function loginView(){
   };
   draw();
 }
+// Changement de nom validé par un admin (Tristan, 25/10) : le premier nom (inscription, nom demandé à la connexion)
+// s'enregistre tout de suite ; ensuite, un changement envoie une demande qu'un admin accepte ou refuse
+// (supabase/nom-validation.sql). Les admins changent leur nom directement.
+const nomAValider = () => !isAdmin() && nomOk(profile && profile.nom);
+// retour à « Mon compte » (le formulaire s'ouvre sans changer d'adresse : il faut redessiner la page)
+const versCompte = () => { if (location.hash === '#/compte') route(); else location.hash = '#/compte'; };
 function nameView(force){
   const [p0, n0] = splitNom(profile && profile.nom);
+  const demande = !force && nomAValider();
   view.innerHTML = `<form class="card" id="nmf">
     <h1>${force ? 'Ton prénom et ton nom' : 'Modifier mon nom'}</h1>
-    <p class="sub">${force ? 'Pour que les responsables sachent qui saisit les matchs, indique ton prénom et ton nom.' : 'Il apparaît dans l’historique des matchs et dans la liste des responsables score.'}</p>
+    <p class="sub">${force ? 'Pour que les responsables sachent qui saisit les matchs, indique ton prénom et ton nom.' : 'Il apparaît dans l’historique des matchs et dans la liste des responsables score.'}${demande ? ' Le changement sera fait quand un administrateur l’aura validé.' : ''}</p>
     <div class="frow2"><label class="field"><span>Prénom</span><input id="nmPrenom" required minlength="2" autocomplete="given-name" autocapitalize="words" value="${esc(p0)}"></label>
     <label class="field"><span>Nom</span><input id="nmNom" required minlength="2" autocomplete="family-name" autocapitalize="words" value="${esc(n0)}"></label></div>
     <p class="note" id="nmPrev"></p>
-    <div class="foot" style="margin-top:4px"><button class="fbtn primary" id="nmGo">Enregistrer</button>${force ? '' : '<a class="fbtn" href="#/compte">Annuler</a>'}</div>
+    <div class="foot" style="margin-top:4px"><button class="fbtn primary" id="nmGo">${demande ? 'Envoyer la demande' : 'Enregistrer'}</button>${force ? '' : '<a class="fbtn" href="#/compte">Annuler</a>'}</div>
     ${force ? '<button type="button" class="link" id="nmOut" style="width:100%;margin-top:10px">Se déconnecter</button>' : ''}
   </form>`;
   const prev = () => { const t = (fmtNom($('nmPrenom').value) + ' ' + fmtNom($('nmNom').value)).trim(); $('nmPrev').textContent = t ? 'Affiché : ' + t : ''; };
@@ -3284,11 +3291,20 @@ function nameView(force){
   $('nmf').onsubmit = async ev => {
     ev.preventDefault();
     $('nmGo').disabled = true;
+    if (demande){
+      const { data: id, error } = await sb.rpc('demander_nom', { p_nom: fmtNom($('nmPrenom').value) + ' ' + fmtNom($('nmNom').value) });
+      if (error){ $('nmGo').disabled = false; toast(isNetErr(error) ? 'Pas de réseau' : /déjà ton nom/.test(error.message) ? 'C’est déjà ton nom' : 'Prénom et nom obligatoires'); return; }
+      // les admins sont prévenus par une notification (une seule par demande)
+      fetch('api/notify-nom', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token }, body: JSON.stringify({ id }) }).catch(() => {});
+      toast('Demande envoyée : un administrateur doit la valider');
+      versCompte();
+      return;
+    }
     const { data, error } = await sb.rpc('set_mon_nom', { p_prenom: $('nmPrenom').value, p_nom: $('nmNom').value });
-    if (error){ $('nmGo').disabled = false; toast(isNetErr(error) ? 'Pas de réseau' : 'Prénom et nom obligatoires'); return; }
+    if (error){ $('nmGo').disabled = false; toast(isNetErr(error) ? 'Pas de réseau' : /valider/.test(error.message) ? 'Le changement de nom doit être validé par un administrateur' : 'Prénom et nom obligatoires'); return; }
     profile = { ...profile, nom: data }; lsSet('asm-profile', profile); renderAcct(); people = null; delegues = null;
     toast('Nom enregistré : ' + data);
-    if (force) route(); else location.hash = '#/compte';
+    if (force) route(); else versCompte();
   };
 }
 function accountView(){
@@ -3298,6 +3314,7 @@ function accountView(){
   view.innerHTML = `<div class="card">
     <h1>${esc(profile && profile.nom || 'Mon compte')}</h1>
     <p class="sub">${esc(session.user.email)} · ${ROLE[role]} · <button class="link" id="editNom" style="padding:0">Modifier mon nom</button></p>
+    <div id="nomAttente"></div>
     ${role==='pending' ? '<div class="msg">Ton compte doit être validé par un administrateur du club avant de pouvoir saisir les matchs.</div>' : ''}
     ${role==='joueur' || role==='supporter' || role==='dirigeant' ? '<div class="msg">Tu peux saisir uniquement les matchs où tu es responsable score (choisi par un responsable, ou en faisant la demande sur la page du match). Ils apparaissent sur l’accueil avec la pastille « ✎ Gérer ».</div>' : ''}
     ${role==='delegue' ? `<div class="msg">${myTeams().length ? 'Tu gères les matchs des ' + esc(teamsText(myTeams())) + '.' : 'Aucune équipe ne t’est encore confiée : tu peux saisir uniquement les matchs où tu es responsable score.'}</div>` : ''}
@@ -3312,7 +3329,7 @@ function accountView(){
   </div>
   <div class="card monjoueur" id="monJoueur"><div class="loading">Chargement de tes stats…</div></div>
   ${role !== 'pending' && role !== 'supprime' && profile && 'officiel_roles' in profile ? offCompteHTML() : ''}`;
-  monJoueurBloc(); offCompteBind(); if (isAdmin()) versionAdmin();
+  monJoueurBloc(); offCompteBind(); if (isAdmin()) versionAdmin(); nomAttente();
   $('editNom').onclick = () => nameView(false);
   $('delMe').onclick = () => askConfirm('Supprimer ton compte ?',
     'Tu ne pourras plus te connecter. Les matchs et actions que tu as saisis restent dans l’historique, avec ton nom. Cette suppression est définitive.',
@@ -3325,6 +3342,18 @@ function accountView(){
   $('logout').onclick = async () => {
     if (outbox.length && !confirm('Des actions ne sont pas encore envoyées. Se déconnecter quand même ?')) return;
     await sb.auth.signOut(); session = null; profile = null; lsSet('asm-profile', null); renderAcct(); location.hash = '#/';
+  };
+}
+// « Mon compte » : demande de changement de nom en attente (annulable)
+async function nomAttente(){
+  const { data: d } = await sb.from('demandes_nom').select('id,nouveau,created_at').eq('user_id', myId()).eq('statut', 'attente').maybeSingle();
+  const box = $('nomAttente');
+  if (!box || !d) return;
+  box.innerHTML = `<div class="msg">Changement de nom demandé : <b>${esc(d.nouveau)}</b> (le ${esc(new Date(d.created_at).toLocaleDateString('fr-FR'))}). Un administrateur doit le valider. <button type="button" class="link" id="nomAnnule" style="padding:0">Annuler la demande</button></div>`;
+  $('nomAnnule').onclick = async () => {
+    const { error } = await sb.rpc('annuler_demande_nom');
+    if (error){ toast(isNetErr(error) ? 'Pas de réseau' : 'Annulation refusée'); return; }
+    box.innerHTML = ''; toast('Demande annulée');
   };
 }
 // « Mon compte » : joueur lié (Mes stats) ou proposition de lien
@@ -3375,6 +3404,28 @@ async function monJoueurBloc(){
   try{ data = await chargerStats(); if (location.hash.startsWith('#/compte')) dessine(); }
   catch(e){ if (!data && box()) box().innerHTML = '<div class="empty">Pas de réseau pour l’instant.</div>'; }
 }
+// Page Accès : changements de nom demandés par les comptes, à accepter ou refuser (supabase/nom-validation.sql)
+async function nomDemandesAdmin(comptes){
+  const { data: l } = await sb.from('demandes_nom').select('id,user_id,ancien,nouveau,created_at').eq('statut', 'attente').order('created_at');
+  const box = $('nomDem');
+  if (!box || !l || !l.length){ if (box) box.innerHTML = ''; return; }
+  const email = id => ((comptes || []).find(p => p.id === id) || {}).email || '';
+  const quand = d => new Date(d).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  box.innerHTML = `<div class="sec secwarn">Changements de nom à valider · ${l.length}</div>
+    <div class="alist">${l.map(d => `<div class="arow"><span class="pav">${esc((d.nouveau || '?').charAt(0).toUpperCase())}</span>
+      <div class="who"><b>${esc(d.ancien || 'Sans nom')} → ${esc(d.nouveau)}</b><small>${esc(email(d.user_id))}${email(d.user_id) ? ' · ' : ''}demandé le ${esc(quand(d.created_at))}</small></div>
+      <div class="gonebtns"><button type="button" class="amod ok" data-nomok="${esc(d.id)}">Accepter</button><button type="button" class="amod danger" data-nomko="${esc(d.id)}">Refuser</button></div></div>`).join('')}</div>`;
+  const decider = async (id, ok) => {
+    const d = l.find(x => x.id === id);
+    const { error } = await sb.rpc('decider_nom', { p_id: id, p_ok: ok });
+    if (error){ toast(isNetErr(error) ? 'Pas de réseau' : /déjà traitée/.test(error.message) ? 'Demande déjà traitée' : 'Refusé'); nomDemandesAdmin(comptes); return; }
+    people = null; delegues = null;
+    toast(ok ? `${d.ancien || 'Le compte'} s’appelle maintenant ${d.nouveau}` : 'Changement de nom refusé');
+    if (ok) adminView(); else nomDemandesAdmin(comptes);
+  };
+  box.querySelectorAll('[data-nomok]').forEach(b => b.onclick = () => decider(b.dataset.nomok, true));
+  box.querySelectorAll('[data-nomko]').forEach(b => b.onclick = () => decider(b.dataset.nomko, false));
+}
 async function adminView(){
   if (!isAdmin()){ location.hash = '#/compte'; return; }
   if (!view.querySelector('.acc')) view.innerHTML = '<div class="loading">Chargement…</div>';
@@ -3409,6 +3460,7 @@ async function adminView(){
     <div class="acctotal"><b>${data.length}</b><span>compte${data.length>1?'s':''} créé${data.length>1?'s':''}<small>${[['admin','admin'],['delegue','responsable'],['dirigeant','dirigeant'],['joueur','joueur'],['supporter','supporter'],['pending','en attente']].map(([r,l])=>{const n=data.filter(p=>p.role===r).length; return n ? n+' '+l+(n>1&&r!=='pending'?'s':'') : '';}).filter(Boolean).join(' · ')}</small></span></div>
     <p class="accon" id="accOnline"></p>
     <p class="accnotif" id="accNotif"></p>
+    <div id="nomDem"></div>
     <p class="note" style="margin-top:4px">Un <b>responsable</b> crée et saisit les matchs de ses équipes. Un <b>joueur</b>, un <b>supporter</b> ou un <b>dirigeant</b> ne peut saisir que les matchs où il est responsable score. Un <b>admin</b> gère tout.</p>
     ${nouveaux.length ? `<div class="sec secwarn">Nouveaux comptes à confirmer · ${nouveaux.length}</div>
       <p class="note" style="margin:0 0 6px">Ils sont <b>supporters</b> dès leur inscription (ils peuvent demander à être responsable score). <b>Valider</b> ouvre le choix du rôle (supporter, joueur, dirigeant, responsable, admin), puis <b>Valider le compte</b>. On peut aussi y supprimer le compte.</p>
@@ -3439,6 +3491,7 @@ async function adminView(){
   });
   renderAdminOnline();
   notifsAcces();
+  nomDemandesAdmin(data);
 
   // Rattacher un compte supprimé à un compte existant
   function linkAccount(old){
