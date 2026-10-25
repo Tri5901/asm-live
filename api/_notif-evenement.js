@@ -24,6 +24,9 @@ async function envoyerEvenement(eventId, targets, oublier){
   const goals = (await rest(`/rest/v1/events?match_id=eq.${ev.match_id}&k=eq.goal&select=t`)).body || [];
   const sc = s => goals.filter(g => g.t === s).length;
   const name = s => (s === 'H' ? m.home_name : m.away_name);
+  // catégorie anonymisée (jeunes) : ni nom ni numéro de joueur dans la notification
+  const anon = !!(await rest(`/rest/v1/equipes?id=eq.${m.equipe || 1}&select=anonyme`)).body?.[0]?.anonyme;
+  if (anon) ev.n = ev.n === 'CSC' ? 'CSC' : null;
   const player = ev.n ? ((m.rosters?.[ev.t] || []).find(p => p.n === String(ev.n))?.name || '') : '';
   const clubGoal = ev.t === (m.club_side || 'H');
   const nous = name(m.club_side || 'H');
