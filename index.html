@@ -903,10 +903,11 @@ td.eqc{white-space:nowrap;text-align:center} td.eqc b{display:inline-block;min-w
 /* Catégories cachées (vues par les admins) et page Admin › Catégories */
 .chipbar button .masq{margin-left:5px;padding:1px 6px;border-radius:999px;border:1px dashed currentColor;font-size:10.5px;font-weight:700;opacity:.75;text-transform:uppercase;letter-spacing:.03em}
 .catlist{display:flex;flex-direction:column;gap:8px;margin-top:12px}
-.catrow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.catrow{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px 12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
 .catrow .catnom{display:flex;flex-direction:column;gap:2px;min-width:0}
 .catrow .catnom small{color:var(--muted);font-size:12.5px}
-.catrow .cattog{display:flex;flex-wrap:wrap;gap:6px}
+.catrow .cattog{display:flex;gap:6px}
+.catrow .cattog .vistog{white-space:nowrap}
 .catrow .vistog small{font-weight:500;opacity:.8}
 </style>
 </head>

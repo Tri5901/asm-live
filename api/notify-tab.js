@@ -1,6 +1,7 @@
 // Notifications des tirs au but : « 🎯 Tirs au but ! » au début de la séance, puis le vainqueur à la fin du match.
 // Appelé par le téléphone du responsable score ; la base vérifie qu'il gère le match et n'accepte qu'un envoi de chaque.
 const webpush = require('web-push');
+const { equipeMasquee } = require('./_notif-evenement');
 
 const SUPABASE_URL = 'https://xzzttulqlydcespgkpnx.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_VwLyp5ROGzidc4oHWehoLg_kIehYAcE';
@@ -28,7 +29,7 @@ module.exports = async (req, res) => {
   if (!targets.length) return res.json({ sent: 0 });
 
   const m = (await rest(`/rest/v1/matches?id=eq.${matchId}&select=*`)).body?.[0];
-  if (!m || !m.tab) return res.json({ sent: 0 });
+  if (!m || !m.tab || await equipeMasquee(m.equipe)) return res.json({ sent: 0 });   // équipe cachée au public : rien
   const goals = (await rest(`/rest/v1/events?match_id=eq.${matchId}&k=eq.goal&select=t`)).body || [];
   const sc = s => goals.filter(g => g.t === s).length;
   const name = s => (s === 'H' ? m.home_name : m.away_name);

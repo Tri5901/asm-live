@@ -1,6 +1,7 @@
 // Annonce ponctuelle aux abonnés d'un match (ex. « le match commence dans 2 h »), envoyée depuis le PC
 // (scripts/annonce.js) avec la clé des classements ; « essai: true » compte les téléphones sans rien envoyer.
 const webpush = require('web-push');
+const { matchsMasques } = require('./_notif-evenement');
 
 const SUPABASE_URL = 'https://xzzttulqlydcespgkpnx.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_VwLyp5ROGzidc4oHWehoLg_kIehYAcE';
@@ -21,6 +22,8 @@ module.exports = async (req, res) => {
   if (!r.ok) return res.status(403).json({ error: 'refusé' });
   const targets = await r.json();
   if (!Array.isArray(targets)) return res.status(500).json({ error: 'réponse inattendue' });
+  // équipe cachée au public : rien
+  if ((await matchsMasques([b.match_id])).size) return res.json({ cibles: 0, sent: 0, raison: 'équipe cachée' });
   if (b.essai) return res.json({ cibles: targets.length });
 
   webpush.setVapidDetails('https://asm-live.vercel.app', VAPID_PUBLIC, process.env.VAPID_PRIVATE_KEY);

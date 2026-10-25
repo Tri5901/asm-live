@@ -9,7 +9,7 @@
 //  - but / carton dont la notification n'est pas partie du téléphone du responsable score : envoyée ici.
 // La base choisit les matchs et les destinataires (une seule notification de chaque sorte par match).
 const webpush = require('web-push');
-const { envoyerEvenement } = require('./_notif-evenement');
+const { envoyerEvenement, matchsMasques } = require('./_notif-evenement');
 
 const SUPABASE_URL = 'https://xzzttulqlydcespgkpnx.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_VwLyp5ROGzidc4oHWehoLg_kIehYAcE';
@@ -39,8 +39,13 @@ module.exports = async (req, res) => {
       if (cibles.length) rattrapees += await envoyerEvenement(id, cibles, null);
     }
   }
-  const targets = [...await r1.json(), ...await r2.json(), ...(r3.ok ? await r3.json() : []), ...(r4.ok ? await r4.json() : []), ...(r5.ok ? await r5.json() : []), ...(r6.ok ? await r6.json() : []), ...(r7.ok ? await r7.json() : [])];
+  let targets = [...await r1.json(), ...await r2.json(), ...(r3.ok ? await r3.json() : []), ...(r4.ok ? await r4.json() : []), ...(r5.ok ? await r5.json() : []), ...(r6.ok ? await r6.json() : []), ...(r7.ok ? await r7.json() : [])];
   if (!Array.isArray(targets) || !targets.length) return res.json({ sent: 0, rattrapees });
+  // équipes cachées au public : rien (chaque alerte porte le lien de son match ; officiels : pas de match, envoyés)
+  const idDe = s => (String(s.url || '').match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/) || [])[0];
+  const masques = await matchsMasques([...new Set(targets.map(idDe).filter(Boolean))]);
+  targets = targets.filter(s => !masques.has(idDe(s)));
+  if (!targets.length) return res.json({ sent: 0, rattrapees });
 
   webpush.setVapidDetails('https://asm-live.vercel.app', VAPID_PUBLIC, process.env.VAPID_PRIVATE_KEY);
   let sent = 0;

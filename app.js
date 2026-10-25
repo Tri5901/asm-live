@@ -3450,6 +3450,30 @@ async function monJoueurBloc(){
   try{ data = await chargerStats(); if (location.hash.startsWith('#/compte')) dessine(); }
   catch(e){ if (!data && box()) box().innerHTML = '<div class="empty">Pas de réseau pour l’instant.</div>'; }
 }
+// Page Accès : à côté de « ⚽ joueur », les équipes où il a joué (Tristan, 25/10), d'après les compos de nos matchs,
+// y compris les compos privées des catégories anonymisées (lisibles par les admins) ; la plus jouée d'abord
+async function equipesDesJoueurs(){
+  const spans = [...view.querySelectorAll('.ajoueur[data-joueur]')];
+  if (!spans.length) return;
+  const [{ data: ms }, { data: pr }] = await Promise.all([
+    sb.from('matches').select('id,equipe,club_side,rosters'),
+    sb.from('compos_privees').select('match_id,rosters')
+  ]);
+  const parId = new Map((ms || []).map(m => [m.id, m]));
+  const fois = new Map();   // playerKey → { équipe : nombre de matchs }
+  const compter = (m, ro) => ((ro || {})[m.club_side || 'H'] || []).forEach(p => {
+    const k = playerKey(p.name || ''); if (!k) return;
+    const e = fois.get(k) || {}; e[m.equipe || 1] = (e[m.equipe || 1] || 0) + 1; fois.set(k, e);
+  });
+  (ms || []).forEach(m => compter(m, m.rosters));
+  (pr || []).forEach(c => { const m = parId.get(c.match_id); if (m) compter(m, c.rosters); });
+  spans.forEach(sp => {
+    const e = fois.get(playerKey(sp.dataset.joueur));
+    if (!e || !document.body.contains(sp)) return;
+    const ids = Object.keys(e).map(Number).sort((a, b) => e[b] - e[a]);
+    sp.insertAdjacentHTML('beforeend', ` · <b>${esc(teamsText(ids))}</b>`);
+  });
+}
 // Page Accès : changements de nom demandés par les comptes, à accepter ou refuser (supabase/nom-validation.sql)
 async function nomDemandesAdmin(comptes){
   const { data: l } = await sb.from('demandes_nom').select('id,user_id,ancien,nouveau,created_at').eq('statut', 'attente').order('created_at');
@@ -3491,7 +3515,7 @@ async function adminView(){
   const row = p => `<div class="arow atap" data-uid="${esc(p.id)}" role="link" tabindex="0">
       <span class="pav">${initial(p)}</span>
       <div class="who"><b>${esc(nameOf(p))}${p.id === session.user.id ? ' <small>(toi)</small>' : ''}</b><small>${esc(p.email || '')}${p.a_confirmer && p.created_at ? ' · inscrit le ' + esc(new Date(p.created_at).toLocaleDateString('fr-FR')) : ''}</small>
-        <span class="rbadges">${rolesBadges(p)}</span>${p.joueur ? `<span class="ajoueur">⚽ ${esc(p.joueur)}</span>` : ''}<span class="anotif"></span><span class="onstate"></span></div>
+        <span class="rbadges">${rolesBadges(p)}</span>${p.joueur ? `<span class="ajoueur" data-joueur="${esc(p.joueur)}">⚽ ${esc(p.joueur)}</span>` : ''}<span class="anotif"></span><span class="onstate"></span></div>
       ${p.a_confirmer ? `<button type="button" class="amod ok" data-edit="${esc(p.id)}">Valider</button>`
         : `<button type="button" class="amod" data-edit="${esc(p.id)}">Modifier</button>`}
     </div>`;
@@ -3541,6 +3565,7 @@ async function adminView(){
   renderAdminOnline();
   notifsAcces();
   nomDemandesAdmin(data);
+  equipesDesJoueurs();
 
   // Rattacher un compte supprimé à un compte existant
   function linkAccount(old){
@@ -3945,13 +3970,15 @@ async function categoriesView(){
   lsSet('asm-equipes', data); setEquipes(data);
   const cats = [...new Set(data.map(e => e.categorie))];
   const etat = (l, k) => l.every(e => e[k]) ? 'on' : l.some(e => e[k]) ? 'mixte' : 'off';
+  // équipes de la catégorie en court (« A · B · C · D ») ; rien si l'équipe porte le nom de la catégorie (U11, Loisirs…)
+  const equipesCourt = (c, l) => l.length === 1 && l[0].nom === c ? '' : l.map(e => e.nom.startsWith(c + ' ') ? e.nom.slice(c.length + 1) : e.court).join(' · ');
   const tog = (c, k, val, label) => `<button type="button" class="vistog${val === 'on' ? '' : ' off'}" data-cat="${esc(c)}" data-k="${k}" aria-pressed="${val === 'on'}"><i></i>${label}${val === 'mixte' ? ' <small>(en partie)</small>' : ''}</button>`;
   view.innerHTML = `<div class="acc catadm">${adminTabs('categories')}
     <div class="acctop"><h1>Catégories</h1></div>
     <p class="note"><b>Visible</b> : la catégorie apparaît pour tout le monde (matchs, stats, classements, notifications). Cachée, seuls les admins la voient, marquée « masquée ».</p>
     <p class="note"><b>Anonymiser</b> : aucun joueur n’est montré au public (compos, buteurs, cartons, stats des joueurs, homme du match) ; il reste les résultats et les stats de l’équipe. Ceux qui gèrent les matchs voient toujours les noms.</p>
     <div class="catlist">${cats.map(c => { const l = data.filter(e => e.categorie === c);
-      return `<div class="catrow"><div class="catnom"><b>${esc(c)}</b><small>${esc(l.map(e => e.nom).join(' · '))}</small></div>
+      return `<div class="catrow"><div class="catnom"><b>${esc(c)}</b><small>${esc(equipesCourt(c, l))}</small></div>
         <div class="cattog">${tog(c, 'actif', etat(l, 'actif'), 'Visible')}${tog(c, 'anonyme', etat(l, 'anonyme'), 'Anonymiser')}</div></div>`; }).join('')}</div></div>`;
   const changer = async (b, c, k, val) => {
     b.disabled = true;

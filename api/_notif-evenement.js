@@ -15,12 +15,24 @@ async function rest(path, token, init = {}) {
   return { ok: res.ok, status: res.status, body };
 }
 
+// Équipe cachée au public (Admin › Catégories) : aucune notification (Tristan, 25/10)
+async function equipeMasquee(equipe){ return (await rest(`/rest/v1/equipes?id=eq.${equipe || 1}&select=actif`)).body?.[0]?.actif === false; }
+// parmi ces matchs, ceux d'une équipe cachée (ou introuvables : dans le doute, pas d'envoi)
+async function matchsMasques(ids){
+  if (!ids.length) return new Set();
+  const ms = (await rest(`/rest/v1/matches?id=in.(${ids.join(',')})&select=id,equipe`)).body || [];
+  const cachees = new Set(((await rest('/rest/v1/equipes?actif=eq.false&select=id')).body || []).map(e => e.id));
+  const eq = new Map(ms.map(m => [m.id, m.equipe || 1]));
+  return new Set(ids.filter(id => !eq.has(id) || cachees.has(eq.get(id))));
+}
+
 // targets : abonnements déjà choisis (et l'événement marqué « notifié ») par la base ; oublier(endpoint) : téléphone désabonné
 async function envoyerEvenement(eventId, targets, oublier){
   // Contenu : score à jour, minute, buteur
   const ev = (await rest(`/rest/v1/events?id=eq.${eventId}&select=*`)).body?.[0];
   if (!ev) return 0;
   const m = (await rest(`/rest/v1/matches?id=eq.${ev.match_id}&select=*`)).body?.[0];
+  if (!m || await equipeMasquee(m.equipe)) return 0;
   const goals = (await rest(`/rest/v1/events?match_id=eq.${ev.match_id}&k=eq.goal&select=t`)).body || [];
   const sc = s => goals.filter(g => g.t === s).length;
   const name = s => (s === 'H' ? m.home_name : m.away_name);
@@ -69,4 +81,4 @@ async function envoyerEvenement(eventId, targets, oublier){
   }));
   return sent;
 }
-module.exports = { envoyerEvenement, rest };
+module.exports = { envoyerEvenement, rest, equipeMasquee, matchsMasques };
