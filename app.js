@@ -290,7 +290,17 @@ const isAdmin = () => !!profile && profile.role==='admin';
 const myId = () => session && session.user ? session.user.id : null;
 // Un match avec un délégué désigné ne peut être saisi que par lui (ou un admin)
 // Responsable d'équipe : compte "delegue" avec les équipes cochées par un admin (profiles.equipes)
-const myTeams = () => (profile && Array.isArray(profile.equipes)) ? profile.equipes : [];
+// et les équipes de ses catégories entières (profiles.categories, ex. tous les Seniors)
+const myTeams = () => {
+  if (!profile) return [];
+  const cats = Array.isArray(profile.categories) ? profile.categories : [];
+  return [...new Set([...(Array.isArray(profile.equipes) ? profile.equipes : []), ...EQUIPES.filter(e => cats.includes(e.categorie)).map(e => e.id)])];
+};
+// Rôles cumulables (profiles.roles, ex. responsable + joueur, admin + responsable U18 B) ; « role » reste le rôle
+// principal, tenu à jour par la base (admin > responsable > dirigeant > joueur > supporter)
+const ROLES_LISTE = [['admin', 'Admin'], ['responsable', 'Responsable'], ['dirigeant', 'Dirigeant'], ['joueur', 'Joueur'], ['supporter', 'Supporter']];
+const VERS_LISTE = { admin: 'admin', delegue: 'responsable', dirigeant: 'dirigeant', joueur: 'joueur', supporter: 'supporter' };
+const rolesDe = p => p && Array.isArray(p.roles) && p.roles.length ? p.roles : (p && VERS_LISTE[p.role] ? [VERS_LISTE[p.role]] : []);
 const isTeamManager = eq => isAdmin() || (isStaff() && myTeams().includes(eq || 1));
 const canCreate = () => isAdmin() || (isStaff() && myTeams().length > 0);
 // Peut saisir un match : admin, responsable de l'équipe, ou délégué désigné sur ce match
@@ -474,6 +484,7 @@ async function route(){
   if (!sb){ view.innerHTML = `<div class="card"><h1>Configuration à terminer</h1><p class="sub">Le site n'est pas encore relié à sa base de données (fichier config.js).</p></div>`; return; }
   try{
     if (session && profile && profile.role !== 'supprime' && !nomOk(profile.nom) && page !== 'connexion') return nameView(true);
+    if (session && profile && profile.mdp_a_changer && page !== 'connexion') return mdpView();
     if (page==='' ) return await homeView();
     if (page==='match') return await matchView(arg);
     if (page==='gerer') return await consoleView(arg, parts[2]==='compo');
@@ -483,7 +494,7 @@ async function route(){
     if (page==='connexion') return loginView();
     if (page==='compte') return accountView();
     if (page==='cgu') return cguView();
-    if (page==='admin') return await (arg === 'stats' ? siteStatsView() : arg === 'publications' ? publicationsView() : adminView());
+    if (page==='admin') return await (arg === 'stats' ? siteStatsView() : arg === 'publications' ? publicationsView() : arg === 'personne' ? personneView(parts[2]) : adminView());
     if (page==='officiels') return await officielsView();
     location.hash = '#/';
   }catch(e){
@@ -3385,19 +3396,16 @@ async function adminView(){
   const deleted = data.filter(p => p.role === 'supprime' && !p.efface).sort((a, b) => String(b.deleted_at||'').localeCompare(String(a.deleted_at||'')));
   const supprimes = deleted.length;
   data = data.filter(p => p.role !== 'supprime');
-  const ROLES = [['supporter', 'Supporter'], ['joueur', 'Joueur'], ['dirigeant', 'Dirigeant'], ['delegue', 'Responsable'], ['admin', 'Admin']];
   const GROUPS = [['pending', 'En attente de validation'], ['admin', 'Admins'], ['delegue', 'Responsables'], ['dirigeant', 'Dirigeants'], ['joueur', 'Joueurs'], ['supporter', 'Supporters']];
   const nameOf = p => p.nom || p.email || 'Sans nom';
   const initial = p => esc(nameOf(p).trim().charAt(0).toUpperCase());
   const teamsOf = p => p.role === 'delegue' ? (p.equipes || []) : [];
-  const summary = p => p.role === 'admin' ? 'Admin · toutes les équipes'
-    : p.role === 'delegue' ? 'Responsable · ' + (teamsOf(p).length ? teamsText(teamsOf(p)) : 'aucune équipe')
-    : p.role === 'joueur' ? 'Joueur' : p.role === 'supporter' ? 'Supporter' : p.role === 'dirigeant' ? 'Dirigeant' : 'En attente';
 
-  const row = p => `<div class="arow" data-uid="${esc(p.id)}">
+  // une ligne par personne, rangée selon son rôle principal ; ses rôles cumulés en pastilles ; la toucher ouvre sa fiche
+  const row = p => `<div class="arow atap" data-uid="${esc(p.id)}" role="link" tabindex="0">
       <span class="pav">${initial(p)}</span>
       <div class="who"><b>${esc(nameOf(p))}${p.id === session.user.id ? ' <small>(toi)</small>' : ''}</b><small>${esc(p.email || '')}${p.a_confirmer && p.created_at ? ' · inscrit le ' + esc(new Date(p.created_at).toLocaleDateString('fr-FR')) : ''}</small>
-        <span class="rbadge r-${p.role}">${esc(summary(p))}</span>${p.joueur ? `<span class="ajoueur">⚽ ${esc(p.joueur)}</span>` : ''}<span class="anotif"></span><span class="onstate"></span></div>
+        <span class="rbadges">${rolesBadges(p)}</span>${p.joueur ? `<span class="ajoueur">⚽ ${esc(p.joueur)}</span>` : ''}<span class="anotif"></span><span class="onstate"></span></div>
       ${p.a_confirmer ? `<button type="button" class="amod ok" data-edit="${esc(p.id)}">Valider</button>`
         : `<button type="button" class="amod" data-edit="${esc(p.id)}">Modifier</button>`}
     </div>`;
@@ -3425,7 +3433,13 @@ async function adminView(){
       <div class="alist">${deleted.map(p => `<div class="arow gone"><span class="pav">${initial(p)}</span><div class="who"><b>${esc(nameOf(p))}</b><small>${p.deleted_at ? 'Supprimé le ' + esc(new Date(p.deleted_at).toLocaleDateString('fr-FR')) : 'Compte supprimé'}</small></div><div class="gonebtns"><button type="button" class="amod" data-link="${esc(p.id)}">Rattacher</button><button type="button" class="amod danger" data-wipe="${esc(p.id)}">Effacer</button></div></div>`).join('')}</div>` : ''}
   </div>`;
 
-  view.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editPerson(data.find(p => p.id === b.dataset.edit)));
+  // fiche de la personne : toute la ligne, ou le bouton « Modifier » / « Valider »
+  const fiche = id => { location.hash = '#/admin/personne/' + id; };
+  view.querySelectorAll('[data-edit]').forEach(b => b.onclick = e => { e.stopPropagation(); fiche(b.dataset.edit); });
+  view.querySelectorAll('.arow.atap').forEach(r => {
+    r.onclick = () => fiche(r.dataset.uid);
+    r.onkeydown = e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); fiche(r.dataset.uid); } };
+  });
   view.querySelectorAll('[data-link]').forEach(b => b.onclick = () => linkAccount(deleted.find(p => p.id === b.dataset.link)));
   view.querySelectorAll('[data-wipe]').forEach(b => b.onclick = () => {
     const old = deleted.find(p => p.id === b.dataset.wipe);
@@ -3470,51 +3484,169 @@ async function adminView(){
     q.oninput = drawList; drawList();
     $('lkNo').onclick = closeSheet;
   }
+}
 
-  function editPerson(p){
-    const me = p.id === session.user.id;
-    let role = p.role, eqs = new Set(p.equipes || []);
-    let [pre, nm] = splitNom(p.nom);
-    let joueur = p.joueur || '';
-    const tous = joueursClub((lsGet('asm-stats', null) || {}).ms);
-    const draw = () => {
-      openSheet(`<div class="phead"><span class="pav">${initial(p)}</span><div class="who"><h3 id="shTitle" style="margin:0">${esc(nameOf(p))}</h3><small>${esc(p.email || '')}</small></div></div>
-        <div class="frow2" style="margin-top:14px"><label class="field"><span>Prénom</span><input id="edPre" value="${esc(pre)}" autocapitalize="words"></label><label class="field"><span>Nom</span><input id="edNom" value="${esc(nm)}" autocapitalize="words"></label></div>
-        <div class="field"><span>Rôle</span>
-          <div class="rseg" role="group" aria-label="Rôle">${ROLES.map(([v, l]) => `<button type="button" data-role="${v}" class="${role === v ? 'on' : ''}" aria-pressed="${role === v}"${me ? ' disabled' : ''}>${l}</button>`).join('')}</div>
-          <small>${role === 'admin' ? 'Gère toutes les équipes, les accès et les classements.' : role === 'delegue' ? 'Crée et saisit les matchs des équipes cochées ci-dessous.' : role === 'joueur' || role === 'supporter' || role === 'dirigeant' ? 'Aucun accès, sauf les matchs où il est responsable score.' : 'Ne peut rien modifier.'}${me ? ' Tu ne peux pas changer ton propre rôle.' : ''}</small></div>
-        ${role === 'delegue' ? `<div class="field"><span>Équipes dont il est responsable</span>
-          ${CATS.map(c => `<div class="eqcat"><small>${esc(c)}</small><div class="eqpick">${catTeams(c).map(n => `<button type="button" data-e="${n}" class="${eqs.has(n) ? 'on' : ''}" aria-pressed="${eqs.has(n)}"><b>${esc(teamLetter(n))}</b><small>${esc(teamLabel(n))}</small></button>`).join('')}</div></div>`).join('')}</div>` : ''}
-        <label class="field"><span>Joueur dans les compos</span><input id="edJoueur" list="edJoueurs" value="${esc(joueur)}" placeholder="Aucun (nom tel qu’écrit dans les compos)" autocomplete="off">
-          <datalist id="edJoueurs">${tous.map(j => `<option value="${esc(j.name)}">`).join('')}</datalist><small>Pour « Mes stats » dans son compte et ses actions mises en avant.</small></label>
-        ${p.a_confirmer ? '<p class="note" style="margin:0 0 6px">Nouveau compte : choisis son rôle puis valide.</p>' : ''}
-        <div class="foot" style="margin-top:6px"><button class="fbtn primary" id="edSave">${p.a_confirmer ? 'Valider le compte' : 'Enregistrer'}</button><button class="fbtn" id="edNo">Annuler</button></div>
-        ${me ? '' : '<button class="link danger-link" id="edDel" style="width:100%;margin-top:12px">Supprimer ce compte</button>'}`);
-      $('shBody').querySelectorAll('[data-role]').forEach(b => b.onclick = () => { role = b.dataset.role; draw(); });
-      $('shBody').querySelectorAll('[data-e]').forEach(b => b.onclick = () => { const n = +b.dataset.e; eqs.has(n) ? eqs.delete(n) : eqs.add(n); draw(); });
-      $('edPre').oninput = e => { pre = e.target.value; }; $('edNom').oninput = e => { nm = e.target.value; };
-      $('edJoueur').oninput = e => { joueur = e.target.value; };
-      $('edNo').onclick = closeSheet;
-      $('edSave').onclick = async () => {
-        if (!nomOk(pre + ' ' + nm) || fmtNom(pre).length < 2 || fmtNom(nm).length < 2){ toast('Prénom et nom obligatoires'); return; }
-        const fields = { role, equipes: role === 'delegue' ? [...eqs].sort() : (p.equipes || []), nom: fmtNom(pre) + ' ' + fmtNom(nm), a_confirmer: false };
-        $('edSave').disabled = true;
-        const { data: upd, error } = await sb.from('profiles').update(fields).eq('id', p.id).select('id');
-        if (error || !upd || !upd.length){ $('edSave').disabled = false; toast('Modification refusée'); return; }
-        if ((joueur || '').trim() !== (p.joueur || '')) await sb.rpc('lier_joueur', { p_user: p.id, p_nom: joueur.trim() || null });
-        if (p.id === myId()){ profile = { ...profile, joueur: joueur.trim() || null }; lsSet('asm-profile', profile); }
-        people = null; closeSheet(); toast(p.a_confirmer ? nameOf(p) + ' validé' : 'Accès de ' + nameOf(p) + ' mis à jour'); adminView();
-      };
-      if ($('edDel')) $('edDel').onclick = () => askConfirm('Supprimer le compte de ' + nameOf(p) + ' ?',
-        'Cette personne ne pourra plus se connecter. Les matchs et actions qu’elle a saisis restent dans l’historique, avec son nom. Cette suppression est définitive.',
-        'Supprimer le compte', async () => {
-          const { error } = await sb.rpc('supprimer_compte', { p_id: p.id });
-          if (error){ toast(/dernier admin/.test(error.message) ? 'Impossible : c’est le dernier admin' : 'Suppression refusée'); return; }
-          people = null; toast('Compte supprimé'); adminView();
-        });
-    };
-    draw();
+// ---------- Admin › Fiche d'une personne : infos, activité, rôles cumulés, mot de passe ----------
+// rôles cumulés en pastilles ; responsable : ses catégories entières puis ses autres équipes
+function respTexte(p){
+  const cats = Array.isArray(p.categories) ? p.categories : [];
+  const dans = new Set(EQUIPES.filter(e => cats.includes(e.categorie)).map(e => e.id));
+  const seules = (p.equipes || []).filter(n => !dans.has(n));
+  return [...cats.map(c => c + ' (toute la catégorie)'), ...(seules.length ? [teamsText(seules)] : [])].join(' · ') || 'aucune équipe';
+}
+function rolesBadges(p){
+  if (p.role === 'pending') return '<span class="rbadge r-pending">En attente</span>';
+  return rolesDe(p).map(r => `<span class="rbadge r-${r === 'responsable' ? 'delegue' : r}">${r === 'admin' ? 'Admin'
+    : r === 'responsable' ? 'Responsable · ' + esc(respTexte(p)) : esc((ROLES_LISTE.find(x => x[0] === r) || [r, r])[1])}</span>`).join('');
+}
+async function personneView(id){
+  if (!isAdmin()){ location.hash = '#/compte'; return; }
+  const tok = route.cur;
+  if (!view.querySelector('.fiche')) view.innerHTML = `<div class="acc">${adminTabs('acces')}<div class="loading">Chargement…</div></div>`;
+  const { data: F, error } = await sb.rpc('admin_profil', { p_id: id });
+  if (route.cur !== tok) return;
+  if (error || !F){ view.innerHTML = `<div class="acc">${adminTabs('acces')}<div class="empty">${isNetErr(error) ? 'Pas de réseau.' : 'Compte introuvable (ou supprimé).'}</div><a class="link" href="#/admin">← Accès</a></div>`; return; }
+  const me = F.id === myId();
+  const nameOf = p => p.nom || p.email || 'Sans nom';
+  const jour = d => d ? new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
+  const jourHeure = d => d ? new Date(d).toLocaleString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'jamais';
+  const plur = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
+  // éditeur : rôles cochés, catégories entières, équipes à part (celles des catégories cochées sont comprises)
+  const roles = new Set(rolesDe(F)), cats = new Set(F.categories || []);
+  const dansCats = () => new Set(EQUIPES.filter(e => cats.has(e.categorie)).map(e => e.id));
+  const eqs = new Set((F.equipes || []).filter(n => !dansCats().has(n)));
+  let [pre, nm] = splitNom(F.nom);
+  let joueur = F.joueur || '';
+  const tous = joueursClub((lsGet('asm-stats', null) || {}).ms);
+  const STATUT = { prevu: 'à venir', direct: 'en direct', termine: 'terminé' };
+  const D = F.demandes || {}, N = F.notifs || {};
+  const ligne = (t, v) => `<div><dt>${t}</dt><dd>${v}</dd></div>`;
+
+  const draw = () => {
+    const resp = roles.has('admin') || roles.has('responsable'), inclus = dansCats();
+    view.innerHTML = `<div class="acc fiche">${adminTabs('acces')}
+      <div class="acctop"><h1>Fiche</h1><a class="link" href="#/admin">← Accès</a></div>
+      <section class="card">
+        <div class="phead"><span class="pav">${esc(nameOf(F).trim().charAt(0).toUpperCase())}</span><div class="who"><b>${esc(nameOf(F))}${me ? ' <small>(toi)</small>' : ''}</b><small>${esc(F.email || '')}</small>
+          <span class="rbadges">${rolesBadges(F)}</span>${F.joueur ? `<span class="ajoueur">⚽ ${esc(F.joueur)}</span>` : ''}</div></div>
+        <dl class="fdl">
+          ${ligne('Inscrit le', esc(jour(F.inscrit_le)))}
+          ${ligne('Dernière connexion', esc(jourHeure(F.derniere_connexion)))}
+          ${ligne('Adresse e-mail', F.email_confirme ? 'confirmée' : 'pas encore confirmée')}
+          ${ligne('Conditions d’utilisation', F.cgu_at ? 'acceptées le ' + esc(jour(F.cgu_at)) + (F.cgu_version ? ' (version du ' + esc(new Date(F.cgu_version).toLocaleDateString('fr-FR')) + ')' : '') : 'pas encore acceptées')}
+          ${F.mdp_a_changer ? ligne('Mot de passe', 'réinitialisé : à changer à la prochaine connexion') : ''}
+        </dl>
+      </section>
+      <section class="card">
+        <h2 class="fh">Activité</h2>
+        <dl class="fdl">
+          ${ligne('Responsable score', F.rs_total ? `${plur(F.rs_total, 'match')}${F.rs_termines !== F.rs_total ? ` (${F.rs_termines} terminé${F.rs_termines > 1 ? 's' : ''})` : ''}` : 'aucun match')}
+          ${F.rs_dernier ? ligne('Dernier match saisi', esc(jour(F.rs_dernier))) : ''}
+          ${ligne('Demandes « responsable score »', (D.attente || D.acceptee || D.refusee) ? [D.attente && `${D.attente} en attente`, D.acceptee && `${D.acceptee} acceptée${D.acceptee > 1 ? 's' : ''}`, D.refusee && `${D.refusee} refusée${D.refusee > 1 ? 's' : ''}`].filter(Boolean).join(', ') : 'aucune')}
+          ${ligne('Matchs créés', F.matchs_crees || 0)}
+          ${ligne('Compos saisies', F.compos_saisies || 0)}
+          ${ligne('Actions saisies', `${F.actions_saisies || 0} <small>(buts, cartons, remplacements)</small>`)}
+          ${ligne('Notifications', N.appareils ? `${plur(N.appareils, 'téléphone')}${(N.equipes || []).length ? ' · ' + esc(teamsText(N.equipes)) : ''}` : 'pas abonné')}
+        </dl>
+        ${(F.rs_matchs || []).length ? `<details class="fmatchs"><summary>Ses matchs comme responsable score</summary>${F.rs_matchs.map(m => `<a href="#/match/${esc(m.id)}"><span>${esc(new Date(m.kickoff).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }))} · ${esc(teamLetter(m.equipe))}</span><b>${esc(m.home_name)} – ${esc(m.away_name)}</b><small>${esc(STATUT[m.status] || m.status)}</small></a>`).join('')}</details>` : ''}
+      </section>
+      <section class="card">
+        <h2 class="fh">Identité</h2>
+        <div class="frow2"><label class="field"><span>Prénom</span><input id="fiPre" value="${esc(pre)}" autocapitalize="words"></label><label class="field"><span>Nom</span><input id="fiNom" value="${esc(nm)}" autocapitalize="words"></label></div>
+        <label class="field"><span>Joueur dans les compos</span><input id="fiJoueur" list="fiJoueurs" value="${esc(joueur)}" placeholder="Aucun (nom tel qu’écrit dans les compos)" autocomplete="off">
+          <datalist id="fiJoueurs">${tous.map(j => `<option value="${esc(j.name)}">`).join('')}</datalist><small>Pour « Mes stats » dans son compte et ses actions mises en avant.</small></label>
+      </section>
+      <section class="card">
+        <h2 class="fh">Rôles</h2>
+        <p class="note" style="margin:0 0 8px">Les rôles se cumulent : par exemple responsable et joueur, ou admin et responsable des U18 B.</p>
+        <div class="rmulti" role="group" aria-label="Rôles">${ROLES_LISTE.map(([v, l]) => `<button type="button" data-r="${v}" class="${roles.has(v) ? 'on' : ''}" aria-pressed="${roles.has(v)}"${me && v === 'admin' ? ' disabled title="Tu ne peux pas retirer ton propre rôle admin"' : ''}>${l}</button>`).join('')}</div>
+        <small class="note">${roles.has('admin') ? 'Admin : gère toutes les équipes, les accès et les classements.' : roles.has('responsable') ? 'Responsable : crée et saisit les matchs des équipes choisies ci-dessous.' : 'Sans rôle admin ou responsable, il saisit seulement les matchs où il est responsable score.'}</small>
+        ${resp ? `<div class="field" style="margin-top:12px"><span>Responsable de</span>
+          <small style="margin:0 0 8px">Toute une catégorie : il gère aussi les équipes ajoutées plus tard dans cette catégorie.</small>
+          ${CATS.map(c => `<div class="eqcat"><div class="ecath"><small>${esc(c)}</small><button type="button" class="catall${cats.has(c) ? ' on' : ''}" data-cat="${esc(c)}" aria-pressed="${cats.has(c)}">${cats.has(c) ? '✓ Toute la catégorie' : 'Toute la catégorie'}</button></div>
+            <div class="eqpick">${catTeams(c).map(n => { const on = inclus.has(n) || eqs.has(n); return `<button type="button" data-e="${n}" class="${on ? 'on' : ''}" aria-pressed="${on}"${inclus.has(n) ? ' disabled' : ''}><b>${esc(teamLetter(n))}</b><small>${esc(teamLabel(n))}</small></button>`; }).join('')}</div></div>`).join('')}</div>` : ''}
+        ${F.a_confirmer ? '<p class="note" style="margin:8px 0 0">Nouveau compte : choisis ses rôles puis valide.</p>' : ''}
+        <div class="foot" style="margin-top:12px"><button class="fbtn primary" id="fiSave">${F.a_confirmer ? 'Valider le compte' : 'Enregistrer'}</button><a class="fbtn" href="#/admin">Retour</a></div>
+      </section>
+      <section class="card">
+        <h2 class="fh">Mot de passe</h2>
+        <p class="note" style="margin:0 0 10px">S’il l’a oublié : son mot de passe devient son adresse e-mail, et l’appli lui demande d’en choisir un nouveau dès sa prochaine connexion.</p>
+        <button type="button" class="fbtn" id="fiMdp" style="width:100%">Réinitialiser le mot de passe</button>
+      </section>
+      ${me ? '' : '<button class="link danger-link" id="fiDel" style="width:100%;margin-top:4px">Supprimer ce compte</button>'}
+    </div>`;
+    view.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { const v = b.dataset.r; roles.has(v) ? roles.delete(v) : roles.add(v); draw(); });
+    view.querySelectorAll('[data-cat]').forEach(b => b.onclick = () => { const c = b.dataset.cat; cats.has(c) ? cats.delete(c) : cats.add(c); catTeams(c).forEach(n => eqs.delete(n)); draw(); });
+    view.querySelectorAll('[data-e]').forEach(b => b.onclick = () => { const n = +b.dataset.e; eqs.has(n) ? eqs.delete(n) : eqs.add(n); draw(); });
+    $('fiPre').oninput = e => { pre = e.target.value; }; $('fiNom').oninput = e => { nm = e.target.value; };
+    $('fiJoueur').oninput = e => { joueur = e.target.value; };
+    $('fiSave').onclick = enregistrer;
+    $('fiMdp').onclick = () => askConfirm('Réinitialiser le mot de passe ?',
+      `Le mot de passe de ${nameOf(F)} devient son adresse e-mail (${F.email || 'aucune'}), en minuscules. À sa prochaine connexion, l’appli lui demandera d’en choisir un nouveau. Pense à le prévenir.`,
+      'Réinitialiser', async () => {
+        const { error } = await sb.rpc('admin_reset_mdp', { p_id: F.id });
+        if (error){ toast(isNetErr(error) ? 'Pas de réseau' : /e-mail/.test(error.message) ? 'Ce compte n’a pas d’adresse e-mail' : 'Réinitialisation refusée'); return; }
+        F.mdp_a_changer = true; toast('Mot de passe réinitialisé : c’est maintenant son adresse e-mail'); draw();
+      });
+    if ($('fiDel')) $('fiDel').onclick = () => askConfirm('Supprimer le compte de ' + nameOf(F) + ' ?',
+      'Cette personne ne pourra plus se connecter. Les matchs et actions qu’elle a saisis restent dans l’historique, avec son nom. Cette suppression est définitive.',
+      'Supprimer le compte', async () => {
+        const { error } = await sb.rpc('supprimer_compte', { p_id: F.id });
+        if (error){ toast(/dernier admin/.test(error.message) ? 'Impossible : c’est le dernier admin' : 'Suppression refusée'); return; }
+        people = null; toast('Compte supprimé'); location.hash = '#/admin';
+      });
+  };
+
+  async function enregistrer(){
+    if (!nomOk(pre + ' ' + nm) || fmtNom(pre).length < 2 || fmtNom(nm).length < 2){ toast('Prénom et nom obligatoires'); return; }
+    if (!roles.size){ toast('Choisis au moins un rôle'); return; }
+    $('fiSave').disabled = true;
+    const nom = fmtNom(pre) + ' ' + fmtNom(nm);
+    if (nom !== F.nom || F.a_confirmer){
+      const { data: upd, error } = await sb.from('profiles').update({ nom, a_confirmer: false }).eq('id', F.id).select('id');
+      if (error || !upd || !upd.length){ $('fiSave').disabled = false; toast(isNetErr(error) ? 'Pas de réseau' : 'Modification refusée'); return; }
+    }
+    const resp = roles.has('admin') || roles.has('responsable');
+    const { error: e2 } = await sb.rpc('admin_roles', { p_id: F.id, p_roles: [...roles], p_equipes: resp ? [...eqs] : [], p_categories: resp ? [...cats] : [] });
+    if (e2){
+      $('fiSave').disabled = false;
+      toast(isNetErr(e2) ? 'Pas de réseau' : /propre rôle admin/.test(e2.message) ? 'Tu ne peux pas retirer ton propre rôle admin' : /dernier admin/.test(e2.message) ? 'Impossible : c’est le dernier admin' : 'Rôles refusés');
+      return;
+    }
+    if ((joueur || '').trim() !== (F.joueur || '')) await sb.rpc('lier_joueur', { p_user: F.id, p_nom: joueur.trim() || null });
+    if (me) await loadProfile().catch(() => {});
+    people = null; delegues = null;
+    toast(F.a_confirmer ? nameOf({ nom }) + ' validé' : 'Fiche de ' + nameOf({ nom }) + ' enregistrée');
+    personneView(F.id);
   }
+  draw();
+}
+
+// Mot de passe réinitialisé par un admin (c'est l'adresse e-mail) : il faut en choisir un nouveau avant de continuer
+function mdpView(){
+  view.innerHTML = `<form class="card" id="mdpF">
+    <h1>Choisis un nouveau mot de passe</h1>
+    <p class="sub">Un administrateur du club a réinitialisé ton mot de passe : c’était ton adresse e-mail. Choisis-en un nouveau pour continuer.</p>
+    <label class="field"><span>Nouveau mot de passe</span><input id="mdp1" type="password" required minlength="8" autocomplete="new-password"><small>8 caractères minimum, autre que ton adresse e-mail.</small></label>
+    <label class="field"><span>Confirme-le</span><input id="mdp2" type="password" required minlength="8" autocomplete="new-password"></label>
+    <div class="foot" style="margin-top:4px"><button class="fbtn primary" id="mdpGo">Enregistrer</button></div>
+    <button type="button" class="link" id="mdpOut" style="width:100%;margin-top:10px">Se déconnecter</button>
+  </form>`;
+  $('mdpOut').onclick = async () => { await sb.auth.signOut(); session = null; profile = null; lsSet('asm-profile', null); renderAcct(); location.hash = '#/'; route(); };
+  $('mdpF').onsubmit = async ev => {
+    ev.preventDefault();
+    const a = $('mdp1').value, b = $('mdp2').value;
+    if (a.length < 8){ toast('8 caractères minimum'); return; }
+    if (a !== b){ toast('Les deux mots de passe ne sont pas identiques'); return; }
+    if (session && session.user && a.trim().toLowerCase() === String(session.user.email || '').toLowerCase()){ toast('Choisis autre chose que ton adresse e-mail'); return; }
+    $('mdpGo').disabled = true;
+    const { error } = await sb.auth.updateUser({ password: a });
+    if (error){ $('mdpGo').disabled = false; toast(isNetErr(error) ? 'Pas de réseau' : /different|différent|same/i.test(error.message) ? 'Choisis un mot de passe différent de l’ancien' : 'Mot de passe refusé : ' + error.message); return; }
+    await sb.rpc('mdp_change_fait');
+    profile = { ...profile, mdp_a_changer: false }; lsSet('asm-profile', profile);
+    toast('Mot de passe changé');
+    if (location.hash === '#/' || location.hash === '') route(); else location.hash = '#/';
+  };
 }
 
 // ---------- Notifications de buts ----------
