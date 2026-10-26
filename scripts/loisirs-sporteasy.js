@@ -57,7 +57,16 @@ function versMatch(e){
   return { uid: (e.UID || {}).val, kickoff: dateIcs(e.DTSTART), club_side, adversaire, competition, lieu: lieu.split(',')[0].trim(), adresse: lieu, titre };
 }
 
-(async () => {
+// tous les matchs du calendrier SportEasy (passés compris), lus avec le lien privé : utilisé par loisirs-resultats.js
+async function matchsIcs(){
+  const src = fs.readFileSync(path.join(DIR, 'loisirs-ics.url'), 'utf8').trim();
+  const txt = await (await fetch(src.replace(/^webcal:/i, 'https:'))).text();
+  if (!/BEGIN:VCALENDAR/.test(txt)) throw new Error('le calendrier SportEasy ne répond pas');
+  return lireIcs(txt).map(versMatch).filter(m => !m.ignore && m.uid && m.kickoff);
+}
+module.exports = { NOUS, SUPABASE_URL, SUPABASE_KEY, matchsIcs };
+
+if (require.main === module) (async () => {
   const args = process.argv.slice(2), essai = args.includes('essai');
   // catégorie Loisirs masquée sur le site : rien à faire
   const [eq] = await (await fetch(SUPABASE_URL + '/rest/v1/equipes?select=actif&categorie=eq.Loisirs', { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY } })).json();

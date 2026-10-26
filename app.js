@@ -40,8 +40,8 @@ const catTeams = c => EQUIPES.filter(e => e.categorie === c).map(e => e.id);
 const exceptionnelle = n => !!teamOf(n).exceptionnelle;
 const catTeamsN = c => catTeams(c).filter(n => !exceptionnelle(n));
 const catsN = () => CATS.filter(c => catTeamsN(c).length);
-// classements : seulement les équipes suivies sur la FFF (pas les exceptionnelles, ni les Loisirs, qui jouent hors FFF)
-const avecClassement = n => !exceptionnelle(n) && teamOf(n).fff_classement !== null;
+// classements : les équipes suivies sur la FFF (pas les exceptionnelles) et les Loisirs (championnat relevé sur SportEasy)
+const avecClassement = n => !exceptionnelle(n) && (teamOf(n).fff_classement !== null || teamOf(n).categorie === 'Loisirs');
 const catTeamsC = c => catTeams(c).filter(avecClassement);
 const catsC = () => CATS.filter(c => catTeamsC(c).length);
 // nom court dans sa catégorie : « U18 A » → « A », « Seniors B » → « B », « Loisirs » → « Loisirs »
@@ -2870,6 +2870,8 @@ async function classementsView(){
   const index = () => { Object.keys(byTeam).forEach(k => delete byTeam[k]); (rows || []).forEach(r => { byTeam[r.equipe] = provisoire(r); }); };
   index();
   let openClub = null;
+  // une ligne = code club + nom (Loisirs : deux équipes du même club, une sans code)
+  const cleL = l => l[10] + '|' + l[1];
   const rankOf = n => { const r = byTeam[n]; const l = r && r.lignes.find(x => estNous(x[10])); return l ? l[0] : null; };
   const draw = () => {
     if (!clsF.team || !avecClassement(clsF.team)){ clsF.team = (homeF.team && avecClassement(homeF.team) ? homeF.team : 0) || catTeamsC(homeF.cat && catsC().includes(homeF.cat) ? homeF.cat : catsC()[0])[0] || TEAMS[0]; clsF.cat = catOf(clsF.team); }
@@ -2882,25 +2884,27 @@ async function classementsView(){
       <div class="clshead"><h2>${esc(teamLabel(cur))}</h2><span>${esc(r.competition)}</span></div>
       <div class="tblwrap"><table class="cls">
         <thead><tr><th>#</th><th>Équipe</th><th>Pts</th><th>J</th><th>G</th><th>N</th><th>P</th><th>Diff</th></tr></thead>
-        <tbody>${r.lignes.map(l => `<tr class="${estNous(l[10]) ? 'me' : ''}${hasRes ? ' tap' : ''}${hasRes && l[10]===openClub ? ' open' : ''}"${hasRes ? ` data-club="${esc(l[10])}" tabindex="0" aria-expanded="${l[10]===openClub}"` : ''}>
+        <tbody>${r.lignes.map(l => `<tr class="${estNous(l[10]) ? 'me' : ''}${hasRes ? ' tap' : ''}${hasRes && cleL(l)===openClub ? ' open' : ''}"${hasRes ? ` data-club="${esc(cleL(l))}" tabindex="0" aria-expanded="${cleL(l)===openClub}"` : ''}>
           <td class="rk">${l[0]}</td>
           <td class="tm"><div class="tmi">${l[10] ? `<img src="https://cdn-transverse.azureedge.net/phlogos/BC${esc(l[10])}.jpg" alt="" loading="lazy" onerror="this.remove()">` : ''}<span>${esc(l[1])}</span></div></td>
-          <td class="pts">${l[2]}</td><td>${l[3]}</td><td>${l[4]}</td><td>${l[5]}</td><td>${l[6]}</td><td>${l[9] > 0 ? '+' + l[9] : l[9]}</td></tr>${hasRes && l[10]===openClub ? `<tr class="clsdet"><td colspan="8">${histHTML(r, l)}</td></tr>` : ''}`).join('')}</tbody>
+          <td class="pts">${l[2]}</td><td>${l[3]}</td><td>${l[4]}</td><td>${l[5]}</td><td>${l[6]}</td><td>${l[9] > 0 ? '+' + l[9] : l[9]}</td></tr>${hasRes && cleL(l)===openClub ? `<tr class="clsdet"><td colspan="8">${histHTML(r, l)}</td></tr>` : ''}`).join('')}</tbody>
       </table></div>
       ${hasRes ? '<p class="note">Touche une équipe pour voir ses résultats.</p>' : ''}
       ${r.provisoire ? `<p class="note provis">Provisoire : comprend ${r.provisoire.length > 1 ? 'nos matchs' : 'notre match'} du ${esc(r.provisoire.map(m => new Date(m.kickoff).toLocaleDateString('fr-FR', {weekday:'short', day:'numeric', month:'short'}) + ' (' + m.bH + '–' + m.bA + ')').join(', '))}, pas encore saisi${r.provisoire.length > 1 ? 's' : ''} sur le site de la FFF.</p>` : ''}
       ${saisonHTML(r)}
-      <p class="note">Mis à jour le ${esc(d)}, d’après le site de la FFF (classement sous réserve de procédures en cours). ${r.source ? `<a href="${esc(r.source)}" target="_blank" rel="noopener">Voir le classement officiel ↗</a>` : ''}</p>` + majHTML();
+      ${r.source === 'SportEasy' ? `<p class="note">Mis à jour le ${esc(d)}, d’après SportEasy (championnat loisirs).</p>` : `<p class="note">Mis à jour le ${esc(d)}, d’après le site de la FFF (classement sous réserve de procédures en cours). ${r.source ? `<a href="${esc(r.source)}" target="_blank" rel="noopener">Voir le classement officiel ↗</a>` : ''}</p>` + majHTML()}`;
     bind();
   };
   // Résultats d'une équipe de la poule : r.resultats = [[idFFF, 'AAAA-MM-JJTHH:MM', codeDom, nomDom, butsDom, butsExt, codeExt, nomExt], ...]
   const histHTML = (r, l) => {
     const club = l[10];
-    const list = r.resultats.filter(x => (x[2] === club || x[6] === club) && x[4] != null && x[5] != null)
+    // plusieurs équipes du même club dans la poule (ou sans code) : on regarde aussi le nom
+    const nom = r.lignes.filter(y => y[10] === club).length > 1 || !club;
+    const list = r.resultats.filter(x => (nom ? (x[2] === club && x[3] === l[1]) || (x[6] === club && x[7] === l[1]) : x[2] === club || x[6] === club) && x[4] != null && x[5] != null)
       .sort((a, b) => b[1].localeCompare(a[1]));
     if (!list.length) return '<div class="hist"><p class="hnone">Pas encore de résultat enregistré.</p></div>';
     const rows = list.map(x => {
-      const dom = x[2] === club, pour = dom ? x[4] : x[5], contre = dom ? x[5] : x[4];
+      const dom = x[2] === club && (!nom || x[3] === l[1]), pour = dom ? x[4] : x[5], contre = dom ? x[5] : x[4];
       const res = pour > contre ? 'V' : pour < contre ? 'D' : 'N';
       const adv = dom ? x[7] : x[3], advCode = dom ? x[6] : x[2];
       const dt = new Date(x[1]).toLocaleDateString('fr-FR', {day:'numeric', month:'short'});
