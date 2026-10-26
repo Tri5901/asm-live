@@ -18,7 +18,8 @@ const os = require('os');
 const { URL_, H, estNous, MOIS, parisToUTC, compSite, niveauDe, titre } = require('./verif-horaires.js');
 
 const FFF = 'https://epreuves.fff.fr';
-const coupe = c => !/ · J\d+$/.test(c || '');
+// coupe FFF (pas un championnat, ni un match Loisirs ou amical, qui ne sont pas sur la FFF)
+const coupe = c => !/ · J\d+$/.test(c || '') && !/loisirs|amical/i.test(c || '');
 const norm = s => String(s || '').toUpperCase().replace(/\s+/g, ' ').trim();
 const base = u => String(u || '').replace(/^https:\/\/epreuves\.fff\.fr/, '').replace(/\/(equipe|saison|classement|resultat-calendrier)$/, '');
 // « BAULE POULIGUEN US » → « Baule Pouliguen US »
