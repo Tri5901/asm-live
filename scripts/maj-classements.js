@@ -26,8 +26,14 @@ async function check() {
   const now = new Date();
   const debutHeure = new Date(now); debutHeure.setMinutes(0, 0, 0);
   const dimanche = now.getDay() === 0 && now.getHours() >= 17 && now.getHours() <= 22 && fait < debutHeure;
+  // passage du dimanche manqué (PC éteint, appli fermée ou redémarrée) : la tâche est relancée à la prochaine
+  // ouverture de l'appli, le lundi par exemple → on rattrape si rien n'a été fait depuis le dernier dimanche 17 h
+  const dim17 = new Date(now); dim17.setDate(now.getDate() - now.getDay()); dim17.setHours(17, 0, 0, 0);
+  if (dim17 > now) dim17.setDate(dim17.getDate() - 7);
+  const rattrapage = !dimanche && fait < dim17;
   // la tâche programmée tourne le dimanche toutes les heures de 17 h à 22 h ; les autres demandes sont faites à la main
   if (dimanche) console.log('A_FAIRE mise à jour du dimanche' + (demande && demande > fait ? ' (demande en attente de ' + (m.demande_par || '?') + ')' : ''));
+  else if (rattrapage) console.log('A_FAIRE rattrapage du dimanche (dernière mise à jour ' + fait.toLocaleString('fr-FR') + ')');
   else console.log('RIEN dernière mise à jour ' + fait.toLocaleString('fr-FR'));
 }
 
