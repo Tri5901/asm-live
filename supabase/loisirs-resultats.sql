@@ -4,7 +4,7 @@
 -- Nos matchs (joués depuis plus de 2 h) : absent du site → ajouté terminé avec son score ; encore « à venir » (personne ne l'a
 -- saisi en direct) → passé terminé avec son score ; commencé ou terminé dans l'appli → jamais touché (la saisie en direct fait foi).
 -- Les buts sont ajoutés sans buteur ni minute, comme les matchs des jeunes repris de la FFF. Aucune notification ne part
--- (match jamais « en direct »). Classement : remplacé à chaque relevé, source « SportEasy ».
+-- (match jamais « en direct »). Classement : remplacé à chaque relevé, source « SportEasy » ; résultats du championnat fusionnés.
 create or replace function public.loisirs_resultats(p_secret text, p_data jsonb) returns jsonb
 language plpgsql security definer set search_path = public, extensions as $$
 declare x jsonb; v_ext text; v_id uuid; v_status text; v_nous text; v_adv text; v_mt int; v_bh int; v_ba int;
@@ -47,8 +47,14 @@ begin
   if jsonb_typeof(p_data->'classement'->'lignes') = 'array' and jsonb_array_length(p_data->'classement'->'lignes') >= 2 then
     insert into classements (equipe, competition, lignes, resultats, source, updated_at)
     values (8, 'Championnat loisirs', p_data->'classement'->'lignes', coalesce(p_data->'classement'->'resultats', '[]'::jsonb), 'SportEasy', now())
-    on conflict (equipe) do update set competition = excluded.competition, lignes = excluded.lignes,
-      resultats = excluded.resultats, source = excluded.source, updated_at = now();
+    on conflict (equipe) do update set competition = excluded.competition, lignes = excluded.lignes, source = excluded.source, updated_at = now(),
+      -- résultats : fusion par identifiant (le relevé ne donne que les dernières semaines ; les nouveaux remplacent les anciens)
+      resultats = (select coalesce(jsonb_agg(e order by e->>1), '[]'::jsonb) from (
+        select distinct on (e->>0) e from (
+          select e, 1 as prio from jsonb_array_elements(excluded.resultats) e
+          union all
+          select e, 2 from jsonb_array_elements(coalesce(classements.resultats, '[]'::jsonb)) e
+        ) t order by e->>0, prio) u);
     v_cls := true;
   end if;
   return jsonb_build_object('ajoutes', n_ajout, 'scores', n_score, 'deja_saisis', n_saisi, 'classement', v_cls);
