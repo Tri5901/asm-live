@@ -911,6 +911,8 @@ td.eqc{white-space:nowrap;text-align:center} td.eqc b{display:inline-block;min-w
 .catrow .cattog{display:flex;gap:6px}
 .catrow .cattog .vistog{white-space:nowrap}
 .catrow .vistog small{font-weight:500;opacity:.8}
+/* téléphone : trois interrupteurs → sous le nom de la catégorie */
+@media (max-width:640px){.catrow{grid-template-columns:minmax(0,1fr)}.catrow .cattog{flex-wrap:wrap}}
 /* Accès : tuiles-filtres, pastilles de rôle et de catégorie, lignes compactes (25/10) */
 .akpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:8px 0 2px}
 .akpi button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:8px 10px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--ink);text-align:left;min-width:0}

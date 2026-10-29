@@ -38,6 +38,8 @@ const catTeams = c => EQUIPES.filter(e => e.categorie === c).map(e => e.id);
 // des matchs, mais ni dans les stats, ni dans les classements, ni dans le choix des notifications (ses notifications vont à tous
 // ceux qui suivent au moins une équipe : la base l'ajoute d'elle-même à leurs abonnements)
 const exceptionnelle = n => !!teamOf(n).exceptionnelle;
+// catégorie comptée dans « Tout le club » de la page Stats (interrupteur « Stats du club » de Admin › Catégories)
+const dansStatsClub = n => teamOf(n).stats_club !== false;
 const catTeamsN = c => catTeams(c).filter(n => !exceptionnelle(n));
 const catsN = () => CATS.filter(c => catTeamsN(c).length);
 // classements : les équipes suivies sur la FFF (pas les exceptionnelles) et les Loisirs (championnat relevé sur SportEasy)
@@ -2973,8 +2975,11 @@ async function statsViewFrom(playerArg, { ms, evs }){
   const seasons = [...new Set(ms.map(m=>seasonOf(m.kickoff)))].sort().reverse();
   if (!statSeason || !seasons.includes(statSeason)) statSeason = seasons[0] || null;
   const draw = () => {
-    const list = ms.filter(m => seasonOf(m.kickoff)===statSeason && inFilter(statF, m.equipe)
+    // « Tout le club » : sans les catégories coupées de « Stats du club » (elles restent en choisissant la catégorie)
+    const toutClub = !statF.cat && !statF.team;
+    const list = ms.filter(m => seasonOf(m.kickoff)===statSeason && inFilter(statF, m.equipe) && (!toutClub || dansStatsClub(m.equipe))
       && (!statComp || (statComp === 'coupe') === isCup(m)));
+    const horsClub = toutClub ? catsN().filter(c => catTeamsN(c).every(n => !dansStatsClub(n))) : [];
     const ids = new Set(list.map(m=>m.id));
     // filtre sur une équipe ou une catégorie anonymisée : seulement les chiffres de l'équipe
     const anonSel = statF.team ? anonyme(statF.team) : statF.cat ? catTeams(statF.cat).every(anonyme) : false;
@@ -3053,7 +3058,7 @@ async function statsViewFrom(playerArg, { ms, evs }){
       ${anonSel ? '' : statMode === 'buteurs' ? (CATS.map(c => { const h = catTeams(c).map(boardHTML).join(''); return h ? `<div class="sec">${esc(c)}</div>` + h : ''; }).join('') || '<div class="empty">Aucun match avec ce filtre.</div>') : rows.length ? `<div class="tblwrap"><table class="stats"><thead><tr>${COLS.map(([k,l])=>`<th class="${statSort.key===k?'on':''}" aria-sort="${statSort.key===k?(statSort.dir<0?'descending':'ascending'):'none'}"><button data-k="${k}">${l}${statSort.key===k?(statSort.dir<0?' ▾':' ▴'):''}</button></th>`).join('')}</tr></thead>
         <tbody>${rows.map(p=>`<tr class="prow${p.k === monJoueur() ? ' moi' : ''}" data-pk="${esc(p.k)}" data-nm="${esc(p.name)}" tabindex="0"><td>${esc(p.name)}</td>${cell(p.goals)}${moy(p.gpm)}${cell(p.mj)}${cell(p.tit)}${cell(p.y)}${cell(p.w)}${cell(p.r)}</tr>`).join('')}${cscGoals ? `<tr class="csc"><td>CSC <small>(contre son camp adverse)</small></td>${cell(cscGoals)}<td></td><td></td><td></td><td></td><td></td><td></td></tr>` : ''}</tbody></table></div>`
         : `<div class="empty">Les stats apparaîtront après le premier match dont la composition de l'${CLUB} a été saisie.</div>`}
-      <p class="note">${statComp === 'coupe' ? 'Matchs de coupe uniquement. ' : statComp ? 'Matchs de championnat uniquement. ' : ''}Stats des joueurs de l'${CLUB}, calculées à partir des compositions et de la chronologie de chaque match.${unknownGoals ? ` ${unknownGoals} but${unknownGoals>1?'s':''} sans buteur identifié.` : ''}</p>`;
+      <p class="note">${statComp === 'coupe' ? 'Matchs de coupe uniquement. ' : statComp ? 'Matchs de championnat uniquement. ' : ''}Stats des joueurs de l'${CLUB}, calculées à partir des compositions et de la chronologie de chaque match.${unknownGoals ? ` ${unknownGoals} but${unknownGoals>1?'s':''} sans buteur identifié.` : ''}${horsClub.length ? ` Hors des stats du club : ${esc(horsClub.join(', '))} (choisis la catégorie pour voir ses stats).` : ''}</p>`;
     view.querySelectorAll('th button').forEach(b => b.onclick = () => {
       const k = b.dataset.k; statSort = statSort.key===k ? {key:k, dir:-statSort.dir} : {key:k, dir: k==='name' ? 1 : -1}; draw();
     });
@@ -4112,14 +4117,16 @@ async function categoriesView(){
     <div class="acctop"><h1>Catégories</h1></div>
     <p class="note"><b>Visible</b> : la catégorie apparaît pour tout le monde (matchs, stats, classements, notifications). Cachée, elle disparaît pour tout le monde, admins compris ; un admin peut l’afficher avec la pastille « 👁 Masquées » (accueil, stats), elle est alors marquée « masquée ».</p>
     <p class="note"><b>Anonymiser</b> : aucun joueur n’est montré au public (compos, buteurs, cartons, stats des joueurs, homme du match) ; il reste les résultats et les stats de l’équipe. Ceux qui gèrent les matchs voient toujours les noms.</p>
+    <p class="note"><b>Stats du club</b> : la catégorie compte dans « Tout le club » de la page Stats (matchs, victoires, buts, classement des joueurs). Coupée, elle n’y entre plus, mais ses stats restent visibles en choisissant la catégorie.</p>
     <div class="catlist">${cats.map(c => { const l = data.filter(e => e.categorie === c);
       return `<div class="catrow"><div class="catnom"><b>${esc(c)}</b><small>${esc(equipesCourt(c, l))}</small></div>
-        <div class="cattog">${tog(c, 'actif', etat(l, 'actif'), 'Visible')}${tog(c, 'anonyme', etat(l, 'anonyme'), 'Anonymiser')}</div></div>`; }).join('')}</div></div>`;
+        <div class="cattog">${tog(c, 'actif', etat(l, 'actif'), 'Visible')}${tog(c, 'anonyme', etat(l, 'anonyme'), 'Anonymiser')}${tog(c, 'stats_club', etat(l, 'stats_club'), 'Stats du club')}</div></div>`; }).join('')}</div></div>`;
   const changer = async (b, c, k, val) => {
     b.disabled = true;
-    const { error: e2 } = await sb.rpc('admin_categorie', { p_categorie: c, p_visible: k === 'actif' ? val : null, p_anonyme: k === 'anonyme' ? val : null });
+    const { error: e2 } = await sb.rpc('admin_categorie', { p_categorie: c, p_visible: k === 'actif' ? val : null, p_anonyme: k === 'anonyme' ? val : null, p_stats: k === 'stats_club' ? val : null });
     if (e2){ toast(isNetErr(e2) ? 'Pas de réseau' : 'Modification refusée'); b.disabled = false; return; }
-    toast(k === 'actif' ? (val ? c + ' : visible par tous' : c + ' : cachée, admins seulement') : (val ? c + ' : joueurs anonymisés' : c + ' : joueurs de nouveau visibles'));
+    toast(k === 'actif' ? (val ? c + ' : visible par tous' : c + ' : cachée, admins seulement') : k === 'stats_club' ? (val ? c + ' : compte dans les stats du club' : c + ' : hors des stats du club')
+      : (val ? c + ' : joueurs anonymisés' : c + ' : joueurs de nouveau visibles'));
     categoriesView();
   };
   view.querySelectorAll('.catrow [data-cat]').forEach(b => b.onclick = () => {
