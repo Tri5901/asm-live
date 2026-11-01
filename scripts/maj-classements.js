@@ -1,5 +1,5 @@
 // Mise à jour des classements, utilisé par la tâche programmée « Classements ASM ».
-//   node scripts/maj-classements.js check          → affiche A_FAIRE (dimanche de 17 h à 22 h, pas encore fait cette heure-ci) ou RIEN
+//   node scripts/maj-classements.js check          → affiche A_FAIRE (dimanche toutes les 30 min de 15 h à 20 h, puis toutes les heures jusqu'à 22 h) ou RIEN
 //   node scripts/maj-classements.js pages          → liste des pages de classement FFF à relever (« numéro adresse », lue dans la base)
 //   node scripts/maj-classements.js poules         → liste des pages « Résultats / calendrier » des poules (« numéro adresse »)
 //   node scripts/maj-classements.js envoyer <json>  → enregistre les classements relevés (fichier JSON)
@@ -18,20 +18,29 @@ const URL_ = 'https://xzzttulqlydcespgkpnx.supabase.co';
 const KEY = 'sb_publishable_VwLyp5ROGzidc4oHWehoLg_kIehYAcE';
 const H = { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' };
 
+// Le dimanche, la tâche programmée passe toutes les 30 min de 15 h à 20 h (résultats des matchs de 13 h puis de 15 h,
+// Tristan 01/11), puis toutes les heures jusqu'à 22 h. Une mise à jour est à faire si rien n'a été enregistré depuis
+// le début du créneau en cours (demi-heure avant 20 h, heure ensuite). Heure du PC = heure de Paris.
+function aFaire(now, fait) {
+  const h = now.getHours();
+  if (now.getDay() !== 0 || h < 15 || h > 22) return false;
+  const debut = new Date(now); debut.setMinutes(h < 20 && now.getMinutes() >= 30 ? 30 : 0, 0, 0);
+  return fait < debut;
+}
+
 async function check() {
   const r = await fetch(URL_ + '/rest/v1/classements_maj?select=*', { headers: H });
   const [m] = await r.json();
   const fait = m.fait_at ? new Date(m.fait_at) : new Date(0);
   const demande = m.demande_at ? new Date(m.demande_at) : null;
   const now = new Date();
-  const debutHeure = new Date(now); debutHeure.setMinutes(0, 0, 0);
-  const dimanche = now.getDay() === 0 && now.getHours() >= 17 && now.getHours() <= 22 && fait < debutHeure;
+  const dimanche = aFaire(now, fait);
   // passage du dimanche manqué (PC éteint, appli fermée ou redémarrée) : la tâche est relancée à la prochaine
   // ouverture de l'appli, le lundi par exemple → on rattrape si rien n'a été fait depuis le dernier dimanche 17 h
   const dim17 = new Date(now); dim17.setDate(now.getDate() - now.getDay()); dim17.setHours(17, 0, 0, 0);
   if (dim17 > now) dim17.setDate(dim17.getDate() - 7);
   const rattrapage = !dimanche && fait < dim17;
-  // la tâche programmée tourne le dimanche toutes les heures de 17 h à 22 h ; les autres demandes sont faites à la main
+  // les autres demandes sont faites à la main
   if (dimanche) console.log('A_FAIRE mise à jour du dimanche' + (demande && demande > fait ? ' (demande en attente de ' + (m.demande_par || '?') + ')' : ''));
   else if (rattrapage) console.log('A_FAIRE rattrapage du dimanche (dernière mise à jour ' + fait.toLocaleString('fr-FR') + ')');
   else console.log('RIEN dernière mise à jour ' + fait.toLocaleString('fr-FR'));
@@ -82,4 +91,4 @@ const [cmd, arg] = process.argv.slice(2);
 if (require.main === module) (cmd === 'check' ? check() : cmd === 'pages' ? pages() : cmd === 'poules' ? poules() : cmd === 'envoyer' ? envoyer(arg) : Promise.reject(new Error('usage : check | pages | poules | envoyer <fichier.json>')))
   .catch(e => { console.error('ERREUR ' + e.message); process.exit(1); });
 
-module.exports = { normResultats, dateFFF };
+module.exports = { normResultats, dateFFF, aFaire };
