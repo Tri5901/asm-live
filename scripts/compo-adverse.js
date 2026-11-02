@@ -1,6 +1,7 @@
 // Compos et remplacements de l'équipe adverse relevés sur la feuille de match FFF (tâche des classements, le dimanche).
 //   node scripts/compo-adverse.js liste                 → matchs terminés des 8 derniers jours dont la feuille FFF n'a pas encore été traitée
 //                                                         (« id adresse-FFF (match) [compo adverse à remplir | compo adverse déjà remplie] »)
+//                                                         (+ « [N numéros manquants chez nous] » : les reprendre de la feuille avec scripts/numeros-fff.js)
 //   node scripts/compo-adverse.js fait <id>             → feuille traitée : la page ne sera plus rouverte
 //   node scripts/compo-adverse.js envoyer <id> <json>   → enregistre la compo adverse : [{"n":"7","name":"Hugo Martin","sub":false}, ...]
 // La base ne remplit que la compo adverse, et seulement si elle est vide ou sans noms : une compo saisie n'est jamais écrasée.
@@ -21,7 +22,8 @@ async function liste() {
   const ms = (await r.json()).filter(m => visibles.has(m.equipe));
   if (!ms.length) return console.log('RIEN toutes les feuilles de match de la semaine sont traitées');
   ms.forEach(m => { const adv = m.club_side === 'A' ? 'H' : 'A'; const vide = !((m.rosters || {})[adv] || []).some(p => (p.name || '').trim());
-    console.log(`${m.id} https://epreuves.fff.fr${m.fff_match}   (${m.home_name} – ${m.away_name}, adversaire : ${m.club_side === 'A' ? m.home_name : m.away_name}) [${vide ? 'compo adverse à remplir' : 'compo adverse déjà remplie'}]`); });
+    const sansNum = ((m.rosters || {})[m.club_side] || []).filter(p => (p.name || '').trim() && !String(p.n || '').trim()).length;
+    console.log(`${m.id} https://epreuves.fff.fr${m.fff_match}   (${m.home_name} – ${m.away_name}, adversaire : ${m.club_side === 'A' ? m.home_name : m.away_name}) [${vide ? 'compo adverse à remplir' : 'compo adverse déjà remplie'}]${sansNum ? ` [${sansNum} numéro${sansNum > 1 ? 's' : ''} manquant${sansNum > 1 ? 's' : ''} chez nous : node scripts/numeros-fff.js]` : ''}`); });
 }
 
 async function envoyer(id, file) {
