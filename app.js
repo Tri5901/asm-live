@@ -138,7 +138,8 @@ const goals = (evs, t) => evs.filter(e=>e.k==='goal' && e.t===t).length;
 const rosterOf = (m, t) => ((m.rosters||{})[t]||[]);
 const nameOf = (m, t, n) => { const p = rosterOf(m,t).find(p=>p.n===String(n)); return p ? p.name : ''; };
 // catégorie anonymisée : ni nom ni numéro pour le public
-const who = (m, t, n, none) => n === 'CSC' ? 'Contre son camp (CSC)' : anonPublic(m) ? '' : n ? `n°${n}${nameOf(m,t,n) ? ' ' + nameOf(m,t,n) : ''}` : none;
+// n = '?' : but dont on ne sait pas qui l'a marqué (choisi exprès, ≠ buteur pas encore saisi)
+const who = (m, t, n, none) => n === 'CSC' ? 'Contre son camp (CSC)' : anonPublic(m) ? '' : n === '?' ? 'Buteur inconnu' : n ? `n°${n}${nameOf(m,t,n) ? ' ' + nameOf(m,t,n) : ''}` : none;
 const rosterSorted = (m, t) => [...rosterOf(m,t)].sort((a,b)=>(+a.n || 999)-(+b.n || 999)); // sans numéro : à la fin
 // plus de 11 titulaires (ex. compo importée de la convocation, tous titulaires) : les plus grands numéros passent remplaçants.
 // Seulement si tous les titulaires ont un numéro, sinon on ne peut pas savoir qui est sur le banc.
@@ -228,7 +229,7 @@ function timelineHTML(m, evs, editable){
       const lines = ['H', 'A'].map(t => {
         const g = nomin.filter(e => e.t === t); if (!g.length) return '';
         if (anonPublic(m)) return `<div><b>${esc(teamName(m, t))}</b> : ${g.length} but${g.length > 1 ? 's' : ''}</div>`;
-        const named = g.filter(e => e.n).map(e => who(m, t, e.n, '')), anon = g.length - named.length;
+        const named = g.filter(e => e.n && e.n !== '?').map(e => who(m, t, e.n, '')), anon = g.length - named.length;
         return `<div><b>${esc(teamName(m, t))}</b> : ${esc([...named, ...(anon ? [anon > 1 ? anon + ' buteurs non renseignés' : '1 buteur non renseigné'] : [])].join(', '))}</div>`;
       }).join('');
       return `<div class="empty" style="text-align:left">Buts sans minute (feuille de match FFF incomplète)${lines}</div>` + (rest.length ? timelineHTML(m, rest, false) : '');
@@ -1404,7 +1405,7 @@ async function partagerResume(m, evs){
   // nos buteurs seulement, en grand avec le ballon
   const parJ = new Map();
   evs.filter(e => e.k === 'goal' && e.t === cs).sort((a, b) => (+a.sort || 0) - (+b.sort || 0)).forEach(e => {
-    const n = e.n === 'CSC' ? 'CSC' : e.n ? (nameOf(m, cs, e.n) || 'n°' + e.n) : 'Buteur inconnu';
+    const n = e.n === 'CSC' ? 'CSC' : e.n && e.n !== '?' ? (nameOf(m, cs, e.n) || 'n°' + e.n) : 'Buteur inconnu';
     parJ.set(n, [...(parJ.get(n) || []), String(e.min || '').replace(/'$/, '') + '’']); });
   // catégorie anonymisée : l'image se partage, donc jamais de buteurs, même pour un responsable
   const lignes = anonyme(m.equipe) ? [] : [...parJ], nb = Math.min(lignes.length, 6);
@@ -1568,7 +1569,7 @@ async function hdmSaisonRemplir(box, filtre){
 
 // Historique des modifications d'un match (écrit par la base à chaque changement)
 function histoTexte(h, m){
-  const qui = (t, n) => n ? (n === 'CSC' ? 'CSC' : 'n°' + n + (nameOf(m, t, n) ? ' ' + nameOf(m, t, n) : '')) : '';
+  const qui = (t, n) => n ? (n === 'CSC' ? 'CSC' : n === '?' ? 'buteur inconnu' : 'n°' + n + (nameOf(m, t, n) ? ' ' + nameOf(m, t, n) : '')) : '';
   const act = e => e ? `${LABEL[e.k] || e.k} ${teamName(m, e.t)} ${e.min || ''}${e.k === 'sub' ? ` (sort ${qui(e.t, e.out_n) || '?'}, entre ${qui(e.t, e.in_n) || '?'})` : e.n ? ' · ' + qui(e.t, e.n) : ''}` : '';
   if (h.quoi === 'action_ajout') return 'Ajout : ' + act(h.apres);
   if (h.quoi === 'action_suppression') return 'Suppression : ' + act(h.avant);
@@ -2165,7 +2166,7 @@ async function consoleView(id, openCompo){
         <button class="key" data-n="0">0</button>
         <button class="key ok" data-n="ok">Valider</button>
       </div>
-      ${csc ? '<button class="fbtn" id="cscBtn" style="width:100%;margin-top:8px">Contre son camp (CSC)</button>' : ''}
+      ${csc ? '<div class="foot" style="margin-top:8px"><button class="fbtn" id="incBtn">Buteur inconnu</button><button class="fbtn" id="cscBtn">Contre son camp (CSC)</button></div>' : ''}
       <div class="minrow"><label for="minEdit">Minute</label><input id="minEdit" value="${esc(minLabel)}"></div>
       <button class="cancel" id="cancel">Annuler</button>`);
     const disp = $('disp');
@@ -2198,6 +2199,7 @@ async function consoleView(id, openCompo){
     });
     $('cancel').onclick = closeSheet;
     if ($('cscBtn')) $('cscBtn').onclick = () => done('CSC');
+    if ($('incBtn')) $('incBtn').onclick = () => done('?');
   }
   function onPitch(t){
     const set = new Set(rosterOf(S,t).filter(p=>!p.sub).map(p=>p.n));
@@ -2279,6 +2281,14 @@ async function consoleView(id, openCompo){
     $('stNo').onclick = closeSheet;
   }
   function editEvent(e){
+    // but : on peut aussi changer le buteur (ou dire qu'on ne sait pas qui a marqué) ; Valider sans numéro garde le buteur
+    if (e.k === 'goal'){
+      const pitch = onPitch(e.t), list = rosterSorted(S, e.t).map(p => pitch.has(p.n) ? p : {...p, bench:true});
+      return askNumber('Modifier le but', `${teamName(S, e.t)} · ${who(S, e.t, e.n, 'buteur non précisé')}`, e.min, (n, min) => {
+        if (n) e.n = n;
+        e.min = min; e.sort = sortFromLabel(e.min, e.sort); pushEv(e); render(); toast('But modifié');
+      }, e.t, list, true);
+    }
     stepper(`${LABEL[e.k]} · ${teamName(S,e.t)}`, 'Corrige la minute de cette action.', Math.max(1, absOf(e.min)), v => labelOf(S, v, e.p), 'Enregistrer', v => {
       e.min = labelOf(S, v, e.p); e.sort = sortFromLabel(e.min, e.sort); pushEv(e); render(); toast('Minute corrigée');
     });
@@ -2910,8 +2920,10 @@ async function classementsView(){
       const res = pour > contre ? 'V' : pour < contre ? 'D' : 'N';
       const adv = dom ? x[7] : x[3], advCode = dom ? x[6] : x[2];
       const dt = new Date(x[1]).toLocaleDateString('fr-FR', {day:'numeric', month:'short'});
+      // domicile / extérieur : pastille DOM ou EXT (Tristan, 02/11 : « contre » / « à » ne se voyait pas)
       return { res, html: `<li><span class="hres ${res}">${res}</span><span class="hdt">${esc(dt)}</span>
-        <span class="hadv">${advCode ? `<img src="https://cdn-transverse.azureedge.net/phlogos/BC${esc(advCode)}.jpg" alt="" loading="lazy" onerror="this.remove()">` : ''}<span>${dom ? 'contre' : 'à'} ${estNous(advCode) ? `<b>${esc(adv)}</b>` : esc(adv)}</span></span>
+        <span class="hlieu ${dom ? 'dom' : 'ext'}" title="${dom ? 'À domicile' : 'À l’extérieur'}">${dom ? 'DOM' : 'EXT'}</span>
+        <span class="hadv">${advCode ? `<img src="https://cdn-transverse.azureedge.net/phlogos/BC${esc(advCode)}.jpg" alt="" loading="lazy" onerror="this.remove()">` : ''}<span>${estNous(advCode) ? `<b>${esc(adv)}</b>` : esc(adv)}</span></span>
         <b class="hsc">${pour}–${contre}</b></li>` };
     });
     const n = k => rows.filter(x => x.res === k).length;

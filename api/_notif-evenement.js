@@ -47,7 +47,7 @@ async function envoyerEvenement(eventId, targets, oublier){
   const gras = n => String(n).replace(/[0-9]/g, c => String.fromCodePoint(0x1D7EC + +c));
   const cs = m.club_side || 'H', pts = t => t === cs ? gras(sc(t)) : String(sc(t));
   const score = `Score ${pts('H')}-${pts('A')} · ${name('H')} contre ${name('A')} · ${ev.min}`;
-  const qui = ev.n === 'CSC' ? ' · contre son camp' : ev.n && clubGoal ? ` · n°${ev.n}${player ? ' ' + player : ''}` : '';
+  const qui = ev.n === 'CSC' ? ' · contre son camp' : ev.n && ev.n !== '?' && clubGoal ? ` · n°${ev.n}${player ? ' ' + player : ''}` : '';
   // carton : une phrase claire, le joueur dès le titre (« 🟨 Carton jaune pour Valentin Gicqueau »)
   const CARTON = { yellow: ['🟨', 'Carton jaune', 'prend un carton jaune'], white: ['⬜', 'Carton blanc', 'prend un carton blanc'], red: ['🟥', 'Carton rouge', 'est exclu (carton rouge)'] };
   const carton = CARTON[ev.k];
