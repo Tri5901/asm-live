@@ -26,7 +26,9 @@ end $$;
 revoke all on function public.convocations_compos(text, jsonb) from public;
 grant execute on function public.convocations_compos(text, jsonb) to anon, authenticated;
 
--- minuteurs : vendredi 23 h (« convocations-vendredi », 0 21 * * 5) puis samedi 10 h et 18 h (heure de Paris en été ; pg_cron est en UTC)
--- select cron.schedule('convocations', '0 8,16 * * 6', $c$ select net.http_post(url := 'https://asm-live.vercel.app/api/convocations',
+-- minuteurs : l'appli ne garde que vendredi 23 h et samedi 10 h / 18 h (heure de Paris) ; pg_cron est en UTC, donc deux heures UTC
+-- qui tombent sur ces heures-là en été ET en hiver : samedi '0 8,9,16,17 * * 6' (« convocations »), vendredi '0 21,22 * * 5' (« convocations-vendredi »).
+-- Corrigé le 07/11 : avec 7,8,15,16 et 20,21 UTC, plus aucun import depuis le passage à l'heure d'hiver (réponse « pas l'heure »).
+-- select cron.schedule('convocations', '0 8,9,16,17 * * 6', $c$ select net.http_post(url := 'https://asm-live.vercel.app/api/convocations',
 --   body := '{"cle":"<CLE>"}'::jsonb, headers := '{"Content-Type":"application/json"}'::jsonb) $c$);
 select 'ok' as convocations;
