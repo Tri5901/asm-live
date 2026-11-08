@@ -2152,8 +2152,9 @@ async function consoleView(id, openCompo){
   cleanup = () => { clearInterval(tick); syncListeners.delete(renderSync); window.removeEventListener('online', renderSync); window.removeEventListener('offline', renderSync); };
 
   // Saisie d'un numéro de joueur
-  function askNumber(title, sub, minLabel, cb, t, choices, csc){
-    let val = '', pending = null; // pending : joueur de la compo sans numéro, dont on tape le numéro
+  // verif(n) → { bloque: 'message' } (refusé) ou { avertir: 'message' } (accepté seulement si on valide une 2e fois le même numéro)
+  function askNumber(title, sub, minLabel, cb, t, choices, csc, verif){
+    let val = '', pending = null, averti = null; // pending : joueur de la compo sans numéro, dont on tape le numéro
     const chips = (choices||[]).map(p=>`<button class="chip${p.bench?' bench':''}${p.n ? '' : ' nonum'}" data-c="${esc(p.n)}" data-nm="${esc(p.name)}"><b>${esc(p.n || '?')}</b><span>${esc(p.name)}</span></button>`).join('');
     openSheet(`
       <h3 id="shTitle">${esc(title)}</h3><p>${esc(sub)}${chips ? ' · touche un joueur ou tape son numéro' : ''}</p>
@@ -2170,7 +2171,12 @@ async function consoleView(id, openCompo){
       <div class="minrow"><label for="minEdit">Minute</label><input id="minEdit" value="${esc(minLabel)}"></div>
       <button class="cancel" id="cancel">Annuler</button>`);
     const disp = $('disp');
-    const done = v => { const m = $('minEdit').value.trim() || minLabel; closeSheet(); cb(v, m); };
+    const done = v => {
+      const pb = verif && v ? verif(String(v)) : null;
+      if (pb && pb.bloque){ toast(pb.bloque); return; }
+      if (pb && pb.avertir && averti !== String(v)){ averti = String(v); toast(pb.avertir); return; }
+      const m = $('minEdit').value.trim() || minLabel; closeSheet(); cb(v, m);
+    };
     const upd = () => {
       disp.textContent = val || (pending ? 'Numéro de ' + pending : 'Numéro du joueur'); disp.classList.toggle('empty-n', !val);
       $('pname').textContent = pending ? pending : val ? nameOf(S,t,val) : '';
@@ -2252,13 +2258,17 @@ async function consoleView(id, openCompo){
       const pitch = onPitch(t), off = sentOff(t);
       const onField = rosterSorted(S,t).filter(p=>pitch.has(p.n));
       const bench = rosterSorted(S,t).filter(p=>!pitch.has(p.n) && !off.has(p.n)).map(p=>({...p, bench:true}));
+      // C du 01/11 et du 08/11 : « sort 11 entre 11 », « sort 14 entre 14 » → le même joueur ne peut plus sortir et entrer,
+      // et un numéro tapé qui n'est pas du bon côté (remplaçant qui « sort », titulaire qui « entre ») demande une 2e validation
+      const pasLa = (v, quoi) => { const nm = nameOf(S,t,v); return nm ? { avertir: `${nm} (n°${v}) ${quoi} · Valider encore pour confirmer` } : null; };
       askNumber('Joueur qui sort', tn, cm.label, (out, min) => {
         // plus de 11 sur le terrain (compo mal réglée) : on propose aussi les autres joueurs, pour ne pas bloquer
-        const entrants = pitch.size > 11 ? [...bench, ...onField.filter(p => p.n !== String(out)).map(p => ({...p, bench:true}))] : bench;
+        const entrants = (pitch.size > 11 ? [...bench, ...onField.map(p => ({...p, bench:true}))] : bench).filter(p => p.n !== String(out));
         askNumber('Joueur qui entre', `${tn} · remplace ${who(S,t,out,'?')}`, min, (inn, min2) => {
           add({t, k, out_n:out, in_n:inn, min:min2, sort:cm.sort});
-        }, t, entrants);
-      }, t, onField);
+        }, t, entrants, false, v => v === String(out) ? { bloque: 'Le joueur qui entre ne peut pas être celui qui sort' }
+          : pitch.has(v) && pitch.size <= 11 ? pasLa(v, 'est déjà sur le terrain') : null);
+      }, t, onField, false, v => !pitch.has(v) && pitch.size <= 11 ? pasLa(v, 'n’est pas sur le terrain : touche le joueur qui SORT') : null);
     } else {
       const pitch = onPitch(t);
       const list = rosterSorted(S,t).map(p => pitch.has(p.n) ? p : {...p, bench:true});
@@ -2288,6 +2298,18 @@ async function consoleView(id, openCompo){
         if (n) e.n = n;
         e.min = min; e.sort = sortFromLabel(e.min, e.sort); pushEv(e); render(); toast('But modifié');
       }, e.t, list, true);
+    }
+    // remplacement : on peut changer le joueur qui sort et celui qui entre ; Valider sans numéro garde le joueur noté
+    if (e.k === 'sub'){
+      const tn = teamName(S, e.t), list = rosterSorted(S, e.t);
+      return askNumber('Modifier le remplacement · qui sort', `${tn} · noté : ${who(S, e.t, e.out_n, '?')}`, e.min, (out, min) => {
+        const o = out || e.out_n;
+        askNumber('Modifier le remplacement · qui entre', `${tn} · remplace ${who(S, e.t, o, '?')} · noté : ${who(S, e.t, e.in_n, '?')}`, min, (inn, min2) => {
+          const i = inn || e.in_n;
+          if (o && i && String(o) === String(i)){ toast('Le joueur qui entre ne peut pas être celui qui sort'); return; }
+          e.out_n = o; e.in_n = i; e.min = min2; e.sort = sortFromLabel(e.min, e.sort); pushEv(e); render(); toast('Remplacement modifié');
+        }, e.t, list.filter(p => p.n !== String(o)).map(p => ({...p, bench:true})), false, v => o && v === String(o) ? { bloque: 'Le joueur qui entre ne peut pas être celui qui sort' } : null);
+      }, e.t, list);
     }
     stepper(`${LABEL[e.k]} · ${teamName(S,e.t)}`, 'Corrige la minute de cette action.', Math.max(1, absOf(e.min)), v => labelOf(S, v, e.p), 'Enregistrer', v => {
       e.min = labelOf(S, v, e.p); e.sort = sortFromLabel(e.min, e.sort); pushEv(e); render(); toast('Minute corrigée');
