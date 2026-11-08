@@ -1055,16 +1055,27 @@ function terrainCfg(m){
   const valide = t.df === f && Array.isArray(t.d) && t.d.length === nb && t.d.every(n => tit.includes(n)) && new Set(t.d).size === nb;
   const devinee = valide && libre && conn.size && t.d.join() === terrainDepart(f, tit).join();
   const d = valide && !devinee ? t.d.slice() : terrainDepart(f, tit, conn);
-  return { f, d, p: Array.isArray(t.p) ? t.p : [], tit, conn, m: Array.isArray(t.m) ? t.m : [] };
+  return { f, d, p: Array.isArray(t.p) ? t.p : [], tit, conn, m: Array.isArray(t.m) ? t.m : [], v: !Array.isArray(t.d) || t.v >= 3 || m.status !== 'termine' ? 3 : (t.v || 1) };
 }
+// remplaçant : il prend la place du sortant, sauf (matchs v3) s'il joue d'habitude sur une autre ligne : il va alors à la place
+// la plus proche de son poste habituel et celui qui l'occupait prend la place libérée (Tristan, 08/11 ; jamais pour les cages)
+const ligneTerrain = y => y > 85 ? 0 : y >= 62 ? 1 : y >= 33 ? 2 : 3;
 function terrainEtat(m, evs, cfg, T){
-  const cs = clubSide(m), pl = cfg.d.slice(), sortis = {}, rouges = {};
+  const cs = clubSide(m), pl = cfg.d.slice(), sortis = {}, rouges = {}, slots = TERRAIN_DISPOS[cfg.f];
   const acts = [...evs.filter(e => e.t === cs && (e.k === 'sub' || e.k === 'red')).map(e => ({ ...e, s: +e.sort || 0 })),
     ...cfg.p.map(x => ({ ...x, k: 'poste' }))].sort((a, b) => a.s - b.s);
   let der = null;
   for (const a of acts){
     if (a.s > T) break;
-    if (a.k === 'sub'){ const i = pl.indexOf(String(a.out_n)); if (i < 0) continue; pl[i] = String(a.in_n); sortis[a.out_n] = a.min; delete sortis[a.in_n]; der = { ...a, i }; }
+    if (a.k === 'sub'){ const i = pl.indexOf(String(a.out_n)); if (i < 0) continue;
+      let place = i, decale = null;
+      const c = cfg.v >= 3 && cfg.conn && cfg.conn.get(String(a.in_n));
+      if (c && i > 0 && c[1] <= 85 && ligneTerrain(c[1]) !== ligneTerrain(slots[i][1])){
+        let best = -1, dist = Infinity;
+        slots.forEach((s, k) => { const h = Math.hypot(s[0] - c[0], s[1] - c[1]); if (k > 0 && pl[k] && ligneTerrain(s[1]) === ligneTerrain(c[1]) && h < dist){ best = k; dist = h; } });
+        if (best > 0){ place = best; decale = pl[best]; pl[i] = decale; }
+      }
+      pl[place] = String(a.in_n); sortis[a.out_n] = a.min; delete sortis[a.in_n]; der = { ...a, i: place, decale, di: i }; }
     else if (a.k === 'red'){ const i = pl.indexOf(String(a.n)); if (i < 0) continue; pl[i] = null; rouges[a.n] = a.min; der = a; }
     else { const i = pl.indexOf(a.a), j = pl.indexOf(a.b); if (i < 0 || j < 0) continue; [pl[i], pl[j]] = [pl[j], pl[i]]; der = { ...a, i, j }; }
   }
@@ -1101,7 +1112,7 @@ function terrainMonter(m, evs, box, save){
     const titre = T === Infinity ? (fin ? 'Fin du match' : direct ? 'En ce moment' : 'Coup d’envoi') : T === 0 ? 'Coup d’envoi' : fmt(T);
     let cap = '';
     if (der && (T === Infinity ? der.s === maxi : der.s === T)){
-      cap = der.k === 'sub' ? `<b>${esc(der.min)} 🔁 ${esc(nomDe(der.in_n))}</b> remplace ${esc(nomDe(der.out_n))} et prend son poste : ${esc(slots[der.i][2].toLowerCase())}.`
+      cap = der.k === 'sub' ? (der.decale ? `<b>${esc(der.min)} 🔁 ${esc(nomDe(der.in_n))}</b> remplace ${esc(nomDe(der.out_n))}. Poste : ${esc(slots[der.i][2].toLowerCase())} ; ${esc(nomDe(der.decale))} passe ${esc(slots[der.di][2].toLowerCase())}.` : `<b>${esc(der.min)} 🔁 ${esc(nomDe(der.in_n))}</b> remplace ${esc(nomDe(der.out_n))} et prend son poste : ${esc(slots[der.i][2].toLowerCase())}.`)
         : der.k === 'red' ? `<b>${esc(der.min)} 🟥 ${esc(nomDe(der.n))}</b> est exclu.`
         : `<b>${esc(fmt(der.s))} ↔</b> ${esc(nomDe(der.a))} et ${esc(nomDe(der.b))} échangent leurs postes.`;
     }
@@ -1127,8 +1138,8 @@ function terrainMonter(m, evs, box, save){
       v.T = nx == null ? (+b.dataset.tm > 0 ? null : 0) : nx; v.sel = null; dessine();
     });
     // autre dispositif : chacun reprend la case de son numéro habituel
-    if ($('terF')) $('terF').onchange = e => enreg({ ...(m.terrain || {}), on: true, f: e.target.value, fm: true, d: terrainDepart(e.target.value, cfg.tit, cfg.conn), p: cfg.p, m: [], v: 2 });
-    box.querySelectorAll('[data-terdel]').forEach(b => b.onclick = () => { cfg.p = cfg.p.filter(x => x.s !== +b.dataset.terdel); enreg({ ...(m.terrain || {}), on: true, f: cfg.f, d: cfg.d, p: cfg.p, m: cfg.m, v: 2 }); });
+    if ($('terF')) $('terF').onchange = e => enreg({ ...(m.terrain || {}), on: true, f: e.target.value, fm: true, d: terrainDepart(e.target.value, cfg.tit, cfg.conn), p: cfg.p, m: [], v: cfg.v });
+    box.querySelectorAll('[data-terdel]').forEach(b => b.onclick = () => { cfg.p = cfg.p.filter(x => x.s !== +b.dataset.terdel); enreg({ ...(m.terrain || {}), on: true, f: cfg.f, d: cfg.d, p: cfg.p, m: cfg.m, v: cfg.v }); });
     if (gere) box.querySelectorAll('.tp[data-n]').forEach(el => el.onclick = () => {
       const n = el.dataset.n;
       if (!v.sel || v.sel === n){ v.sel = v.sel === n ? null : n; return dessine(); }
@@ -1146,7 +1157,7 @@ function terrainMonter(m, evs, box, save){
         if (T !== Infinity) v.T = s;
         toast(court(a) + ' ↔ ' + court(n));
       }
-      enreg({ ...(m.terrain || {}), on: true, f: cfg.f, d: cfg.d, p: cfg.p, m: cfg.m, v: 2 });
+      enreg({ ...(m.terrain || {}), on: true, f: cfg.f, d: cfg.d, p: cfg.p, m: cfg.m, v: cfg.v });
     });
   };
   dessine();
@@ -1848,7 +1859,7 @@ async function matchView(id){
       const on = !terrainActif(m), cfg = terrainCfg(m);
       if (on && m.compo_cachee) return;   // compo cachée au public : pas d'activation
       $('terrainTog').disabled = true;
-      const t = { ...(m.terrain || {}), on, f: cfg.f, df: cfg.f, d: cfg.d, p: cfg.p, m: cfg.m, v: 2 };
+      const t = { ...(m.terrain || {}), on, f: cfg.f, df: cfg.f, d: cfg.d, p: cfg.p, m: cfg.m, v: cfg.v };
       const { data: upd, error } = await sb.from('matches').update({ terrain: t }).eq('id', m.id).select('id');
       if (error || !upd || !upd.length){ toast(isNetErr(error) ? 'Pas de réseau' : 'Modification refusée'); draw(); return; }
       m.terrain = t; toast(on ? 'Vue terrain activée' : 'Vue terrain désactivée'); draw();
@@ -2108,7 +2119,7 @@ async function consoleView(id, openCompo){
     const has = rosterOf(S, clubSide(S)).length;
     if (!has || !disposDe(S).length){ box.innerHTML = ''; return; }   // pas de dispositif pour le foot à 4 ou à 5 (U7, U9)
     box.innerHTML = `<div class="visrow" style="margin-top:12px">${terrainTogHTML(S, 'terrainTogCo', 'Visible sur la page du match. Touche deux joueurs pour noter un changement de poste.')}</div><div id="terrainBoxCo"></div>`;
-    $('terrainTogCo').onclick = () => { if (!terrainActif(S) && S.compo_cachee) return; const cfg = terrainCfg(S); save({ ...(S.terrain || {}), on: !terrainActif(S), f: cfg.f, df: cfg.f, d: cfg.d, p: cfg.p, m: cfg.m, v: 2 }); toast(terrainActif(S) ? 'Vue terrain activée' : 'Vue terrain désactivée'); terrainCo(); };
+    $('terrainTogCo').onclick = () => { if (!terrainActif(S) && S.compo_cachee) return; const cfg = terrainCfg(S); save({ ...(S.terrain || {}), on: !terrainActif(S), f: cfg.f, df: cfg.f, d: cfg.d, p: cfg.p, m: cfg.m, v: cfg.v }); toast(terrainActif(S) ? 'Vue terrain activée' : 'Vue terrain désactivée'); terrainCo(); };
     if (terrainActif(S)) terrainMonter(S, S.events, $('terrainBoxCo'), save);
   }
   function renderSync(){
