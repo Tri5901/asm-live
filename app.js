@@ -274,10 +274,21 @@ function estMoi(m, e){
   return [e.n, e.in_n, e.out_n].some(n => n && n !== 'CSC' && nameOf(m, e.t, n) && playerKey(nameOf(m, e.t, n)) === k);
 }
 // matchs joués et actions (même copie que la page Stats)
+// La base rend au plus 1000 lignes par requête (1 074 actions le 08/11 : les derniers matchs passaient à 0-0 dans les stats) :
+// lecture page par page, dans un ordre fixe
+async function toutLire(requete){
+  const tout = [];
+  for (let de = 0; ; de += 1000){
+    const { data, error } = await requete().order('id').range(de, de + 999);
+    if (error) return { data: null, error };
+    tout.push(...data);
+    if (data.length < 1000) return { data: tout, error: null };
+  }
+}
 async function chargerStats(){
   const [{ data: ms, error }, { data: evs, error: e2 }] = await Promise.all([
     sb.from('matches').select('id,kickoff,equipe,club_side,rosters,status,competition,home_name,away_name,opp_logo,tab').neq('status','prevu'),
-    sb.from('events').select('match_id,t,k,n,in_n,out_n,min,sort')
+    toutLire(() => sb.from('events').select('match_id,t,k,n,in_n,out_n,min,sort'))
   ]);
   if (error || e2) throw (error || e2);
   // matchs des équipes exceptionnelles (U18 en Gambardella…) : hors stats ; catégories cachées : admins seulement ;
@@ -595,7 +606,7 @@ async function homeView(){
   const load = async () => {
     const [{ data: matches, error }, { data: g }] = await Promise.all([
       sb.from('matches').select('id,kickoff,competition,equipe,opp_logo,delegue_id,delegue_nom,club_side,home_name,away_name,half,period,running,started_at,acc,status,tab,live_par,live_at').order('kickoff', {ascending:false}).limit(1000),
-      sb.from('events').select('match_id,t').eq('k','goal')
+      toutLire(() => sb.from('events').select('match_id,t').eq('k','goal'))
     ]);
     if (error) { if (!cache && ici()) throw error; return; }
     lsSet('asm-home', {matches, goals:g||[]});
@@ -1699,7 +1710,7 @@ function prefetch(){
     try{
       const [{ data: ms }, { data: evs }] = await Promise.all([
         sb.from('matches').select('id,kickoff,equipe,club_side,rosters,status,competition,home_name,away_name,opp_logo,tab').neq('status','prevu'),
-        sb.from('events').select('match_id,t,k,n,in_n,out_n,min,sort')
+        toutLire(() => sb.from('events').select('match_id,t,k,n,in_n,out_n,min,sort'))
       ]);
       if (ms && evs) lsSet('asm-stats', { ms, evs });
     }catch(e){}
