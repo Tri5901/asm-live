@@ -109,6 +109,16 @@ function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<'
 const lsGet = (k, d) => { try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } };
 setEquipes(lsGet('asm-equipes', null));
 const lsSet = (k, v) => { try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} };
+// Le stockage du téléphone est limité (environ 5 Mo) et la file d'envoi des scores y est aussi : les caches par match sont plafonnés.
+// liste : les clés les plus récentes ; garde(k) : à ne jamais effacer
+function lsPlafond(liste, prefixe, cle, max, garde){
+  try{
+    const cles = [cle, ...lsGet(liste, []).filter(x => x !== cle)].slice(0, max);
+    const tout = Object.keys(localStorage).filter(k => k.startsWith(prefixe));
+    if (tout.length > max) tout.forEach(k => { if (!cles.includes(k) && !(garde && garde(k))) localStorage.removeItem(k); });
+    lsSet(liste, cles);
+  }catch(e){}
+}
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() :
   'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random()*16|0; return (c==='x' ? r : (r&3|8)).toString(16); }));
 
@@ -287,7 +297,7 @@ async function toutLire(requete){
 }
 async function chargerStats(){
   const [{ data: ms, error }, { data: evs, error: e2 }] = await Promise.all([
-    sb.from('matches').select('id,kickoff,equipe,club_side,rosters,status,competition,home_name,away_name,opp_logo,tab').neq('status','prevu'),
+    toutLire(() => sb.from('matches').select('id,kickoff,equipe,club_side,rosters,status,competition,home_name,away_name,opp_logo,tab').neq('status','prevu')),
     toutLire(() => sb.from('events').select('match_id,t,k,n,in_n,out_n,min,sort'))
   ]);
   if (error || e2) throw (error || e2);
@@ -407,7 +417,7 @@ let accF = { statut: '', role: '', cat: '' };   // filtres de la page Accès (st
 let accAppliquer = null;   // refait les filtres de la page Accès (présence, notifs, équipes arrivent après coup)
 async function loadPeople(){
   if (!isAdmin()) return {};
-  if (!people){ const { data } = await sb.from('profiles').select('id,nom,email,role'); people = {}; (data||[]).forEach(p => { people[p.id] = (p.nom || p.email || 'Sans nom') + (p.role === 'supprime' ? ' (compte supprimé)' : ''); }); }
+  if (!people){ const { data } = await toutLire(() => sb.from('profiles').select('id,nom,email,role')); people = {}; (data||[]).forEach(p => { people[p.id] = (p.nom || p.email || 'Sans nom') + (p.role === 'supprime' ? ' (compte supprimé)' : ''); }); }
   return people;
 }
 const personName = id => id ? ((people||{})[id] || 'compte supprimé') : 'import du calendrier';
@@ -867,6 +877,7 @@ async function meteoRemplir(m, box){
     const j = await r.json(); if (!j || !j.hourly) throw new Error('météo');
     d = { current: j.current, hourly: j.hourly };
     lsSet(cle, { t: Date.now(), d });
+    lsPlafond('asm-cles-meteo', 'asm-meteo-', cle, 10);
   }
   let html = '';
   if (m.status === 'direct' && d.current){
@@ -1709,7 +1720,7 @@ function prefetch(){
     try{ const { data } = await sb.from('classements').select('*').order('equipe'); if (data) lsSet('asm-cls', data); }catch(e){}
     try{
       const [{ data: ms }, { data: evs }] = await Promise.all([
-        sb.from('matches').select('id,kickoff,equipe,club_side,rosters,status,competition,home_name,away_name,opp_logo,tab').neq('status','prevu'),
+        toutLire(() => sb.from('matches').select('id,kickoff,equipe,club_side,rosters,status,competition,home_name,away_name,opp_logo,tab').neq('status','prevu')),
         toutLire(() => sb.from('events').select('match_id,t,k,n,in_n,out_n,min,sort'))
       ]);
       if (ms && evs) lsSet('asm-stats', { ms, evs });
@@ -1981,6 +1992,7 @@ async function consoleView(id, openCompo){
   if (!isMember()){ location.hash = session ? '#/compte' : '#/connexion'; return; }
   view.innerHTML = '<div class="loading">Chargement…</div>';
   const CK = 'asm-console-' + id;
+  lsPlafond('asm-cles-console', 'asm-console-', CK, 30, k => outbox.some(o => 'asm-console-' + o.match === k));
   let S = null;
   const cached = lsGet(CK, null);
   // réseau faible au stade : si on a déjà le match (console ouverte avant, ou page du direct qu'on vient de voir),
@@ -3608,7 +3620,7 @@ async function equipesDesJoueurs(){
   const spans = [...view.querySelectorAll('.ajoueur[data-joueur]')];
   if (!spans.length) return;
   const [{ data: ms }, { data: pr }] = await Promise.all([
-    sb.from('matches').select('id,equipe,club_side,rosters'),
+    toutLire(() => sb.from('matches').select('id,equipe,club_side,rosters')),
     sb.from('compos_privees').select('match_id,rosters')
   ]);
   const parId = new Map((ms || []).map(m => [m.id, m]));
@@ -3658,7 +3670,7 @@ async function adminView(){
   if (!isAdmin()){ location.hash = '#/compte'; return; }
   if (!view.querySelector('.acc')) view.innerHTML = '<div class="loading">Chargement…</div>';
   const tok = route.cur;
-  let { data, error } = await sb.from('profiles').select('*').order('created_at');
+  let { data, error } = await toutLire(() => sb.from('profiles').select('*').order('created_at'));
   if (route.cur !== tok) return;
   if (error) throw error;
   const deleted = data.filter(p => p.role === 'supprime' && !p.efface).sort((a, b) => String(b.deleted_at||'').localeCompare(String(a.deleted_at||'')));

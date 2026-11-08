@@ -93,7 +93,7 @@ async function ecarts(file, fichNiv, fichLieux) {
   });
   // équipes des poules de nos équipes (classements) : leur niveau est celui de notre équipe dans cette poule
   const cls = await (await fetch(URL_ + '/rest/v1/classements?select=equipe,lignes', { headers: H })).json();
-  const r = await fetch(URL_ + '/rest/v1/matches?select=id,equipe,competition,kickoff,status,club_side,home_name,away_name,opp_logo,opp_niveau,lieu,adresse,surface,fff_match', { headers: H });
+  const r = await fetch(URL_ + '/rest/v1/matches?select=id,equipe,competition,kickoff,status,club_side,home_name,away_name,opp_logo,opp_niveau,lieu,adresse,surface,fff_match&order=kickoff.desc', { headers: H });
   const tous = await r.json();
   const champDe = eq => ((tous.find(x => x.equipe === eq && / · J\d+$/.test(x.competition)) || {}).competition || '').replace(/ · J\d+$/, '').replace(/ · Phase \d+$/, '') || null;
   // nom des adversaires déjà connus sur le site, par code club FFF (sans le numéro d'équipe réserve)

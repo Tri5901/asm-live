@@ -61,7 +61,7 @@ module.exports = async (req, res) => {
   const [equipes, matchs, connus] = await Promise.all([
     fetch(SUPABASE_URL + '/rest/v1/equipes?select=id,court,categorie', { headers: H }).then(r => r.json()),
     fetch(SUPABASE_URL + '/rest/v1/matches?select=id,equipe,kickoff,status,club_side&status=eq.prevu', { headers: H }).then(r => r.json()),
-    fetch(SUPABASE_URL + '/rest/v1/matches?select=club_side,rosters&rosters=not.is.null', { headers: H }).then(r => r.json())
+    fetch(SUPABASE_URL + '/rest/v1/matches?select=club_side,rosters&rosters=not.is.null&order=kickoff.desc', { headers: H }).then(r => r.json())
   ]);
   // orthographe déjà utilisée dans l'appli pour chaque joueur
   const vus = new Map();
