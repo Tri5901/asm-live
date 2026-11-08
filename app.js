@@ -980,23 +980,23 @@ function terrainTogHTML(m, id, txtOn){
   return `<button type="button" class="vistog${on ? '' : ' off'}" id="${id}" aria-pressed="${on}"${bloque ? ' disabled' : ''}><i></i>Vue terrain</button><small>${txt}</small>`;
 }
 const terrainVue = new Map();   // par match : { T (null = dernière minute connue), sel }
-// place de départ : les joueurs dont le poste est connu (conn : numéro → [x, y]) vont à la place la plus proche
-// (le gardien seulement dans les cages), puis chaque poste reçoit le titulaire qui porte son numéro « habituel », les autres complètent
+// place de départ : chaque poste reçoit le titulaire qui porte son numéro « habituel » (le numéro du jour dit où il joue :
+// 92 % des départs sur la même ligne, même quand le numéro change) ; un titulaire dont le numéro n'a pas de poste
+// (12 et plus…) va à la place libre la plus proche de son poste connu (conn : numéro → [x, y], les cages seulement pour un gardien), les autres complètent
 function terrainDepart(f, tit, conn){
   const slots = TERRAIN_DISPOS[f], res = Array(slots.length).fill(null);
+  slots.forEach((s, i) => { const n = String(s[3]); if (tit.includes(n) && !res.includes(n)) res[i] = n; });
   if (conn && conn.size){
     const paires = [];
-    tit.forEach(n => { const c = conn.get(n); if (c) slots.forEach((s, i) => { if ((i === 0) === (c[1] > 85)) paires.push([Math.hypot(s[0] - c[0], s[1] - c[1]), n, i]); }); });
+    tit.filter(n => !res.includes(n)).forEach(n => { const c = conn.get(n); if (c) slots.forEach((s, i) => { if (res[i] == null && (i === 0) === (c[1] > 85)) paires.push([Math.hypot(s[0] - c[0], s[1] - c[1]), n, i]); }); });
     paires.sort((a, b) => a[0] - b[0]).forEach(([, n, i]) => { if (res[i] == null && !res.includes(n)) res[i] = n; });
   }
-  slots.forEach((s, i) => { const n = String(s[3]); if (res[i] == null && tit.includes(n) && !res.includes(n) && !(conn && conn.has(n))) res[i] = n; });
   const reste = tit.filter(n => !res.includes(n)); res.forEach((v, i) => { if (v == null) res[i] = reste.shift() || null; });
   return res;
 }
-// Postes connus (Tristan, 08/11 : les responsables score ne corrigent pas la vue terrain) : un poste réglé une fois à la main
-// (place de départ ou échange pendant le match) est repris aux matchs suivants de l'équipe, quel que soit le numéro,
-// et l'équipe garde son dernier dispositif. Seuls les postes réglés par quelqu'un servent : terrain.m = numéros placés
-// à la main au coup d'envoi (v: 2) ; avant (pas de v), place de départ différente de celle devinée par les numéros.
+// Postes connus de chaque joueur, d'après ses places de départ en 4-3-3 (justes ; doute sur le 3-5-2 : Tristan, 08/11) et les corrections à la main ;
+// l'équipe garde aussi son dernier dispositif. Une place attribuée faute de poste pour son numéro ne compte pas,
+// sauf si quelqu'un l'a réglée (terrain.m = numéros placés à la main au coup d'envoi).
 // postesEquipe : équipe → { pos: Map(clé du joueur → [x, y]), f }
 const postesEquipe = new Map(), postesCharge = new Map();
 function chargerPostes(eq){
@@ -1006,7 +1006,7 @@ function chargerPostes(eq){
       .not('terrain', 'is', null).neq('status', 'prevu').order('kickoff', { ascending: false }).limit(15);
     if (error) throw error;
     const liste = (ms || []).filter(m => m.terrain && TERRAIN_DISPOS[m.terrain.f] && Array.isArray(m.terrain.d) && m.terrain.d.length === TERRAIN_DISPOS[m.terrain.f].length);
-    const ids = liste.filter(m => (m.terrain.p || []).length).map(m => m.id);
+    const ids = liste.filter(m => (m.terrain.p || []).length).map(m => m.id);   // les remplacements ne servent qu'à rejouer les échanges
     const { data: evs } = ids.length ? await sb.from('events').select('match_id,t,k,n,in_n,out_n,min,sort').in('match_id', ids).in('k', ['sub', 'red']) : { data: [] };
     const vus = new Map();   // clé du joueur → places réglées à la main, de la plus récente à la plus ancienne
     for (const m of liste){
@@ -1014,7 +1014,7 @@ function chargerPostes(eq){
       const tit = roster.filter(p => !p.sub && p.n).map(p => String(p.n)), devine = terrainDepart(t.f, tit), vu = new Map();
       // place de départ incomplète ou faite avec d'autres numéros (numéros ajoutés après coup) : rien à en tirer
       if (!t.d.every(n => tit.includes(String(n))) || new Set(t.d).size !== t.d.length) continue;
-      t.d.forEach((n, i) => { if (t.v >= 2 ? (t.m || []).includes(n) : devine[i] !== n) vu.set(String(n), slots[i]); });
+      t.d.forEach((n, i) => { if ((t.f === '4-3-3' && String(slots[i][3]) === String(n)) || (t.m || []).includes(n) || devine[i] !== n) vu.set(String(n), slots[i]); });
       // échanges notés en 1re mi-temps = corrections du placement (après, c'est tactique) ; les cages seulement dans les 5 premières minutes
       const ech = new Map(), evM = (evs || []).filter(e => e.match_id === m.id);
       (t.p || []).filter(x => x.s < 46).forEach(x => {
