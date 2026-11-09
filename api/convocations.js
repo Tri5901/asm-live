@@ -28,6 +28,8 @@ function csv(t) {
   return rows.map(r => r.map(x => x.replace(/\s+/g, ' ').trim()));
 }
 const cle = n => String(n || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z ]/g, ' ').split(/\s+/).filter(Boolean).sort().join(' ');
+// fautes récurrentes de la feuille du club → orthographe exacte (Tristan, 09/11)
+const CORRECTIONS = { [cle('Audrey Walgreaf')]: 'Audrey Walgraef' };
 const cap = w => w.toLowerCase().replace(/(^|[-' ])(\p{L})/gu, (m, a, b) => a + b.toUpperCase());
 // « BENARD Romain » → « Romain Benard » (mots en majuscules = nom de famille)
 const prenomNom = s => {
@@ -68,7 +70,7 @@ module.exports = async (req, res) => {
   connus.forEach(m => ((m.rosters || {})[m.club_side] || []).forEach(p => {
     if (!p.name) return; const c = cle(p.name), e = vus.get(c) || {}; e[p.name] = (e[p.name] || 0) + 1; vus.set(c, e);
   }));
-  const nomConnu = s => { const e = vus.get(cle(s)); return e ? Object.entries(e).sort((a, b) => b[1] - a[1])[0][0] : prenomNom(s); };
+  const nomConnu = s => { if (CORRECTIONS[cle(s)]) return CORRECTIONS[cle(s)]; const e = vus.get(cle(s)); return e ? Object.entries(e).sort((a, b) => b[1] - a[1])[0][0] : prenomNom(s); };
 
   const data = [], detail = [];
   for (const F of FEUILLES) {
