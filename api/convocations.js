@@ -18,37 +18,68 @@ const VAPID_PUBLIC = 'BHA2nAZhD5cIT_AR11aLFpXaH9RZyg32nn5W088Es3meXzr0aBAfM6gCCW
 const heureFr = iso => new Date(iso).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' }).replace(':', 'h').replace(/^0/, '');
 const jourFr = iso => new Date(iso).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', weekday: 'long' });
 
-// « Convocations sorties » (Tristan, 15/11) : une notification par téléphone abonné à l'équipe, une seule fois par match
-// (la base marque le match). Plusieurs équipes suivies : une seule notification qui les liste.
-async function notifierConvocations(cle, convoc, matchs, equipes){
+// « Convocations sorties » (Tristan, 15/11) : une notification par téléphone, une seule fois par match (la base marque le match).
+// Plusieurs équipes : une seule notification qui les liste. Téléphone abonné avec son compte connecté : on lui dit en plus s'il
+// joue (et avec quelle équipe), s'il est dirigeant, arbitre, arbitre de touche ou à la police de terrain, même pour une équipe
+// qu'il ne suit pas (reconnu par le nom du compte ou le joueur lié, sans accents, majuscules ni ordre prénom / nom).
+const ROLES = ['joueur', 'dirigeant', 'arbitre', 'touche', 'police'];
+function texteRole(role, x, long){
+  const eq = x.loisirs ? 'les Loisirs' : 'la ' + x.court, match = `${x.m.home_name} – ${x.m.away_name}`;
+  const quand = `${jourFr(x.m.kickoff)} ${heureFr(x.m.kickoff)}`, rdv = x.rdv ? `, RDV ${heureFr(x.rdv)}` : '';
+  return {
+    joueur: long ? `Tu joues avec ${eq} : ${quand}${rdv}` : `Tu joues avec ${eq}`,
+    dirigeant: long ? `Tu fais partie des dirigeants de ${eq} : ${quand}${rdv}` : `Tu fais partie des dirigeants de ${eq}`,
+    arbitre: long ? `Tu arbitres ${match} : ${quand}` : 'Tu arbitres ce match',
+    touche: long ? `Tu es à la touche pour ${match} : ${quand}` : 'Tu es à la touche',
+    police: long ? `Tu fais la police de terrain pour ${match} : ${quand}` : 'Tu fais la police de terrain'
+  }[role];
+}
+async function notifierConvocations(cleSecrete, convoc, matchs, equipes, dirigeants){
   if (!convoc.length || !process.env.VAPID_PRIVATE_KEY) return 0;
-  const r = await fetch(SUPABASE_URL + '/rest/v1/rpc/convoc_targets', { method: 'POST', headers: H, body: JSON.stringify({ p_cle: cle, p_matches: convoc.map(d => d.match_id) }) });
+  const r = await fetch(SUPABASE_URL + '/rest/v1/rpc/convoc_targets', { method: 'POST', headers: H, body: JSON.stringify({ p_cle: cleSecrete, p_matches: convoc.map(d => d.match_id) }) });
   if (!r.ok) throw new Error('base ' + r.status);
   const cibles = await r.json();
   if (!Array.isArray(cibles) || !cibles.length) return 0;
   const masques = await matchsMasques([...new Set(cibles.map(c => c.match_id))]);
+  // nom → clé de comparaison (au moins prénom + nom, pour ne pas reconnaître quelqu'un sur un seul mot)
+  const clePers = n => { const c = cle(n); return c.includes(' ') ? c : ''; };
+  const humain = v => v && v !== 'officiel' && v !== 'adversaire' ? clePers(v) : '';
   const info = new Map(convoc.map(d => {
-    const m = matchs.find(x => x.id === d.match_id) || {}, eq = equipes.find(e => e.id === m.equipe) || {};
-    return [d.match_id, { m, nous: (m.club_side === 'A' ? m.away_name : m.home_name) || 'AS Mésanger', fem: /(^|\s)F$/.test(eq.categorie || ''), n: d.joueurs.length, rdv: d.rdv }];
+    const m = matchs.find(x => x.id === d.match_id) || {}, eq = equipes.find(e => e.id === m.equipe) || {}, a = d.arbitrage || {};
+    const pers = { joueur: new Set(d.joueurs.map(clePers)), dirigeant: new Set((dirigeants.get(d.match_id) || []).map(clePers)),
+      arbitre: new Set([humain(a.arbitre)]), touche: new Set([humain(a.touche)]), police: new Set([humain(a.police)]) };
+    Object.values(pers).forEach(s => s.delete(''));
+    return [d.match_id, { m, nous: (m.club_side === 'A' ? m.away_name : m.home_name) || 'AS Mésanger', court: eq.court || '', loisirs: eq.categorie === 'Loisirs',
+      fem: /(^|\s)F$/.test(eq.categorie || ''), n: d.joueurs.length, rdv: d.rdv, pers }];
   }));
+  // par téléphone : les matchs des équipes suivies, et ceux où la personne du compte a un rôle
   const parTel = new Map();
   cibles.forEach(c => {
-    if (masques.has(c.match_id) || !info.has(c.match_id) || !info.get(c.match_id).m.id) return;
-    const e = parTel.get(c.endpoint) || { s: c, ids: [] }; if (!e.ids.includes(c.match_id)) e.ids.push(c.match_id); parTel.set(c.endpoint, e);
+    const x = info.get(c.match_id);
+    if (masques.has(c.match_id) || !x || !x.m.id) return;
+    const moi = [clePers(c.nom), clePers(c.joueur)].filter(Boolean);
+    const roles = ROLES.filter(ro => moi.some(k => x.pers[ro].has(k)));
+    const suivi = c.suivi !== false;
+    if (!suivi && !roles.length) return;
+    const e = parTel.get(c.endpoint) || { s: c, ids: [], roles: new Map() };
+    if (!e.ids.includes(c.match_id)) e.ids.push(c.match_id);
+    if (roles.length) e.roles.set(c.match_id, roles);
+    parTel.set(c.endpoint, e);
   });
   const maj = t => t.charAt(0).toUpperCase() + t.slice(1);
   webpush.setVapidDetails('https://asm-live.vercel.app', VAPID_PUBLIC, process.env.VAPID_PRIVATE_KEY);
   let sent = 0;
-  await Promise.all([...parTel.values()].map(async ({ s, ids }) => {
+  await Promise.all([...parTel.values()].map(async ({ s, ids, roles }) => {
     const ms = ids.map(id => info.get(id)).sort((a, b) => new Date(a.m.kickoff) - new Date(b.m.kickoff)), x = ms[0];
+    const perso = ms.flatMap(y => (roles.get(y.m.id) || []).map(ro => '👉 ' + texteRole(ro, y, ms.length > 1)));
     const payload = ms.length === 1 ? {
       title: `📋 Convocations sorties · ${x.nous}`,
-      body: `${maj(jourFr(x.m.kickoff))} à ${heureFr(x.m.kickoff)} · ${x.m.home_name} – ${x.m.away_name}\n`
+      body: (perso.length ? perso.join('\n') + '\n' : '') + `${maj(jourFr(x.m.kickoff))} à ${heureFr(x.m.kickoff)} · ${x.m.home_name} – ${x.m.away_name}\n`
         + (x.rdv ? `RDV au stade à ${heureFr(x.rdv)} · ` : '') + `${x.n} ${x.fem ? 'joueuses convoquées' : 'joueurs convoqués'}`,
       url: `/#/match/${x.m.id}`, tag: `convoc-${x.m.id}`, team: x.m.equipe
     } : {
       title: `📋 Convocations sorties · ${ms.length} équipes`,
-      body: ms.map(y => `${y.nous} : ${jourFr(y.m.kickoff)} ${heureFr(y.m.kickoff)}` + (y.rdv ? `, RDV ${heureFr(y.rdv)}` : '')).join('\n'),
+      body: [...perso, ...ms.filter(y => !roles.has(y.m.id)).map(y => `${y.nous} : ${jourFr(y.m.kickoff)} ${heureFr(y.m.kickoff)}` + (y.rdv ? `, RDV ${heureFr(y.rdv)}` : ''))].join('\n'),
       url: '/', tag: 'convoc-' + ms.map(y => y.m.id.slice(0, 8)).join('-')
     };
     try { await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload), { TTL: 43200, urgency: 'normal' }); sent++; }
@@ -116,7 +147,7 @@ module.exports = async (req, res) => {
   }));
   const nomConnu = s => { if (CORRECTIONS[cle(s)]) return CORRECTIONS[cle(s)]; const e = vus.get(cle(s)); return e ? Object.entries(e).sort((a, b) => b[1] - a[1])[0][0] : prenomNom(s); };
 
-  const data = [], detail = [];
+  const data = [], detail = [], dirigeants = new Map();
   for (const F of FEUILLES) {
   let rows;
   try { rows = csv(await (await fetch(F.url)).text()); } catch (e) { detail.push('feuille illisible'); continue; }
@@ -143,6 +174,12 @@ module.exports = async (req, res) => {
     const rdv = rdvISO(date, rdvRow[c]);
     const arbitrage = { arbitre: poste(arbRow[c + 1]), touche: poste(toucheRow[c + 1]), police: poste(policeRow[c + 1]) };
     const aArb = Object.values(arbitrage).some(Boolean);
+    // dirigeants (sous les joueurs, jusqu'à la rubrique suivante) : seulement pour la notification personnelle
+    const iDir = rows.findIndex(r => /^Dirigeants/i.test(r[0] || ''));
+    if (iDir >= 0) for (let i = iDir; i < Math.min(rows.length, iDir + 6); i++){
+      if (i > iDir && ((rows[i][0] || '').trim() || rows[i].every(v => !v))) break;
+      if ((rows[i][c + 1] || '').length > 1) dirigeants.set(m.id, [...(dirigeants.get(m.id) || []), prenomNom(rows[i][c + 1])]);
+    }
     if (joueurs.length || rdv || aArb) {
       data.push({ match_id: m.id, joueurs, rdv, ...(aArb ? { arbitrage } : {}) });
       detail.push(court + ' : ' + joueurs.length + ' joueurs' + (rdv ? ', RDV ' + rdvRow[c] : '') + (aArb ? ', arbitrage' : ''));
@@ -154,7 +191,7 @@ module.exports = async (req, res) => {
   if (!r.ok) return res.status(403).json({ error: 'refusé' });
   const compos = await r.json();
   let notifs = 0;
-  try { notifs = await notifierConvocations(k, data.filter(d => d.joueurs.length), matchs, equipes); }
+  try { notifs = await notifierConvocations(k, data.filter(d => d.joueurs.length), matchs, equipes, dirigeants); }
   catch (e) { detail.push('notification impossible : ' + e.message); }
   res.json({ compos, notifs, detail });
 };
