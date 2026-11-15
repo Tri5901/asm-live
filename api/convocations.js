@@ -12,6 +12,50 @@ const FEUILLES = [
     equipe: (equipes, l) => l === 'A' ? equipes.find(e => e.categorie === 'Senior F') : null }
 ];
 const H = { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' };
+const webpush = require('web-push');
+const { matchsMasques } = require('./_notif-evenement');
+const VAPID_PUBLIC = 'BHA2nAZhD5cIT_AR11aLFpXaH9RZyg32nn5W088Es3meXzr0aBAfM6gCCW1lgR7ZTOoKIofXqjZml7s8Prmyh80';
+const heureFr = iso => new Date(iso).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' }).replace(':', 'h').replace(/^0/, '');
+const jourFr = iso => new Date(iso).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', weekday: 'long' });
+
+// « Convocations sorties » (Tristan, 15/11) : une notification par téléphone abonné à l'équipe, une seule fois par match
+// (la base marque le match). Plusieurs équipes suivies : une seule notification qui les liste.
+async function notifierConvocations(cle, convoc, matchs, equipes){
+  if (!convoc.length || !process.env.VAPID_PRIVATE_KEY) return 0;
+  const r = await fetch(SUPABASE_URL + '/rest/v1/rpc/convoc_targets', { method: 'POST', headers: H, body: JSON.stringify({ p_cle: cle, p_matches: convoc.map(d => d.match_id) }) });
+  if (!r.ok) throw new Error('base ' + r.status);
+  const cibles = await r.json();
+  if (!Array.isArray(cibles) || !cibles.length) return 0;
+  const masques = await matchsMasques([...new Set(cibles.map(c => c.match_id))]);
+  const info = new Map(convoc.map(d => {
+    const m = matchs.find(x => x.id === d.match_id) || {}, eq = equipes.find(e => e.id === m.equipe) || {};
+    return [d.match_id, { m, nous: (m.club_side === 'A' ? m.away_name : m.home_name) || 'AS Mésanger', fem: /(^|\s)F$/.test(eq.categorie || ''), n: d.joueurs.length, rdv: d.rdv }];
+  }));
+  const parTel = new Map();
+  cibles.forEach(c => {
+    if (masques.has(c.match_id) || !info.has(c.match_id) || !info.get(c.match_id).m.id) return;
+    const e = parTel.get(c.endpoint) || { s: c, ids: [] }; if (!e.ids.includes(c.match_id)) e.ids.push(c.match_id); parTel.set(c.endpoint, e);
+  });
+  const maj = t => t.charAt(0).toUpperCase() + t.slice(1);
+  webpush.setVapidDetails('https://asm-live.vercel.app', VAPID_PUBLIC, process.env.VAPID_PRIVATE_KEY);
+  let sent = 0;
+  await Promise.all([...parTel.values()].map(async ({ s, ids }) => {
+    const ms = ids.map(id => info.get(id)).sort((a, b) => new Date(a.m.kickoff) - new Date(b.m.kickoff)), x = ms[0];
+    const payload = ms.length === 1 ? {
+      title: `📋 Convocations sorties · ${x.nous}`,
+      body: `${maj(jourFr(x.m.kickoff))} à ${heureFr(x.m.kickoff)} · ${x.m.home_name} – ${x.m.away_name}\n`
+        + (x.rdv ? `RDV au stade à ${heureFr(x.rdv)} · ` : '') + `${x.n} ${x.fem ? 'joueuses convoquées' : 'joueurs convoqués'}`,
+      url: `/#/match/${x.m.id}`, tag: `convoc-${x.m.id}`, team: x.m.equipe
+    } : {
+      title: `📋 Convocations sorties · ${ms.length} équipes`,
+      body: ms.map(y => `${y.nous} : ${jourFr(y.m.kickoff)} ${heureFr(y.m.kickoff)}` + (y.rdv ? `, RDV ${heureFr(y.rdv)}` : '')).join('\n'),
+      url: '/', tag: 'convoc-' + ms.map(y => y.m.id.slice(0, 8)).join('-')
+    };
+    try { await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload), { TTL: 43200, urgency: 'normal' }); sent++; }
+    catch (e) { /* téléphone désabonné : ignoré */ }
+  }));
+  return sent;
+}
 
 // CSV simple (champs entre guillemets possibles)
 function csv(t) {
@@ -51,18 +95,18 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST uniquement' });
   const k = req.body && req.body.cle;
   if (!k || typeof k !== 'string' || k.length > 200) return res.status(400).json({ error: 'requête invalide' });
-  // le minuteur (en heure UTC) appelle aux deux heures possibles été/hiver : on ne garde que vendredi 23 h et samedi 10 h / 18 h
-  // à l'heure de Paris (sauf appel à la main avec force)
+  // le minuteur (en heure UTC) appelle aux deux heures possibles été/hiver : on ne garde que vendredi 23 h et samedi 10 h / 18 h /
+  // 22 h 45 (Tristan, 15/11) à l'heure de Paris (sauf appel à la main avec force)
   if (!req.body.force){
-    const p = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', weekday: 'short', hour: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
-    const jour = (p.find(x => x.type === 'weekday') || {}).value || '', h = +((p.find(x => x.type === 'hour') || {}).value);
-    const ok = (/^ven/i.test(jour) && h === 23) || (/^sam/i.test(jour) && (h === 10 || h === 18));
-    if (!ok) return res.json({ compos: 0, info: 'pas l’heure (' + jour + ' ' + h + ' h à Paris)' });
+    const p = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+    const jour = (p.find(x => x.type === 'weekday') || {}).value || '', h = +((p.find(x => x.type === 'hour') || {}).value), mn = +((p.find(x => x.type === 'minute') || {}).value);
+    const ok = (/^ven/i.test(jour) && h === 23) || (/^sam/i.test(jour) && (h === 10 || h === 18 || (h === 22 && mn >= 30)));
+    if (!ok) return res.json({ compos: 0, info: 'pas l’heure (' + jour + ' ' + h + ' h ' + String(mn).padStart(2, '0') + ' à Paris)' });
   }
 
   const [equipes, matchs, connus] = await Promise.all([
     fetch(SUPABASE_URL + '/rest/v1/equipes?select=id,court,categorie', { headers: H }).then(r => r.json()),
-    fetch(SUPABASE_URL + '/rest/v1/matches?select=id,equipe,kickoff,status,club_side&status=eq.prevu', { headers: H }).then(r => r.json()),
+    fetch(SUPABASE_URL + '/rest/v1/matches?select=id,equipe,kickoff,status,club_side,home_name,away_name&status=eq.prevu', { headers: H }).then(r => r.json()),
     fetch(SUPABASE_URL + '/rest/v1/matches?select=club_side,rosters&rosters=not.is.null&order=kickoff.desc', { headers: H }).then(r => r.json())
   ]);
   // orthographe déjà utilisée dans l'appli pour chaque joueur
@@ -108,5 +152,9 @@ module.exports = async (req, res) => {
   if (!data.length) return res.json({ compos: 0, detail });
   const r = await fetch(SUPABASE_URL + '/rest/v1/rpc/convocations_compos', { method: 'POST', headers: H, body: JSON.stringify({ p_cle: k, p_data: data }) });
   if (!r.ok) return res.status(403).json({ error: 'refusé' });
-  res.json({ compos: await r.json(), detail });
+  const compos = await r.json();
+  let notifs = 0;
+  try { notifs = await notifierConvocations(k, data.filter(d => d.joueurs.length), matchs, equipes); }
+  catch (e) { detail.push('notification impossible : ' + e.message); }
+  res.json({ compos, notifs, detail });
 };

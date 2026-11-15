@@ -4091,7 +4091,7 @@ function openBell(preselect){
   if (preselect && !exceptionnelle(preselect) && !cur.size) cur.add(preselect);
   const denied = Notification.permission === 'denied';
   openSheet(`<h3 id="shTitle">Notifications de buts</h3>
-    <p>Reçois une notification à chaque but et chaque carton des équipes choisies, même appli fermée.</p>
+    <p>Reçois une notification à chaque but et chaque carton des équipes choisies, à la sortie des convocations et pour la compo 15 min avant le match, même appli fermée.</p>
     ${denied ? '<div class="msg err">Les notifications sont bloquées pour ce site. Autorise-les dans les réglages du téléphone (ou du navigateur), puis reviens ici.</div>' : ''}
     <div class="msg" id="bState">Vérification de ce téléphone…</div>
     <div class="follow">${catsN().map(c => `<div class="fcat">${esc(c)}</div>` + catTeamsN(c).map(n => `<label class="fl"><input type="checkbox" value="${n}"${cur.has(n)?' checked':''}><span>${esc(teamLabel(n))}</span></label>`).join('')).join('')}</div>
