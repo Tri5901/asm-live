@@ -95,12 +95,12 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST uniquement' });
   const k = req.body && req.body.cle;
   if (!k || typeof k !== 'string' || k.length > 200) return res.status(400).json({ error: 'requête invalide' });
-  // le minuteur (en heure UTC) appelle aux deux heures possibles été/hiver : on ne garde que vendredi 23 h et samedi 10 h / 18 h /
-  // 22 h 45 (Tristan, 15/11) à l'heure de Paris (sauf appel à la main avec force)
+  // le minuteur (en heure UTC) appelle aux deux heures possibles été/hiver : on ne garde que vendredi 22 h 45 (l'heure où elles
+  // sortent souvent, Tristan 15/11) et 23 h, samedi 10 h et 18 h, à l'heure de Paris (sauf appel à la main avec force)
   if (!req.body.force){
     const p = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
     const jour = (p.find(x => x.type === 'weekday') || {}).value || '', h = +((p.find(x => x.type === 'hour') || {}).value), mn = +((p.find(x => x.type === 'minute') || {}).value);
-    const ok = (/^ven/i.test(jour) && h === 23) || (/^sam/i.test(jour) && (h === 10 || h === 18 || (h === 22 && mn >= 30)));
+    const ok = (/^ven/i.test(jour) && ((h === 23 && mn < 30) || (h === 22 && mn >= 30))) || (/^sam/i.test(jour) && (h === 10 || h === 18));
     if (!ok) return res.json({ compos: 0, info: 'pas l’heure (' + jour + ' ' + h + ' h ' + String(mn).padStart(2, '0') + ' à Paris)' });
   }
 

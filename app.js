@@ -968,7 +968,7 @@ function lineupsHTML(m, evs = []){
     ? `<button type="button" class="vistog${m.compo_cachee ? ' off' : ''}" id="compoVis" aria-pressed="${!m.compo_cachee}"><i></i>${m.compo_cachee ? 'Cachée au public' : 'Visible par tous'}</button>`
     : m.compo_cachee ? '<span class="vistog off static"><i></i>Cachée au public</span>' : '';
   return `<section class="log"><div class="loghead"><h2>Compositions</h2>${canManage(m) ? `<a class="link" href="#/gerer/${esc(m.id)}/compo">${has ? 'Modifier' : '📋 Saisir la compo'}</a>` : ''}</div>`
-    + (vis ? `<div class="visrow">${vis}<small>${anonyme(m.equipe) ? 'Catégorie anonymisée : la compo n’est jamais visible du public, seuls ceux qui gèrent le match la voient.' : m.compo_cachee ? 'Seuls les responsables d’équipe, les admins et le responsable score du match la voient.' + (m.status === 'prevu' ? ' Elle sera visible par tous au coup d’envoi.' : '') : 'Tout le monde peut la voir sur la page du match.'}</small></div>` : '')
+    + (vis ? `<div class="visrow">${vis}<small>${anonyme(m.equipe) ? 'Catégorie anonymisée : la compo n’est jamais visible du public, seuls ceux qui gèrent le match la voient.' : m.compo_cachee ? 'Seuls les responsables d’équipe, les admins et le responsable score du match la voient.' + (m.status === 'prevu' ? ' Elle sera visible par tous 15 min avant le coup d’envoi.' : '') : 'Tout le monde peut la voir sur la page du match.'}</small></div>` : '')
     + (has && m.status !== 'prevu' && evs.some(e => e.k === 'sub') ? `<button type="button" class="link rempbtn" id="rempBtn">${lsGet('asm-voir-remp', false) ? 'Masquer les remplacements' : 'Afficher les remplacements'}</button>` : '')
     + (has ? `<div class="lineups${lsGet('asm-voir-remp', false) ? ' remp' : ''}">${side('H')}${side('A')}</div>` : '<div class="empty">Compo pas encore saisie.</div>')
     + '</section>';
@@ -997,7 +997,7 @@ const terrainActif = m => !!(m.terrain && m.terrain.on);
 function terrainTogHTML(m, id, txtOn){
   const on = terrainActif(m), bloque = !!m.compo_cachee && !on;
   const txt = bloque ? 'Compo cachée au public : la vue terrain ne peut pas être activée tant qu’elle est cachée.'
-    : on && m.compo_cachee ? `Cachée au public avec la compo${m.status === 'prevu' ? ', affichée pour tous au coup d’envoi' : ''}. Touche deux joueurs pour noter un changement de poste.`
+    : on && m.compo_cachee ? `Cachée au public avec la compo${m.status === 'prevu' ? ', affichée pour tous 15 min avant le coup d’envoi' : ''}. Touche deux joueurs pour noter un changement de poste.`
     : on ? txtOn : 'Affiche nos joueurs sur le terrain et sur le banc, minute par minute.';
   return `<button type="button" class="vistog${on ? '' : ' off'}" id="${id}" aria-pressed="${on}"${bloque ? ' disabled' : ''}><i></i>Vue terrain</button><small>${txt}</small>`;
 }
